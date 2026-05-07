@@ -2,6 +2,28 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+### Planning Center setup (local)
+
+1. Copy the env template:
+
+```bash
+cp .env.local.example .env.local
+```
+
+2. In `.env.local`, set:
+
+```bash
+PCO_BASIC_TOKEN=APPLICATION_ID:SECRET
+```
+
+Optional (for resource scan):
+
+```bash
+CPB_SONG_FILES_ROOT=/absolute/path/to/your/song/folders
+```
+
+3. Start the dev server:
+
 First, run the development server:
 
 ```bash
