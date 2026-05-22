@@ -2,7 +2,8 @@
 
 MVP wizard to build a **Get Ready Guide** output Google Doc from a Planning Center plan: copy a Drive template, fill date + song list placeholders, append song scan bodies from org Drive (via PCO links). **Signoff required** before any writes.
 
-See [`PRODUCT.md`](./PRODUCT.md) for the full spec and [`docs/GRG-TEMPLATE.md`](./docs/GRG-TEMPLATE.md) for template placeholders.
+See [`docs/PROJECT-STATUS.md`](./docs/PROJECT-STATUS.md) for **current state, known issues, next steps, and a startup prompt** for the next session.  
+Spec: [`PRODUCT.md`](./PRODUCT.md). Template: [`docs/GRG-TEMPLATE.md`](./docs/GRG-TEMPLATE.md).
 
 ## Setup
 
@@ -17,7 +18,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 1. **Connect Google** (Worship Leader account with read access to org scans + Drive/Docs write).
 2. **Verify template** — default `Get Ready Guide (TEMPLATE)` with `{{GRG_DATE}}`, `{{GRG_SONG_LIST}}`, `{{GRG_SCANS_BEGIN}}`.
-3. Set **output title** (default `Get Ready Guide (Good Friday)`).
+3. Set **output title** (defaults to `Get Ready Guide YYYY.MM.DD` after plan load).
 4. Enter **Plan ID** (e.g. `87788328`) → per-song Drive resolution → **Preview** → **Approve** (recreates output from template).
 
 OAuth tokens persist under `.data/google-tokens.json` (gitignored) for local MVP.
