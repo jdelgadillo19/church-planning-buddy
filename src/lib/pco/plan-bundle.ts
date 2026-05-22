@@ -1,4 +1,5 @@
 import { buildAuthHeader, formatPcoError, parsePositiveIntOrNull, pcoGetJson, pcoGetJsonOrThrow } from "./client";
+import { buildOutputDocTitle } from "@/lib/config/grg";
 import { formatPlanDateLikeSample } from "./format-date";
 import { formatPitchKey, keyFromItemAttribute } from "./format-key";
 import { formatArrangementDisplayName } from "./arrangement-display";
@@ -25,6 +26,7 @@ export type PlanBundle = {
   serviceTypeId: number;
   dateFormatted: string;
   dateRaw: string;
+  suggestedOutputTitle: string;
   songs: PlanSongRow[];
 };
 
@@ -287,6 +289,7 @@ export async function loadPlanBundle(input: {
     serviceTypeId,
     dateFormatted,
     dateRaw: String(dateRaw),
+    suggestedOutputTitle: buildOutputDocTitle(dateRaw),
     songs,
   };
 }

@@ -24,6 +24,7 @@ type PlanBundle = {
   serviceTypeId: number;
   dateFormatted: string;
   dateRaw: string;
+  suggestedOutputTitle: string;
   songs: PlanSong[];
 };
 
@@ -61,7 +62,7 @@ type PreviewSection = {
 const STEPS = ["Setup", "Songs", "Preview", "Sign off"] as const;
 type Step = (typeof STEPS)[number];
 
-const DEFAULT_GRG_OUTPUT_TITLE = "Get Ready Guide (Good Friday)";
+const DEFAULT_GRG_OUTPUT_TITLE_PATTERN = "Get Ready Guide {{GRG_DATE}}";
 const DEFAULT_GRG_TEMPLATE_TITLE = "Get Ready Guide (TEMPLATE)";
 
 function tierClass(tier: ScanTier) {
@@ -74,7 +75,7 @@ export default function Home() {
   const [step, setStep] = useState<Step>("Setup");
   const [planId, setPlanId] = useState("87788328");
   const [serviceTypeId, setServiceTypeId] = useState("");
-  const [grgTitle, setGrgTitle] = useState(DEFAULT_GRG_OUTPUT_TITLE);
+  const [grgTitle, setGrgTitle] = useState(DEFAULT_GRG_OUTPUT_TITLE_PATTERN);
   const [templateTitle, setTemplateTitle] = useState(DEFAULT_GRG_TEMPLATE_TITLE);
   const [googleConnected, setGoogleConnected] = useState(false);
   const [templateDoc, setTemplateDoc] = useState<{ id: string; name: string; webViewLink?: string } | null>(
@@ -163,6 +164,7 @@ export default function Home() {
       if (!res.ok || !payload.ok) throw new Error(payload.ok ? "Failed" : payload.error);
 
       setBundle(payload.bundle);
+      setGrgTitle(payload.bundle.suggestedOutputTitle);
       setSongFlows(
         payload.bundle.songs.map((song) => ({
           song,
@@ -424,6 +426,9 @@ export default function Home() {
                 onChange={(e) => setGrgTitle(e.target.value)}
                 className="h-11 rounded-xl border border-zinc-200 px-3 text-sm dark:border-zinc-800 dark:bg-zinc-950"
               />
+              <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                Defaults to &quot;Get Ready Guide YYYY.MM.DD&quot; from the plan date after load (editable).
+              </span>
             </label>
 
             <div className="flex flex-wrap items-center gap-3">
