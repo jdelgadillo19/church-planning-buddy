@@ -12,7 +12,13 @@ export async function GET(req: Request) {
 
   const oauth2 = getOAuthClient();
   const { tokens } = await oauth2.getToken(code);
-  saveTokensForCurrentSession(tokens);
+  await saveTokensForCurrentSession({
+    access_token: tokens.access_token ?? undefined,
+    refresh_token: tokens.refresh_token ?? undefined,
+    scope: tokens.scope ?? undefined,
+    token_type: tokens.token_type ?? undefined,
+    expiry_date: tokens.expiry_date ?? undefined,
+  });
 
   return NextResponse.redirect(new URL("/?google=connected", url.origin));
 }

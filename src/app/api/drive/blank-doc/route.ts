@@ -8,7 +8,7 @@ function isGoogleDoc(file: unknown): file is { id?: string | null; name?: string
 }
 
 export async function POST() {
-  const tokens = loadTokensForCurrentSession();
+  const tokens = await loadTokensForCurrentSession();
   if (!tokens?.access_token && !tokens?.refresh_token) {
     return NextResponse.json({ ok: false, error: "Google Drive not connected." }, { status: 401 });
   }

@@ -1,58 +1,38 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Church Planning Buddy
 
-## Getting Started
+MVP wizard to build a **Get Ready Guide** output Google Doc from a Planning Center plan: copy a Drive template, fill date + song list placeholders, append song scan bodies from org Drive (via PCO links). **Signoff required** before any writes.
 
-### Planning Center setup (local)
+See [`PRODUCT.md`](./PRODUCT.md) for the full spec and [`docs/GRG-TEMPLATE.md`](./docs/GRG-TEMPLATE.md) for template placeholders.
 
-1. Copy the env template:
+## Setup
 
 ```bash
 cp .env.local.example .env.local
-```
-
-2. In `.env.local`, set:
-
-```bash
-PCO_BASIC_TOKEN=APPLICATION_ID:SECRET
-```
-
-Optional (for resource scan):
-
-```bash
-CPB_SONG_FILES_ROOT=/absolute/path/to/your/song/folders
-```
-
-3. Start the dev server:
-
-First, run the development server:
-
-```bash
+# Set PCO_BASIC_TOKEN, Google OAuth credentials, GRG_TEMPLATE_TITLE, GRG_OUTPUT_TITLE
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. **Connect Google** (Worship Leader account with read access to org scans + Drive/Docs write).
+2. **Verify template** — default `Get Ready Guide (TEMPLATE)` with `{{GRG_DATE}}`, `{{GRG_SONG_LIST}}`, `{{GRG_SCANS_BEGIN}}`.
+3. Set **output title** (default `Get Ready Guide (Good Friday)`).
+4. Enter **Plan ID** (e.g. `87788328`) → per-song Drive resolution → **Preview** → **Approve** (recreates output from template).
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+OAuth tokens persist under `.data/google-tokens.json` (gitignored) for local MVP.
 
-## Learn More
+## API (MVP)
 
-To learn more about Next.js, take a look at the following resources:
+| Route | Purpose |
+|-------|---------|
+| `POST /api/mvp/plan` | PCO plan bundle (date, songs, keys, scan tiers) |
+| `POST /api/mvp/candidates` | Resolve `blank` scan files from PCO Drive URL |
+| `POST /api/mvp/scan-content` | Export selected file as text |
+| `POST /api/mvp/find-grg` | Verify template + optional existing output |
+| `POST /api/mvp/preview` | Preview payload before signoff |
+| `POST /api/mvp/apply` | Copy template → output, fill placeholders, append scans |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Re-consent Google
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Scopes include `documents` and `drive` (copy/delete output, read template). After upgrading, use **Reconnect Google** on the setup step.

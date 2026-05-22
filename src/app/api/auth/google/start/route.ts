@@ -4,7 +4,7 @@ import { getOrCreateSessionId } from "../_session";
 
 export async function GET() {
   const oauth2 = getOAuthClient();
-  getOrCreateSessionId();
+  await getOrCreateSessionId();
 
   const url = oauth2.generateAuthUrl({
     access_type: "offline",
