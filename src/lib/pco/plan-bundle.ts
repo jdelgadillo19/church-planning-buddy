@@ -245,7 +245,7 @@ export async function loadPlanBundle(input: {
       warnings.push("No linked song on plan item.");
     } else {
       const attachments = await listSongAttachments(songId, auth, arrangementId);
-      const pick = pickBestScanAttachment(attachments);
+      const pick = pickBestScanAttachment(attachments, arrangementId);
       if (!pick) {
         warnings.push("No song scan attachment found.");
       } else {

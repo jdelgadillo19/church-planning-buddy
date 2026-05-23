@@ -13,6 +13,8 @@ export type PcoAttachment = {
     remote_link?: string | null;
     url?: string | null;
   };
+  /** Set when attachment came from a specific arrangement's attachment list. */
+  sourceArrangementId?: string;
 };
 
 const GREEN_PREFIX = "(resources) song scan master";
@@ -44,17 +46,60 @@ export function attachmentUrl(a: PcoAttachment) {
   return "";
 }
 
-export function classifyAttachmentTier(name: string): ScanTier | null {
-  const n = name.trim();
-  if (!n) return null;
-  if (n.toLowerCase().startsWith(GREEN_PREFIX)) return "green";
-  const normalized = n
+export function normalizeForMatch(s: string) {
+  return s
     .toLowerCase()
     .replaceAll(/[^a-z0-9]+/g, " ")
     .trim()
     .replaceAll(/\s+/g, " ");
-  if (normalized.replaceAll(" ", "").includes("songscan")) return "yellow";
+}
+
+function normalizedNoSpaces(name: string) {
+  return normalizeForMatch(name).replaceAll(" ", "");
+}
+
+/** True when the attachment name indicates a MASTER song scan (green tier). */
+export function isMasterScanName(name: string): boolean {
+  const n = name.trim();
+  if (!n) return false;
+  if (n.toLowerCase().startsWith(GREEN_PREFIX)) return true;
+  const compact = normalizedNoSpaces(n);
+  return compact.includes("songscan") && compact.includes("master");
+}
+
+/** True when the name looks like any song scan attachment (master or secondary). */
+export function isSongScanCandidateName(name: string): boolean {
+  const n = name.trim();
+  if (!n) return false;
+  if (isMasterScanName(n)) return true;
+  return normalizedNoSpaces(n).includes("songscan");
+}
+
+export function classifyAttachmentTier(name: string): ScanTier | null {
+  const n = name.trim();
+  if (!n) return null;
+  if (isMasterScanName(n)) return "green";
+  if (normalizedNoSpaces(n).includes("songscan")) return "yellow";
   return null;
+}
+
+function attachmentPreferenceScore(a: PcoAttachment, preferredArrangementId?: string | null) {
+  let score = 0;
+  if (preferredArrangementId && a.sourceArrangementId === preferredArrangementId) score += 100;
+  if (attachmentUrl(a)) score += 10;
+  return score;
+}
+
+function pickPreferredAttachment(
+  attachments: PcoAttachment[],
+  preferredArrangementId?: string | null,
+): PcoAttachment | undefined {
+  if (attachments.length === 0) return undefined;
+  return attachments.toSorted(
+    (a, b) =>
+      attachmentPreferenceScore(b, preferredArrangementId) -
+      attachmentPreferenceScore(a, preferredArrangementId),
+  )[0];
 }
 
 export async function listSongAttachments(
@@ -75,7 +120,11 @@ export async function listSongAttachments(
     const at = await pcoGetJson(url, auth);
     if (at.res.ok && at.parsed.kind === "json") {
       const atJson = at.parsed.json as { data?: PcoAttachment[] };
-      return [...directAttachments, ...(Array.isArray(atJson.data) ? atJson.data : [])];
+      const arrangementAttachments = (Array.isArray(atJson.data) ? atJson.data : []).map((a) => ({
+        ...a,
+        sourceArrangementId: arrangementId,
+      }));
+      return [...directAttachments, ...arrangementAttachments];
     }
     return directAttachments;
   }
@@ -92,7 +141,11 @@ export async function listSongAttachments(
     const at = await pcoGetJson(url, auth);
     if (!at.res.ok || at.parsed.kind !== "json") continue;
     const atJson = at.parsed.json as { data?: PcoAttachment[] };
-    collected.push(...(Array.isArray(atJson.data) ? atJson.data : []));
+    const arrangementAttachments = (Array.isArray(atJson.data) ? atJson.data : []).map((att) => ({
+      ...att,
+      sourceArrangementId: a.id,
+    }));
+    collected.push(...arrangementAttachments);
   }
 
   return [...directAttachments, ...collected];
@@ -106,29 +159,28 @@ export type ScanPick = {
   arrangementId?: string;
 };
 
-export function pickBestScanAttachment(attachments: PcoAttachment[]): ScanPick | null {
-  const green = attachments.find((a) => classifyAttachmentTier(attachmentName(a)) === "green");
-  if (green?.id) {
-    return {
-      tier: "green",
-      name: attachmentName(green) || "(Resources) Song Scan MASTER",
-      url: attachmentUrl(green),
-      attachmentId: green.id,
-    };
-  }
+export function pickBestScanAttachment(
+  attachments: PcoAttachment[],
+  preferredArrangementId?: string | null,
+): ScanPick | null {
+  const scanAttachments = attachments.filter(
+    (a) => a.id && isSongScanCandidateName(attachmentName(a)),
+  );
+  if (scanAttachments.length === 0) return null;
 
-  const yellow = attachments.filter((a) => classifyAttachmentTier(attachmentName(a)) === "yellow");
-  if (yellow.length > 0) {
-    const first = yellow[0];
-    if (first?.id) {
-      return {
-        tier: "yellow",
-        name: attachmentName(first) || "song scan",
-        url: attachmentUrl(first),
-        attachmentId: first.id,
-      };
-    }
-  }
+  const masters = scanAttachments.filter((a) => classifyAttachmentTier(attachmentName(a)) === "green");
+  const pool = masters.length > 0 ? masters : scanAttachments;
+  const picked = pickPreferredAttachment(pool, preferredArrangementId);
+  if (!picked?.id) return null;
 
-  return null;
+  const tier = classifyAttachmentTier(attachmentName(picked)) ?? "yellow";
+  return {
+    tier,
+    name:
+      attachmentName(picked) ||
+      (tier === "green" ? "(Resources) Song Scan MASTER" : "song scan"),
+    url: attachmentUrl(picked),
+    attachmentId: picked.id,
+    arrangementId: picked.sourceArrangementId,
+  };
 }

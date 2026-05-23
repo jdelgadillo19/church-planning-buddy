@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { buildAuthHeader } from "@/lib/pco/client";
 import { resolveScanDriveUrl } from "@/lib/pco/attachment-open";
 import { getAuthedClients } from "@/lib/google/auth";
-import { resolveBlankCandidatesFromPcoUrl } from "@/lib/google/drive-files";
+import { resolveScanCandidatesFromPcoUrl } from "@/lib/google/drive-files";
+import type { ScanTier } from "@/lib/pco/scans";
 import { isGoogleDriveUrl } from "@/lib/google/drive-url";
 import { googleConnected, loadTokensForCurrentSession } from "@/app/api/auth/google/_session";
 
@@ -13,6 +14,7 @@ export async function POST(req: Request) {
       attachmentId?: string;
       songId?: string;
       arrangementId?: string;
+      scanTier?: ScanTier;
     };
 
     let scanUrl = body.scanUrl?.trim() ?? "";
@@ -51,8 +53,11 @@ export async function POST(req: Request) {
       });
     }
 
+    const scanTier: ScanTier =
+      body.scanTier === "yellow" || body.scanTier === "red" ? body.scanTier : "green";
+
     const { drive } = getAuthedClients(tokens!);
-    const result = await resolveBlankCandidatesFromPcoUrl(drive, scanUrl);
+    const result = await resolveScanCandidatesFromPcoUrl(drive, scanUrl, scanTier);
 
     return NextResponse.json({
       ok: true,
@@ -60,7 +65,9 @@ export async function POST(req: Request) {
       searchRoot: result.searchRoot,
       pcoUrl: result.pcoUrl,
       resolvedScanUrl: scanUrl,
-      needsSelection: result.candidates.length > 1,
+      pass: result.pass,
+      autoSelectedId: result.autoSelectedId,
+      needsSelection: result.needsSelection ?? result.candidates.length > 1,
       error: result.error,
     });
   } catch (e) {

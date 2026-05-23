@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type ScanTier = "green" | "yellow" | "red";
 
@@ -33,12 +33,24 @@ type DriveCandidate = {
   name: string;
   mimeType: string;
   webViewLink?: string;
+  priorityScore?: number;
 };
 
 type DriveSearchRoot = {
   id: string;
   name: string;
   driveId?: string | null;
+};
+
+type PcoScanOption = {
+  driveFileId: string;
+  name: string;
+  mimeType: string;
+  webViewLink?: string;
+  priorityScore: number;
+  pcoAttachmentId: string;
+  pcoAttachmentName: string;
+  tier: ScanTier;
 };
 
 type SongWorkflow = {
@@ -50,7 +62,79 @@ type SongWorkflow = {
   needsAck: boolean;
   searchRoot?: DriveSearchRoot;
   lastResolveError?: string;
+  showManualPcoPicker?: boolean;
+  pcoScanOptions?: PcoScanOption[];
+  loadingPcoOptions?: boolean;
 };
+
+type CandidatesApiPayload =
+  | {
+      ok: true;
+      candidates: DriveCandidate[];
+      searchRoot?: DriveSearchRoot;
+      pcoUrl?: string;
+      resolvedScanUrl?: string;
+      needsSelection?: boolean;
+      needsAcknowledgement?: boolean;
+      autoSelectedId?: string;
+      pass?: 1 | 2;
+      error?: string;
+    }
+  | { ok: false; error: string };
+
+function shouldAutoResolveScan(flow: SongWorkflow) {
+  if (flow.skipped) return false;
+  if (flow.song.scanTier !== "green" && flow.song.scanTier !== "yellow") return false;
+  return Boolean(flow.song.scanUrl?.trim() || flow.song.scanAttachmentId);
+}
+
+function applyCandidatesToFlow(flow: SongWorkflow, payload: CandidatesApiPayload): SongWorkflow {
+  if (!payload.ok) {
+    return {
+      ...flow,
+      status: payload.error,
+      lastResolveError: payload.error,
+    };
+  }
+
+  const candidates = payload.candidates ?? [];
+  const resolvedUrl = payload.resolvedScanUrl || flow.song.scanUrl;
+  const needsAck = Boolean(payload.needsAcknowledgement);
+  const autoId = payload.autoSelectedId;
+  const selectedFileId =
+    autoId && candidates.some((c) => c.id === autoId)
+      ? autoId
+      : candidates.length === 1
+        ? candidates[0].id
+        : "";
+
+  const searchLabel = payload.searchRoot?.name
+    ? `Searched "${payload.searchRoot.name}" (from PCO link)`
+    : null;
+  const passNote = payload.pass === 2 ? " (priority fallback)" : "";
+
+  return {
+    ...flow,
+    song: { ...flow.song, scanUrl: resolvedUrl },
+    candidates,
+    selectedFileId,
+    needsAck,
+    searchRoot: payload.searchRoot,
+    lastResolveError: candidates.length === 0 ? payload.error : undefined,
+    showManualPcoPicker: false,
+    status: needsAck
+      ? "Not Drive — acknowledge to skip"
+      : candidates.length === 0
+        ? payload.error ?? "No usable song scan found"
+        : selectedFileId
+          ? searchLabel
+            ? `${searchLabel}${passNote} — auto-selected`
+            : `Auto-selected${passNote}`
+          : searchLabel
+            ? `${searchLabel}${passNote} — pick a document (${candidates.length} matches)`
+            : `Select a document (${candidates.length} matches)`,
+  };
+}
 
 type PreviewSection = {
   title: string;
@@ -96,6 +180,8 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [applyResult, setApplyResult] = useState<string | null>(null);
+  const [bulkResolving, setBulkResolving] = useState(false);
+  const autoResolveGeneration = useRef(0);
 
   const refreshGoogle = useCallback(async () => {
     const res = await fetch("/api/auth/google/status");
@@ -165,22 +251,98 @@ export default function Home() {
 
       setBundle(payload.bundle);
       setGrgTitle(payload.bundle.suggestedOutputTitle);
-      setSongFlows(
-        payload.bundle.songs.map((song) => ({
-          song,
-          candidates: [],
-          selectedFileId: "",
-          skipped: song.scanTier === "red",
-          status: song.scanTier === "red" ? "No scan — skip or fix in PCO" : "Pending",
-          needsAck: false,
-        })),
-      );
+      const flows: SongWorkflow[] = payload.bundle.songs.map((song) => ({
+        song,
+        candidates: [],
+        selectedFileId: "",
+        skipped: song.scanTier === "red",
+        status:
+          song.scanTier === "red"
+            ? "No scan — skip or fix in PCO"
+            : (song.scanTier === "green" || song.scanTier === "yellow") &&
+                (song.scanUrl?.trim() || song.scanAttachmentId)
+              ? "Resolving…"
+              : "Pending",
+        needsAck: false,
+      }));
+      setSongFlows(flows);
       setActiveSongIndex(0);
       setStep("Songs");
+      const generation = ++autoResolveGeneration.current;
+      void resolveAllSongCandidates(flows, generation);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function fetchCandidatesForFlow(flow: SongWorkflow): Promise<CandidatesApiPayload> {
+    const res = await fetch("/api/mvp/candidates", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        scanUrl: flow.song.scanUrl,
+        attachmentId: flow.song.scanAttachmentId,
+        songId: flow.song.songId,
+        arrangementId: flow.song.arrangementId,
+        scanTier: flow.song.scanTier,
+      }),
+    });
+    const payload = (await res.json()) as CandidatesApiPayload;
+    if (!res.ok || !payload.ok) {
+      return { ok: false, error: payload.ok ? "Failed to resolve blank scan" : payload.error };
+    }
+    return payload;
+  }
+
+  async function resolveCandidatesAtIndex(
+    index: number,
+    flow: SongWorkflow,
+    generation: number,
+  ) {
+    try {
+      const payload = await fetchCandidatesForFlow(flow);
+      if (generation !== autoResolveGeneration.current) return;
+      setSongFlows((prev) => {
+        const next = [...prev];
+        if (!next[index]) return prev;
+        next[index] = applyCandidatesToFlow(next[index], payload);
+        return next;
+      });
+    } catch (e) {
+      if (generation !== autoResolveGeneration.current) return;
+      const message = e instanceof Error ? e.message : "Unknown error";
+      setSongFlows((prev) => {
+        const next = [...prev];
+        if (!next[index]) return prev;
+        next[index] = { ...next[index], status: message, lastResolveError: message };
+        return next;
+      });
+    }
+  }
+
+  async function resolveAllSongCandidates(initialFlows: SongWorkflow[], generation: number) {
+    const targets = initialFlows
+      .map((flow, index) => ({ flow, index }))
+      .filter(({ flow }) => shouldAutoResolveScan(flow));
+
+    if (targets.length === 0) return;
+
+    setBulkResolving(true);
+    setError(null);
+
+    const concurrency = 4;
+    for (let offset = 0; offset < targets.length; offset += concurrency) {
+      if (generation !== autoResolveGeneration.current) break;
+      const batch = targets.slice(offset, offset + concurrency);
+      await Promise.all(
+        batch.map(({ flow, index }) => resolveCandidatesAtIndex(index, flow, generation)),
+      );
+    }
+
+    if (generation === autoResolveGeneration.current) {
+      setBulkResolving(false);
     }
   }
 
@@ -190,72 +352,66 @@ export default function Home() {
 
     setBusy(true);
     setError(null);
+    updateSongFlow(index, {
+      status: "Resolving…",
+      lastResolveError: undefined,
+      showManualPcoPicker: false,
+    });
     try {
-      const res = await fetch("/api/mvp/candidates", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          scanUrl: flow.song.scanUrl,
-          attachmentId: flow.song.scanAttachmentId,
-          songId: flow.song.songId,
-          arrangementId: flow.song.arrangementId,
-        }),
-      });
-      const payload = (await res.json()) as
-        | {
-            ok: true;
-            candidates: DriveCandidate[];
-            searchRoot?: DriveSearchRoot;
-            pcoUrl?: string;
-            resolvedScanUrl?: string;
-            needsSelection?: boolean;
-            needsAcknowledgement?: boolean;
-            error?: string;
-          }
-        | { ok: false; error: string };
-
-      if (!res.ok || !payload.ok) throw new Error(payload.ok ? "Failed" : payload.error);
-
-      const candidates = payload.candidates ?? [];
-      const resolvedUrl = payload.resolvedScanUrl || flow.song.scanUrl;
-      const needsAck = Boolean(payload.needsAcknowledgement);
-      let selectedFileId = "";
-      if (candidates.length === 1) selectedFileId = candidates[0].id;
-
-      const searchLabel = payload.searchRoot?.name
-        ? `Searched "${payload.searchRoot.name}" (from PCO link)`
-        : null;
-
-      setSongFlows((prev) => {
-        const next = [...prev];
-        next[index] = {
-          ...next[index],
-          song: { ...next[index].song, scanUrl: resolvedUrl },
-          candidates,
-          selectedFileId,
-          needsAck,
-          searchRoot: payload.searchRoot,
-          lastResolveError: payload.error,
-          status:
-            needsAck
-              ? "Not Drive — acknowledge to skip"
-              : candidates.length === 0
-                ? payload.error ?? "No blank docs found"
-                : candidates.length === 1
-                  ? searchLabel
-                    ? `${searchLabel} — auto-selected`
-                    : "Auto-selected single match"
-                  : searchLabel
-                    ? `${searchLabel} — ${candidates.length} matches`
-                    : `Select a document (${candidates.length} matches)`,
-        };
-        return next;
-      });
+      const generation = autoResolveGeneration.current;
+      await resolveCandidatesAtIndex(index, flow, generation);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
       setBusy(false);
     }
+  }
+
+  async function loadPcoScanOptions(index: number) {
+    const flow = songFlows[index];
+    if (!flow?.song.songId) return;
+
+    updateSongFlow(index, { loadingPcoOptions: true, showManualPcoPicker: true, pcoScanOptions: [] });
+    try {
+      const res = await fetch("/api/mvp/pco-scan-options", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          songId: flow.song.songId,
+          arrangementId: flow.song.arrangementId,
+        }),
+      });
+      const payload = (await res.json()) as
+        | { ok: true; options: PcoScanOption[] }
+        | { ok: false; error: string };
+      if (!res.ok || !payload.ok) throw new Error(payload.ok ? "Failed" : payload.error);
+      updateSongFlow(index, { pcoScanOptions: payload.options, loadingPcoOptions: false });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+      updateSongFlow(index, { loadingPcoOptions: false, showManualPcoPicker: false });
+    }
+  }
+
+  function selectManualDriveDoc(index: number, option: PcoScanOption) {
+    const flow = songFlows[index];
+    if (!flow) return;
+
+    const candidate: DriveCandidate = {
+      id: option.driveFileId,
+      name: option.name,
+      mimeType: option.mimeType,
+      webViewLink: option.webViewLink,
+      priorityScore: option.priorityScore,
+    };
+
+    updateSongFlow(index, {
+      selectedFileId: option.driveFileId,
+      candidates: [candidate],
+      showManualPcoPicker: false,
+      pcoScanOptions: undefined,
+      lastResolveError: undefined,
+      status: `Manually selected: ${option.name}`,
+    });
   }
 
   function updateSongFlow(index: number, patch: Partial<SongWorkflow>) {
@@ -539,14 +695,30 @@ export default function Home() {
             ) : null}
 
             <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
-                disabled={busy || activeSong.skipped}
-                onClick={() => resolveCandidates(activeSongIndex)}
-                className="inline-flex h-10 items-center rounded-xl border border-zinc-200 px-3 text-sm dark:border-zinc-800"
-              >
-                Find blank scan on Drive
-              </button>
+              {!activeSong.skipped &&
+              activeSong.status !== "Resolving…" &&
+              (activeSong.candidates.length === 0 ||
+                activeSong.candidates.length > 1 ||
+                Boolean(activeSong.lastResolveError)) ? (
+                <button
+                  type="button"
+                  disabled={busy || bulkResolving || activeSong.skipped}
+                  onClick={() => resolveCandidates(activeSongIndex)}
+                  className="inline-flex h-10 items-center rounded-xl border border-zinc-200 px-3 text-sm dark:border-zinc-800"
+                >
+                  {activeSong.candidates.length > 0 ? "Retry blank scan search" : "Find blank scan on Drive"}
+                </button>
+              ) : null}
+              {!activeSong.skipped && activeSong.song.songId ? (
+                <button
+                  type="button"
+                  disabled={busy || bulkResolving || activeSong.loadingPcoOptions}
+                  onClick={() => loadPcoScanOptions(activeSongIndex)}
+                  className="inline-flex h-10 items-center rounded-xl border border-zinc-200 px-3 text-sm dark:border-zinc-800"
+                >
+                  {activeSong.loadingPcoOptions ? "Loading PCO scans…" : "Manually select song scan"}
+                </button>
+              ) : null}
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
@@ -561,6 +733,32 @@ export default function Home() {
                 Skip this song
               </label>
             </div>
+
+            {activeSong.showManualPcoPicker && activeSong.pcoScanOptions ? (
+              <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-900 dark:bg-amber-950/30">
+                <div className="text-sm font-medium">Drive documents (by priority)</div>
+                {activeSong.pcoScanOptions.length === 0 ? (
+                  <div className="text-sm text-zinc-600 dark:text-zinc-400">
+                    No documents found inside PCO song scan folders.
+                  </div>
+                ) : (
+                  activeSong.pcoScanOptions.map((opt) => (
+                    <button
+                      key={opt.driveFileId}
+                      type="button"
+                      className="flex flex-col items-start gap-0.5 rounded-lg border border-zinc-200 bg-white p-3 text-left text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:bg-zinc-900"
+                      onClick={() => selectManualDriveDoc(activeSongIndex, opt)}
+                    >
+                      <span className="font-medium">{opt.name}</span>
+                      <span className="text-xs text-zinc-500">
+                        {opt.tier.toUpperCase()} · priority {opt.priorityScore}
+                        {opt.pcoAttachmentName !== opt.name ? ` · via ${opt.pcoAttachmentName}` : ""}
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+            ) : null}
 
             {activeSong.needsAck ? (
               <button
@@ -578,7 +776,8 @@ export default function Home() {
               </button>
             ) : null}
 
-            {activeSong.candidates.length > 0 ? (
+            {activeSong.candidates.length > 1 ||
+            (activeSong.candidates.length === 1 && !activeSong.selectedFileId) ? (
               <div className="flex flex-col gap-2">
                 <div className="text-sm font-medium">Select document to incorporate</div>
                 {activeSong.candidates.map((c) => (
@@ -596,6 +795,9 @@ export default function Home() {
                     />
                     <span>
                       {c.name}
+                      {typeof c.priorityScore === "number" ? (
+                        <span className="text-zinc-500"> · priority {c.priorityScore}</span>
+                      ) : null}
                       {c.webViewLink ? (
                         <>
                           {" "}

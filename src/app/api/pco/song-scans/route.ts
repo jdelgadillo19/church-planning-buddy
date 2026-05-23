@@ -1,4 +1,10 @@
 import { NextResponse } from "next/server";
+import {
+  attachmentName,
+  classifyAttachmentTier,
+  listSongAttachments,
+  pickBestScanAttachment,
+} from "@/lib/pco/scans";
 
 type SongScansRequestBody = {
   serviceTypeId?: string;
@@ -34,21 +40,10 @@ type PcoItem = {
     song?: {
       data?: { id: string; type: string } | null;
     };
+    arrangement?: {
+      data?: { id: string; type: string } | null;
+    };
   };
-};
-
-type PcoAttachment = {
-  attributes?: {
-    display_name?: string | null;
-    filename?: string | null;
-    linked_url?: string | null;
-    remote_link?: string | null;
-    url?: string | null;
-  };
-};
-
-type PcoArrangement = {
-  id: string;
 };
 
 type Tier = "green" | "yellow" | "red";
@@ -120,43 +115,6 @@ async function pcoGetJson(url: string, auth: string) {
   return { res, parsed };
 }
 
-function attachmentName(a: PcoAttachment) {
-  const dn = a.attributes?.display_name?.trim();
-  if (dn) return dn;
-  const fn = a.attributes?.filename?.trim();
-  if (fn) return fn;
-  return "";
-}
-
-function attachmentUrl(a: PcoAttachment) {
-  return (
-    a.attributes?.linked_url?.trim() ||
-    a.attributes?.remote_link?.trim() ||
-    a.attributes?.url?.trim() ||
-    ""
-  );
-}
-
-function normalizeForMatch(s: string) {
-  return s
-    .toLowerCase()
-    .replaceAll(/[^a-z0-9]+/g, " ")
-    .trim()
-    .replaceAll(/\s+/g, " ");
-}
-
-const GREEN_PREFIX = "(resources) song scan master";
-
-function isGreen(name: string) {
-  return name.trim().toLowerCase().startsWith(GREEN_PREFIX);
-}
-
-function isYellow(name: string) {
-  const n = normalizeForMatch(name);
-  const noSpace = n.replaceAll(" ", "");
-  return noSpace.includes("songscan");
-}
-
 function orderBySequence(a: PcoItem, b: PcoItem) {
   const sa = a.attributes?.sequence ?? a.attributes?.position ?? 0;
   const sb = b.attributes?.sequence ?? b.attributes?.position ?? 0;
@@ -167,39 +125,6 @@ function isSongItem(item: PcoItem) {
   const t = item.attributes?.item_type ?? "";
   if (t.toLowerCase() === "song") return true;
   return Boolean(item.relationships?.song?.data);
-}
-
-async function listSongAttachments(songId: string, auth: string) {
-  // Order newest-first so "topmost" usually wins.
-  const directUrl = `https://api.planningcenteronline.com/services/v2/songs/${songId}/attachments?per_page=100&order=-created_at`;
-  const direct = await pcoGetJson(directUrl, auth);
-  const directAttachments: PcoAttachment[] = [];
-  if (direct.res.ok && direct.parsed.kind === "json") {
-    const parsed = direct.parsed.json as { data?: PcoAttachment[] };
-    const attachments = Array.isArray(parsed.data) ? parsed.data : [];
-    directAttachments.push(...attachments);
-  }
-
-  // Many teams attach scans to Arrangements rather than the Song root.
-  const arrangementsUrl = `https://api.planningcenteronline.com/services/v2/songs/${songId}/arrangements?per_page=100&order=-updated_at`;
-  const arr = await pcoGetJson(arrangementsUrl, auth);
-  if (!arr.res.ok || arr.parsed.kind !== "json") return directAttachments;
-
-  const arrJson = arr.parsed.json as { data?: PcoArrangement[] };
-  const arrangements = Array.isArray(arrJson.data) ? arrJson.data : [];
-
-  const collected: PcoAttachment[] = [];
-  for (const a of arrangements) {
-    if (!a?.id) continue;
-    const url = `https://api.planningcenteronline.com/services/v2/songs/${songId}/arrangements/${a.id}/attachments?per_page=100&order=-created_at`;
-    const at = await pcoGetJson(url, auth);
-    if (!at.res.ok || at.parsed.kind !== "json") continue;
-    const atJson = at.parsed.json as { data?: PcoAttachment[] };
-    const attachments = Array.isArray(atJson.data) ? atJson.data : [];
-    collected.push(...attachments);
-  }
-
-  return [...directAttachments, ...collected];
 }
 
 export async function POST(req: Request) {
@@ -287,36 +212,28 @@ export async function POST(req: Request) {
         continue;
       }
 
-      const attachments = await listSongAttachments(songId, auth);
+      const arrangementId = item.relationships?.arrangement?.data?.id ?? null;
+      const attachments = await listSongAttachments(songId, auth, arrangementId);
+      const pick = pickBestScanAttachment(attachments, arrangementId);
 
-      const green = attachments.find((a) => isGreen(attachmentName(a)));
-      if (green) {
-        const url = attachmentUrl(green);
-        results.push({
-          songTitle,
-          tier: "green",
-          message: attachmentName(green) || "(Resources) Song Scan MASTER",
-          url: url || undefined,
-        });
+      if (!pick) {
+        results.push({ songTitle, tier: "red", message: "no song scan found" });
         continue;
       }
 
-      const yellowMatches = attachments.filter((a) => isYellow(attachmentName(a)));
-      if (yellowMatches.length > 0) {
-        const first = yellowMatches[0];
-        const url = attachmentUrl(first);
-        const count = yellowMatches.length;
-        results.push({
-          songTitle,
-          tier: "yellow",
-          message: `${attachmentName(first) || "song scan"}${count > 1 ? ` (+${count})` : ""}`,
-          url: url || undefined,
-          matchCount: count,
-        });
-        continue;
-      }
+      const yellowCount = attachments.filter(
+        (a) => classifyAttachmentTier(attachmentName(a)) === "yellow",
+      ).length;
 
-      results.push({ songTitle, tier: "red", message: "no song scan found" });
+      results.push({
+        songTitle,
+        tier: pick.tier,
+        message:
+          pick.name ||
+          (pick.tier === "green" ? "(Resources) Song Scan MASTER" : "song scan"),
+        url: pick.url || undefined,
+        matchCount: pick.tier === "yellow" && yellowCount > 1 ? yellowCount : undefined,
+      });
     }
 
     return NextResponse.json({ ok: true, results });
