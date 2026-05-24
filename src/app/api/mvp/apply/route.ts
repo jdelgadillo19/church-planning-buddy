@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { applyTemplateGrgUpdate } from "@/lib/docs/grg-template";
+import {
+  applyTemplateGrgUpdate,
+  isTemplateValidationBlocking,
+  validateGrgTemplate,
+} from "@/lib/docs/grg-template";
 import { importScanSection } from "@/lib/docs/scan-import";
 import { resolveGrgOutputTitle, resolveGrgTemplateRef } from "@/lib/config/grg";
 import { getAuthedClients } from "@/lib/google/auth";
@@ -51,21 +55,51 @@ export async function POST(req: Request) {
 
     const { drive, docs } = getAuthedClients(tokens!);
     const template = await resolveTemplateDoc(drive, templateRef);
+
+    const hasScans = (body.songs ?? []).some((s) => !s.skipped && s.selectedFileId);
+    const skipIntro = Boolean(body.skipIntro);
+    const skipScans = !hasScans || Boolean(body.skipScans);
+
+    const templateValidation = await validateGrgTemplate(docs, template.id);
+    if (
+      isTemplateValidationBlocking(templateValidation, {
+        skipIntro,
+        skipScans,
+        hasScansToApply: hasScans,
+      })
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Template is missing required placeholders. See templateValidation.issues.",
+          templateValidation,
+        },
+        { status: 400 },
+      );
+    }
+
     const output = await recreateOutputFromTemplate(drive, template.id, outputTitle);
 
     const errors: string[] = [];
     const scanImports: Array<{ title: string; mode: string; warning?: string }> = [];
-
-    const hasScans = (body.songs ?? []).some((s) => !s.skipped && s.selectedFileId);
 
     const result = await applyTemplateGrgUpdate(docs, output.id, {
       dateFormatted: body.dateFormatted,
       songList: body.songList,
       sections: [],
       roster: rosterFromPayload(body),
-      skipIntro: Boolean(body.skipIntro),
-      skipScans: !hasScans || Boolean(body.skipScans),
+      rosterSelections: body.rosterSelections,
+      skipIntro,
+      skipScans,
     });
+
+    if (templateValidation.issues.some((i) => i.code === "missing_roster_slot")) {
+      errors.push(
+        ...templateValidation.issues
+          .filter((i) => i.code === "missing_roster_slot")
+          .map((i) => i.message),
+      );
+    }
 
     let addPageBreak = true;
     for (const song of body.songs ?? []) {

@@ -1,47 +1,73 @@
 # Church Planning Buddy — project status
 
-**Last updated:** 2026-05-23  
+**Last updated:** 2026-05-24  
 **Repo:** https://github.com/jdelgadillo19/church-planning-buddy  
 **Latest commit (at update):** `e75d4c3` — song scan retrieval (yellow fallback, manual Drive picker)
 
-Use this file as the **session handoff** doc. Spec detail lives in [`PRODUCT.md`](../PRODUCT.md); template setup in [`GRG-TEMPLATE.md`](./GRG-TEMPLATE.md).
+Use this file as the **session handoff** doc.
+
+| Doc | Purpose |
+|-----|---------|
+| [`PRODUCT.md`](../PRODUCT.md) | **GRG MVP** spec (shipped) |
+| [`PROPRESENTER-MVP.md`](./PROPRESENTER-MVP.md) | **Active** next epic — PCO + GRG → ProPresenter |
+| [`STARTUP-PROMPT.md`](./STARTUP-PROMPT.md) | Copy-paste block for next Cursor session |
+| [`GRG-TEMPLATE.md`](./GRG-TEMPLATE.md) | Placeholder contract & upload steps |
+| [`GRG-FORMAT-SPEC.md`](./GRG-FORMAT-SPEC.md) | Post-MVP format architecture |
 
 ---
 
-## Current state (what works)
+## Strategic direction (2026-05-24)
+
+**North star:** *Service deck assembly agent* — Planning Center + Get Ready Guide (reference) → **ProPresenter 21.3** playlist in a **new presentation**, with preview/signoff before writes.
+
+**Outcome:** *“I only have to plan once, then everything's basically automatic.”*
+
+Party archive + questionnaire: [`party/output/party-2026-05-24.md`](./party/output/party-2026-05-24.md).
+
+**ProPresenter Local API (21.3, operator Mac):**
+
+| Capability | Status |
+|------------|--------|
+| Playlist create | Yes |
+| Arrangement tile reorder | **No** (undocumented) |
+| Library enumerate | Yes |
+| Native full-text search | **No** → CPB builds local index |
+
+**Architecture:** ProPresenter = library source + playlist sink; CPB = match, index, preview, signoff.
+
+**Safety:** Always new presentation; no unrelated file overwrites; avoid filebase-destructive API paths (rig has known empty-folder wipe bug).
+
+---
+
+## Current state — GRG MVP (shipped)
 
 | Area | Status |
 |------|--------|
 | **MVP wizard** | Setup → Songs → Preview → Sign off (`src/app/page.tsx`) |
 | **PCO plan load** | Plan ID → date, song order, keys, scan tiers, arrangement artist, confirmed roster (`src/lib/pco/plan-bundle.ts`, `plan-team.ts`) |
-| **Roster fill** | Confirmed `team_members` → template `[Name \| …]: Position` lines (`src/lib/docs/grg-roster.ts`) |
-| **Scan import** | Google Doc scans → header + two-column lyrics with style replay (`src/lib/docs/scan-import.ts`) |
-| **PCO scan ranking** | Full attachment scan; prefer MASTER over incidental “song scan”; arrangement-aware pick (`src/lib/pco/scans.ts`) |
-| **Drive blank scan (green)** | Pass 1: PCO `open` URL → subtree search for `blank` in title (`src/lib/google/drive-files.ts`) |
-| **Drive scan fallback (yellow)** | Pass 2 when blank fails: direct doc as-is, or priority-ranked docs in folder (`src/lib/scan-selection/priority.ts`) |
-| **Auto-resolve on Songs step** | Green/yellow songs resolve on plan load (parallel); single match auto-selects |
-| **Manual song scan picker** | “Manually select song scan” → lists **Drive documents** inside PCO folders (one level); sets `selectedFileId` without re-running resolution (`/api/mvp/pco-scan-options`) |
-| **Template apply** | Copy `Get Ready Guide (TEMPLATE)` → output doc; `replaceAllText` for intro; delete from `{{GRG_SCANS_BEGIN}}`; append scans (`src/lib/docs/grg-template.ts`, `apply/route.ts`) |
-| **Output naming** | After plan load, default `Get Ready Guide YYYY.MM.DD` (editable); pattern `GRG_OUTPUT_TITLE` with `{{GRG_DATE}}` |
+| **Roster fill** | Platform Team confirmed positions → BAND/CHOIR blocks (`grg-roster.ts`, `grg-roster-consolidate.ts`) |
+| **Template validation** | Pre-apply `{{GRG_*}}` check (`grg-template.ts`) |
+| **Scan import** | Google Doc scans → header + two-column lyrics (`src/lib/docs/scan-import.ts`) |
+| **PCO scan ranking** | MASTER preference; arrangement-aware pick (`src/lib/pco/scans.ts`) |
+| **Drive resolution** | Green blank search + yellow priority fallback + manual picker |
+| **Template apply** | Copy template → dated output; intro + append scans (`apply/route.ts`) |
 | **Signoff** | No writes until Approve; template never modified |
-| **Local runtime** | `npm run dev` @ http://localhost:3000; tokens in `.data/google-tokens.json` |
-| **Unit tests** | `scans.test.ts`, `drive-files.test.ts`, `priority.test.ts` (run via `npx tsx`) |
-
-**Verified by user (2026-05-22):** Template updates correctly; output copy works; date, keys, and song list populate as expected.
-
-**Song scan retrieval (2026-05-23):** User confirmed retrieval is in a good place for edge cases (Peace Be Still folder, Shout To The Lord direct doc).
-
-**Roster + scan formatting (2026-05-23):** PCO confirmed team members fill intro slots; scan sections import from Google Docs with two-column lyrics and style replay (plain fallback).
+| **Local runtime** | `npm run dev` @ http://localhost:3000 |
+| **Unit tests** | `scans.test.ts`, `drive-files.test.ts`, `priority.test.ts` |
 
 **Reference assets**
 
 | Asset | Location |
 |-------|----------|
 | Golden plan ID (intro) | `87788328` |
-| Edge-case plan ID (scans) | `87788327` — Peace Be Still, Shout To The Lord, Holy Forever |
-| Template docx (placeholders) | `downloads/Get Ready Guide (TEMPLATE).docx` |
-| Template on Drive | `Get Ready Guide (TEMPLATE)` (user-uploaded Google Doc) |
-| Docx formatter script | `scripts/apply-grg-template-format.py` |
+| Edge-case plan ID (scans) | `87788327` |
+| Template on Drive | `Get Ready Guide (TEMPLATE)` |
+
+---
+
+## Current state — ProPresenter MVP (not started)
+
+No `src/lib/propresenter/` or local bridge yet. Spec: [`PROPRESENTER-MVP.md`](./PROPRESENTER-MVP.md).
 
 ---
 
@@ -49,49 +75,37 @@ Use this file as the **session handoff** doc. Spec detail lives in [`PRODUCT.md`
 
 | Item | Severity | Notes |
 |------|----------|--------|
-| **Scan import fallback** | Low | Google Doc scans use structured import (two-column + styles); non-Docs or failures fall back to plain text |
-| **Song list bullets** | Low | `replaceAllText` for `{{GRG_SONG_LIST}}` may not match bulleted layout in every template |
-| **Heuristic mutate path** | Deprecated | `src/lib/docs/grg-mutate.ts` `applyGrgUpdate` unused by apply; do not re-enable without reason |
-| **Local-only auth** | Ops | OAuth tokens on disk; no hosted deploy or multi-user sessions |
-| **`.env` drift** | Ops | README still mentions old output title in one bullet — prefer this file + `.env.local.example` |
-| **Service Opener / non-songs** | Low | Filtered by `item_type === "song"` + title heuristics; edge cases may still appear |
-| **Image / PDF scans** | MVP skip | Not extractable → user skips song |
-| **PRODUCT.md stale lines** | Doc | Still says in-place Good Friday edit; actual flow is template → dated output copy |
-| **Manual picker depth** | Low | Only immediate children of PCO folder links; nested subfolders not expanded |
-
-**Resolved (historical)** — see [`user-feedback/`](./user-feedback/):
-
-- `insertPageBreak` / `deleteContentRange` index errors → template + per-section append
-- PCO arrangement URL vs Drive → attachment `open` action
-- Wrong key / artist / skipped-in-list / `AMay` date corruption → template placeholders + plan bundle fixes
-- Blank-only search rejecting yellow scans → priority fallback pass (`2026-23-05-12.38.md`)
-- Manual picker showing folders + re-running resolution → Drive doc list + direct `selectedFileId` (`2026-23-05-12.38.md`)
+| **PP tile reorder** | **MVP constraint** | Cannot auto-align LIVE tiles to GRG via API; use match + select + NEEDS_ARRANGEMENT |
+| **Scan import fallback** | Low | Non-Docs → plain text |
+| **Local-only auth** | Ops | OAuth tokens on disk |
+| **Manual picker depth** | Low | One level under PCO folder links |
+| **Image / PDF scans** | GRG skip | User skips song |
+| **PP filebase wipe** | **Ops / rig** | External bug; CPB must not trigger destructive library sync |
 
 ---
 
 ## Next steps (agreed priority)
 
-### Near-term polish
+### ProPresenter MVP — Phase 0 (next session)
 
-1. **Scan format tuning** — refine header/lyrics split heuristics per [`GRG-SCAN-FORMAT.md`](./GRG-SCAN-FORMAT.md); golden tests against live plan `87788327`.
+1. **API spike doc** — arrangement select / duplicate / create; enumeration fields per song.
+2. **Safety checklist** — new presentation only; explicit target ID; abort on wrong asset.
 
-### Near-term polish
+### ProPresenter MVP — Phase 1+
 
-2. **Pre-exclude list** — persist plan items to always skip (e.g. Service Opener Video).
-3. **Manual preview edits** — edit date/song list in Preview; per-field revert.
-4. **Arrangement display** — optional strip of `XX -` prefix on artist line.
+3. **Manifest + dry-run** — `worship-plan` types, preview UI, zero PP writes (PR 1).
+4. **GRG/reference picker** — detect, select, or apply GRG; manual steps for debug.
+5. **Library index + matcher** — enumerate → cache; title/lyrics/CCLI match.
+6. **Local bridge + playlist write** — after signoff; golden plans `87788328`, `87788327`.
 
-### Operational
+### GRG maintenance (when blocked on PP)
 
-5. **Deployment** — host beyond localhost; secure token storage.
-6. **Automated tests** — plan `87788328` golden intro lines; apply idempotency smoke test.
-7. **Clearer errors** — missing template markers, Drive 403, PCO auth.
+- Scan format tuning per [`GRG-SCAN-FORMAT.md`](./GRG-SCAN-FORMAT.md) if needed for arrangement scoring input.
+- Pre-exclude list, manual preview edits, deployment — deferred behind PP wedge.
 
-### Post-MVP
+### Post-MVP (both tracks)
 
-8. Export finished GRG to PCO plan item.  
-9. Template/output picker by service type or folder.  
-10. Tagged scan blocks for surgical replace (vs delete-to-EOF).
+- Export finished GRG to PCO; tagged scan blocks; cloud buffer + remote prep; role-based modules.
 
 ---
 
@@ -100,40 +114,21 @@ Use this file as the **session handoff** doc. Spec detail lives in [`PRODUCT.md`
 ```bash
 cd church-planning-buddy
 cp .env.local.example .env.local   # if needed
-# Set: PCO_BASIC_TOKEN, GOOGLE_*, GRG_TEMPLATE_TITLE, GRG_OUTPUT_TITLE
 npm install
 npm run dev
 ```
 
 1. Open http://localhost:3000  
-2. **Reconnect Google** if scopes changed (`drive` + `documents`)  
-3. **Verify template** on Drive  
-4. **Load plan** → scans auto-resolve on Songs step → Preview → Approve  
+2. **Reconnect Google** if scopes changed  
+3. GRG flow: Load plan → Songs → Preview → Approve  
 
 **Tests:** `npx tsx src/lib/pco/scans.test.ts` (and `drive-files.test.ts`, `scan-selection/priority.test.ts`)
 
 ---
 
-## Startup prompt (next session)
+## Startup prompt
 
-Copy into a new Cursor chat:
-
-```
-I'm continuing work on Church Planning Buddy (church-planning-buddy/).
-
-Read docs/PROJECT-STATUS.md first for current state, known issues, and next steps.
-
-Context:
-- MVP wizard works end-to-end: PCO plan → Drive scan resolution → copy GRG template to dated output doc → fill {{GRG_DATE}}, {{GRG_SONG_LIST}}, append scans after {{GRG_SCANS_BEGIN}}.
-- Song scan retrieval is done (commit e75d4c3): green blank search, yellow priority fallback, auto-resolve, manual Drive doc picker. User verified edge cases on plan 87788327.
-- NEXT TASK: formatting migration — scan body fidelity (two-column lyrics, bold/color/highlight), not retrieval.
-- Template on Drive: "Get Ready Guide (TEMPLATE)". Output title defaults to "Get Ready Guide YYYY.MM.DD" after plan load.
-- Reference plans: 87788328 (intro), 87788327 (scan edge cases). Repo: github.com/jdelgadillo19/church-planning-buddy
-
-Do not edit the plan file at .cursor/plans/ unless I ask.
-
-[Your task here — e.g. "Spike two-column scan paste into GRG"]
-```
+Use **[`docs/STARTUP-PROMPT.md`](./STARTUP-PROMPT.md)** — copy the fenced block into a new Cursor chat.
 
 ---
 
@@ -142,10 +137,9 @@ Do not edit the plan file at .cursor/plans/ unless I ask.
 | File | Purpose |
 |------|---------|
 | [`PROJECT-STATUS.md`](./PROJECT-STATUS.md) | **This file** — progress & handoff |
-| [`PRODUCT.md`](../PRODUCT.md) | Approved MVP spec |
-| [`MVP-OPEN-QUESTIONS.md`](../MVP-OPEN-QUESTIONS.md) | Completed Q&A archive |
-| [`GRG-TEMPLATE.md`](./GRG-TEMPLATE.md) | Placeholder contract & upload steps |
-| [`party-2026-05-22.md`](./party-2026-05-22.md) | Early discovery / party-mode notes |
-| [`user-feedback/2026-22-05-13.01.md`](./user-feedback/2026-22-05-13.01.md) | Build feedback + fixes log |
-| [`user-feedback/2026-22-05-15.09.md`](./user-feedback/2026-22-05-15.09.md) | Apply failures → template pivot |
-| [`user-feedback/2026-23-05-12.38.md`](./user-feedback/2026-23-05-12.38.md) | Song scan retrieval edge cases + fixes |
+| [`STARTUP-PROMPT.md`](./STARTUP-PROMPT.md) | Next-session copy-paste |
+| [`PROPRESENTER-MVP.md`](./PROPRESENTER-MVP.md) | Active ProPresenter spec |
+| [`PRODUCT.md`](../PRODUCT.md) | GRG MVP spec (shipped) |
+| [`party/output/party-2026-05-24.md`](./party/output/party-2026-05-24.md) | Party mode + questionnaire |
+| [`party/output/party-2026-05-22.md`](./party/output/party-2026-05-22.md) | Early GRG discovery |
+| [`user-feedback/`](./user-feedback/) | Build feedback logs |

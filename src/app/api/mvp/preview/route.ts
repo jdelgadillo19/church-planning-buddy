@@ -33,7 +33,7 @@ export async function POST(req: Request) {
 
     const songListLines = buildSongListLines(body.songList ?? []);
     const roster = rosterFromPayload(body);
-    const rosterPreview = buildRosterPreviewFromPco(roster);
+    const rosterPreview = buildRosterPreviewFromPco(roster, undefined, body.rosterSelections);
 
     const sections: Array<{
       title: string;

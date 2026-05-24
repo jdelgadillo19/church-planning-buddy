@@ -23,6 +23,8 @@ export type MvpApplyPayload = {
   dateFormatted: string;
   songList: Array<{ title: string; key: string; artist: string }>;
   roster?: MvpRosterRow[];
+  /** `${section}|${normalizedDisplayName}` → selected teamMemberIds for duplicate groups */
+  rosterSelections?: Record<string, string[]>;
   songs: Array<{
     itemId: string;
     title: string;
@@ -31,4 +33,18 @@ export type MvpApplyPayload = {
   }>;
   skipIntro?: boolean;
   skipScans?: boolean;
+};
+
+export type GrgTemplateValidationIssue = {
+  code: "missing_marker" | "missing_roster_slot";
+  marker?: string;
+  section?: "band" | "choir";
+  message: string;
+};
+
+export type GrgTemplateValidationResult = {
+  ok: boolean;
+  issues: GrgTemplateValidationIssue[];
+  canSkipIntro: boolean;
+  canApplyScans: boolean;
 };

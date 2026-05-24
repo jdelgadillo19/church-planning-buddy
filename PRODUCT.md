@@ -1,9 +1,11 @@
 # Church Planning Buddy — MVP product spec
 
-**Status:** Approved from `MVP-OPEN-QUESTIONS.md` (2026-05-22)  
+**Status:** **Shipped** (approved 2026-05-22; operational per `docs/PROJECT-STATUS.md`)  
 **Reference plan:** `87788328`  
 **Reference output:** `Get Ready Guide (SUN).docx` (redacted names; otherwise golden)  
-**MVP edit target:** `Get Ready Guide (Good Friday)` on Google Drive (dummy copy to mutate in-place)
+**Write target:** Copy `Get Ready Guide (TEMPLATE)` on Drive → dated output doc (e.g. `Get Ready Guide YYYY.MM.DD`)
+
+**Next epic:** ProPresenter playlist assembly — see [`docs/PROPRESENTER-MVP.md`](docs/PROPRESENTER-MVP.md).
 
 ---
 
@@ -11,7 +13,7 @@
 
 Given a Planning Center **plan ID**, help the Worship Leader produce an updated **Get Ready Guide (GRG)** on their Google Drive: correct intro metadata from PCO, verified song-scan sources from org Drive (via PCO links), and scan body content copied with template formatting—**only after explicit user signoff**.
 
-**Out of scope (MVP):** ProPresenter, local `CPB_SONG_FILES_ROOT`, debug `blank-doc` UI, tagged scan blocks, deployment/hosting, PCO export of finished guide.
+**Out of scope (this spec):** ProPresenter (see `docs/PROPRESENTER-MVP.md`), local `CPB_SONG_FILES_ROOT`, debug `blank-doc` UI, tagged scan blocks, deployment/hosting, PCO export of finished guide.
 
 ---
 
@@ -139,5 +141,5 @@ Given a Planning Center **plan ID**, help the Worship Leader produce an updated 
 - Tagged scan blocks for incremental replace
 - Optimized GRG template on Drive (configurable)
 - Export finished GRG to PCO attachment
-- ProPresenter integration
-- Deploy to hosted environment (first post-MVP task per user)
+- Deploy to hosted environment
+- **ProPresenter integration** — now specified in [`docs/PROPRESENTER-MVP.md`](docs/PROPRESENTER-MVP.md) (active epic)

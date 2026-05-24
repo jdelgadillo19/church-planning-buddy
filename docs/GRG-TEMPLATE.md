@@ -48,3 +48,15 @@ The template file’s modified time should stay unchanged; only the output doc u
 See `.env.local.example` for `GRG_TEMPLATE_TITLE`, `GRG_TEMPLATE_ID`, and `GRG_OUTPUT_TITLE`.
 
 After changing Google scopes, use **Reconnect Google** in the app.
+
+## Template validation (apply)
+
+Before copying the template, the app checks:
+
+| Placeholder / slot | If missing |
+|--------------------|------------|
+| `{{GRG_DATE}}`, `{{GRG_SONG_LIST}}` | Apply blocked until fixed, or use **Skip intro & apply scans only** when `{{GRG_SCANS_BEGIN}}` is still present |
+| `{{GRG_SCANS_BEGIN}}` | Apply blocked when any song scan will be written |
+| BAND / CHOIR roster line `[Name \| …]: [Position]` | Warning only (roster for that section may not write) |
+
+See [`docs/GRG-FORMAT-SPEC.md`](./GRG-FORMAT-SPEC.md) for the post-MVP reference-document format system.

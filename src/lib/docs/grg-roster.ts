@@ -4,6 +4,13 @@ import {
   sectionKeyFromPcoPositionName,
   type GrgRosterSection,
 } from "@/lib/pco/roster-team-scope";
+import {
+  consolidateRosterLines,
+  type ConsolidatedRosterLine,
+  type RosterSelections,
+} from "./grg-roster-consolidate";
+
+export type { RosterSectionOverride, RosterSectionKey } from "./grg-roster-consolidate";
 
 /** Template roster line — position comes from PCO, not the reference doc. */
 export const ROSTER_NAME_POSITION_PLACEHOLDER =
@@ -12,20 +19,19 @@ export const ROSTER_NAME_POSITION_PLACEHOLDER =
 /** Matches `[Name | …]: {anything}` roster slot lines. */
 export const ROSTER_LINE_RE = /^\[Name\s*\|\s*[^\]]*\]:\s*(.+?)\s*$/i;
 
-export type RosterSectionKey = "band" | "choir" | "all_team";
-
 export type RosterPreviewEntry = {
   teamName: string;
-  section: RosterSectionKey | "other";
+  section: import("./grg-roster-consolidate").RosterSectionKey;
   pcoPositionName: string;
   positionName: string;
   displayName: string;
   filledLine: string;
+  mergedFrom?: string[];
 };
 
 export type RosterApplyResult = {
   preview: RosterPreviewEntry[];
-  sectionsFilled: RosterSectionKey[];
+  sectionsFilled: import("./grg-roster-consolidate").RosterSectionKey[];
   updated: number;
 };
 
@@ -48,7 +54,9 @@ export function buildFilledRosterLine(positionLabel: string, displayName: string
   return `${displayName}: ${positionLabel.trim()}`;
 }
 
-export function sectionKeyFromHeader(text: string): RosterSectionKey | null {
+export function sectionKeyFromHeader(
+  text: string,
+): import("./grg-roster-consolidate").RosterSectionKey | null {
   const t = text.trim().toUpperCase();
   if (/^BAND\s*[\(:]/.test(t) || t === "BAND") return "band";
   if (/^CHOIR\s*[\(:]/.test(t) || t === "CHOIR") return "choir";
@@ -56,12 +64,10 @@ export function sectionKeyFromHeader(text: string): RosterSectionKey | null {
   return null;
 }
 
-export type RosterSectionOverride = Record<string, RosterSectionKey>;
-
 function effectiveGrgSection(
   row: PlanRosterRow,
-  guestOverrides?: RosterSectionOverride,
-): RosterSectionKey | null {
+  guestOverrides?: import("./grg-roster-consolidate").RosterSectionOverride,
+): import("./grg-roster-consolidate").RosterSectionKey | null {
   let section: GrgRosterSection = row.grgSection ?? sectionKeyFromPcoPositionName(row.pcoPositionName);
   if (section === "guest" && guestOverrides?.[row.teamMemberId]) {
     section = guestOverrides[row.teamMemberId];
@@ -72,35 +78,41 @@ function effectiveGrgSection(
 
 export function buildRosterPreviewFromPco(
   roster: PlanRosterRow[],
-  guestOverrides?: RosterSectionOverride,
+  guestOverrides?: import("./grg-roster-consolidate").RosterSectionOverride,
+  rosterSelections?: RosterSelections,
 ): RosterPreviewEntry[] {
-  const entries: RosterPreviewEntry[] = [];
-  for (const row of roster) {
-    const section = effectiveGrgSection(row, guestOverrides);
-    if (!section) continue;
-    entries.push({
-      teamName: row.teamName?.trim() || section.toUpperCase(),
-      section,
-      pcoPositionName: row.pcoPositionName,
-      positionName: row.positionName,
-      displayName: row.displayName,
-      filledLine: buildFilledRosterLine(row.positionName, row.displayName),
-    });
-  }
-  return entries;
+  const lines = consolidateRosterLines(roster, guestOverrides, rosterSelections);
+  return lines.map((line) => consolidatedToPreviewEntry(line, roster));
 }
 
-function groupRosterBySection(
+function consolidatedToPreviewEntry(
+  line: ConsolidatedRosterLine,
   roster: PlanRosterRow[],
-  guestOverrides?: RosterSectionOverride,
-): Map<RosterSectionKey, PlanRosterRow[]> {
-  const map = new Map<RosterSectionKey, PlanRosterRow[]>();
-  for (const row of roster) {
-    const key = effectiveGrgSection(row, guestOverrides);
-    if (!key) continue;
-    const list = map.get(key) ?? [];
-    list.push(row);
-    map.set(key, list);
+): RosterPreviewEntry {
+  const firstId = line.sourceTeamMemberIds[0];
+  const row = roster.find((r) => r.teamMemberId === firstId);
+  const mergedFrom =
+    line.sourcePcoPositionNames.length > 1 ? line.sourcePcoPositionNames : undefined;
+
+  return {
+    teamName: row?.teamName?.trim() || line.section.toUpperCase(),
+    section: line.section,
+    pcoPositionName: line.sourcePcoPositionNames.join(", "),
+    positionName: line.positionLabels.join(" / "),
+    displayName: line.displayName,
+    filledLine: line.filledLine,
+    mergedFrom,
+  };
+}
+
+function groupConsolidatedBySection(
+  lines: ConsolidatedRosterLine[],
+): Map<import("./grg-roster-consolidate").RosterSectionKey, ConsolidatedRosterLine[]> {
+  const map = new Map<import("./grg-roster-consolidate").RosterSectionKey, ConsolidatedRosterLine[]>();
+  for (const line of lines) {
+    const list = map.get(line.section) ?? [];
+    list.push(line);
+    map.set(line.section, list);
   }
   return map;
 }
@@ -124,10 +136,19 @@ function collectIndexedParagraphs(doc: docs_v1.Schema$Document): IndexedParagrap
 
 function assignParagraphSections(
   paragraphs: IndexedParagraph[],
-): Array<IndexedParagraph & { section: RosterSectionKey | null; isRosterLine: boolean }> {
-  let current: RosterSectionKey | null = null;
-  const result: Array<IndexedParagraph & { section: RosterSectionKey | null; isRosterLine: boolean }> =
-    [];
+): Array<
+  IndexedParagraph & {
+    section: import("./grg-roster-consolidate").RosterSectionKey | null;
+    isRosterLine: boolean;
+  }
+> {
+  let current: import("./grg-roster-consolidate").RosterSectionKey | null = null;
+  const result: Array<
+    IndexedParagraph & {
+      section: import("./grg-roster-consolidate").RosterSectionKey | null;
+      isRosterLine: boolean;
+    }
+  > = [];
 
   for (const p of paragraphs) {
     if (/song\s+list/i.test(p.text)) {
@@ -155,24 +176,29 @@ function assignParagraphSections(
 }
 
 function rosterBlockInSection(
-  paragraphs: Array<IndexedParagraph & { section: RosterSectionKey | null; isRosterLine: boolean }>,
-  section: RosterSectionKey,
+  paragraphs: Array<
+    IndexedParagraph & {
+      section: import("./grg-roster-consolidate").RosterSectionKey | null;
+      isRosterLine: boolean;
+    }
+  >,
+  section: import("./grg-roster-consolidate").RosterSectionKey,
 ): IndexedParagraph[] {
   return paragraphs.filter((p) => p.section === section && p.isRosterLine);
 }
 
-function buildFilledBlock(members: PlanRosterRow[]): string {
-  if (members.length === 0) return "";
-  return `${members.map((m) => buildFilledRosterLine(m.positionName, m.displayName)).join("\n")}\n`;
+function buildFilledBlockFromConsolidated(lines: ConsolidatedRosterLine[]): string {
+  if (lines.length === 0) return "";
+  return `${lines.map((l) => l.filledLine).join("\n")}\n`;
 }
 
 async function fillRosterSection(
   docs: docs_v1.Docs,
   documentId: string,
-  section: RosterSectionKey,
-  members: PlanRosterRow[],
+  section: import("./grg-roster-consolidate").RosterSectionKey,
+  lines: ConsolidatedRosterLine[],
 ): Promise<boolean> {
-  if (members.length === 0) return false;
+  if (lines.length === 0) return false;
 
   const doc = await docs.documents.get({ documentId });
   const body = doc.data;
@@ -188,7 +214,7 @@ async function fillRosterSection(
   const deleteEnd = last.endIndex - 1;
   if (deleteEnd <= deleteStart) return false;
 
-  const filledBlock = buildFilledBlock(members);
+  const filledBlock = buildFilledBlockFromConsolidated(lines);
 
   await docs.documents.batchUpdate({
     documentId,
@@ -216,21 +242,24 @@ export async function applyRosterToDocument(
   docs: docs_v1.Docs,
   documentId: string,
   roster: PlanRosterRow[],
-  guestOverrides?: RosterSectionOverride,
+  guestOverrides?: import("./grg-roster-consolidate").RosterSectionOverride,
+  rosterSelections?: RosterSelections,
 ): Promise<RosterApplyResult> {
-  const preview = buildRosterPreviewFromPco(roster, guestOverrides);
-  if (roster.length === 0) {
+  const consolidated = consolidateRosterLines(roster, guestOverrides, rosterSelections);
+  const preview = buildRosterPreviewFromPco(roster, guestOverrides, rosterSelections);
+
+  if (consolidated.length === 0) {
     return { preview, sectionsFilled: [], updated: 0 };
   }
 
-  const bySection = groupRosterBySection(roster, guestOverrides);
-  const sectionsFilled: RosterSectionKey[] = [];
+  const bySection = groupConsolidatedBySection(consolidated);
+  const sectionsFilled: import("./grg-roster-consolidate").RosterSectionKey[] = [];
   let updated = 0;
 
   for (const section of ["band", "choir", "all_team"] as const) {
-    const members = bySection.get(section) ?? [];
-    if (members.length === 0) continue;
-    const filled = await fillRosterSection(docs, documentId, section, members);
+    const sectionLines = bySection.get(section) ?? [];
+    if (sectionLines.length === 0) continue;
+    const filled = await fillRosterSection(docs, documentId, section, sectionLines);
     if (filled) {
       sectionsFilled.push(section);
       updated += 1;
@@ -262,3 +291,13 @@ export function planRosterSlotMatches(
     matched: true,
   }));
 }
+
+// Re-export consolidation helpers for UI
+export {
+  buildFilledRosterLineMulti,
+  consolidateRosterLines,
+  detectRosterConflicts,
+  rosterConflictGroupId,
+  rosterSelectionsComplete,
+  type RosterSelections,
+} from "./grg-roster-consolidate";

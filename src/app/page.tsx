@@ -1,6 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  detectRosterConflicts,
+  rosterSelectionsComplete,
+  type RosterSectionOverride,
+} from "@/lib/docs/grg-roster-consolidate";
 import { isPlatformTeamPositionName } from "@/lib/pco/roster-team-scope";
 
 type ScanTier = "green" | "yellow" | "red";
@@ -60,6 +65,7 @@ type RosterPreviewEntry = {
   positionName: string;
   displayName: string;
   filledLine: string;
+  mergedFrom?: string[];
 };
 
 type DriveCandidate = {
@@ -229,12 +235,50 @@ export default function Home() {
   const [aliasDrafts, setAliasDrafts] = useState<Record<string, string>>({});
   const [savingAliases, setSavingAliases] = useState(false);
   const [guestSections, setGuestSections] = useState<Record<string, "band" | "choir">>({});
+  const [rosterSelections, setRosterSelections] = useState<Record<string, string[]>>({});
+  const [templateValidation, setTemplateValidation] = useState<{
+    issues: Array<{ code: string; message: string; marker?: string; section?: string }>;
+    canSkipIntro: boolean;
+    canApplyScans: boolean;
+  } | null>(null);
   const autoResolveGeneration = useRef(0);
 
   const guestRosterRows = (bundle?.roster ?? []).filter((r) => r.grgSection === "guest");
   const guestAssignmentsComplete =
     guestRosterRows.length === 0 ||
     guestRosterRows.every((r) => Boolean(guestSections[r.teamMemberId]));
+
+  const guestOverrides = useMemo((): RosterSectionOverride => {
+    const overrides: RosterSectionOverride = {};
+    for (const row of bundle?.roster ?? []) {
+      if (row.grgSection === "guest" && guestSections[row.teamMemberId]) {
+        overrides[row.teamMemberId] = guestSections[row.teamMemberId];
+      }
+    }
+    return overrides;
+  }, [bundle?.roster, guestSections]);
+
+  const rosterConflicts = useMemo(
+    () => (bundle ? detectRosterConflicts(bundle.roster, guestOverrides) : []),
+    [bundle, guestOverrides],
+  );
+
+  const rosterConflictSelectionsComplete = useMemo(
+    () =>
+      bundle
+        ? rosterSelectionsComplete(bundle.roster, guestOverrides, rosterSelections)
+        : true,
+    [bundle, guestOverrides, rosterSelections],
+  );
+
+  function toggleRosterSelection(groupId: string, teamMemberId: string, checked: boolean) {
+    setRosterSelections((prev) => {
+      const next = new Set(prev[groupId] ?? []);
+      if (checked) next.add(teamMemberId);
+      else next.delete(teamMemberId);
+      return { ...prev, [groupId]: [...next] };
+    });
+  }
 
   const refreshGoogle = useCallback(async () => {
     const res = await fetch("/api/auth/google/status");
@@ -304,6 +348,7 @@ export default function Home() {
 
       setBundle(payload.bundle);
       setGuestSections({});
+      setRosterSelections({});
       setGrgTitle(payload.bundle.suggestedOutputTitle);
       void refreshAliasPanel(payload.bundle);
       if ((payload.bundle.rosterMapAdded?.length ?? 0) > 0) {
@@ -601,6 +646,10 @@ export default function Home() {
       setError("Assign each Guest to BAND or CHOIR before preview.");
       return;
     }
+    if (!rosterConflictSelectionsComplete) {
+      setError("Select at least one position tag for each duplicate roster name.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -613,6 +662,7 @@ export default function Home() {
           dateFormatted: bundle.dateFormatted,
           songList: songListForApply(),
           roster: rosterForApply(),
+          rosterSelections,
           songs: songFlows.map((f) => ({
             itemId: f.song.itemId,
             title: f.song.title,
@@ -649,11 +699,20 @@ export default function Home() {
     }
   }
 
-  async function applyChanges() {
+  async function applyChanges(options?: { skipIntro?: boolean }) {
     if (!bundle) return;
+    if (!guestAssignmentsComplete) {
+      setError("Assign each Guest to BAND or CHOIR before apply.");
+      return;
+    }
+    if (!rosterConflictSelectionsComplete) {
+      setError("Select at least one position tag for each duplicate roster name.");
+      return;
+    }
     setBusy(true);
     setError(null);
     setApplyResult(null);
+    setTemplateValidation(null);
     try {
       const res = await fetch("/api/mvp/apply", {
         method: "POST",
@@ -664,6 +723,8 @@ export default function Home() {
           dateFormatted: bundle.dateFormatted,
           songList: songListForApply(),
           roster: rosterForApply(),
+          rosterSelections,
+          skipIntro: Boolean(options?.skipIntro),
           songs: songFlows.map((f) => ({
             itemId: f.song.itemId,
             title: f.song.title,
@@ -674,8 +735,21 @@ export default function Home() {
       });
       const payload = (await res.json()) as
         | { ok: true; grg: { id: string; name: string; webViewLink?: string }; errors?: string[] }
-        | { ok: false; error: string };
-      if (!res.ok || !payload.ok) throw new Error(payload.ok ? "Failed" : payload.error);
+        | {
+            ok: false;
+            error: string;
+            templateValidation?: {
+              issues: Array<{ code: string; message: string }>;
+              canSkipIntro: boolean;
+              canApplyScans: boolean;
+            };
+          };
+      if (!res.ok || !payload.ok) {
+        if (!payload.ok && payload.templateValidation) {
+          setTemplateValidation(payload.templateValidation);
+        }
+        throw new Error(payload.ok ? "Failed" : payload.error);
+      }
 
       const extra = payload.errors?.length ? `\nWarnings:\n${payload.errors.join("\n")}` : "";
       setApplyResult(
@@ -889,6 +963,59 @@ export default function Home() {
                           <option value="choir">CHOIR</option>
                         </select>
                       </label>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {rosterConflicts.length > 0 ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm dark:border-amber-900 dark:bg-amber-950">
+                <div className="font-medium text-amber-900 dark:text-amber-200">
+                  Duplicate roster roles
+                </div>
+                <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
+                  The same person has multiple confirmed positions in one section. Check one tag
+                  for a single role, or multiple tags to combine on one line (e.g. MD / Keys).
+                </p>
+                <ul className="mt-3 flex flex-col gap-3">
+                  {rosterConflicts.map((group) => (
+                    <li
+                      key={group.groupId}
+                      className="rounded-lg border border-amber-100 bg-white px-3 py-2 dark:border-amber-900 dark:bg-zinc-950"
+                    >
+                      <div className="font-medium">
+                        {group.section.toUpperCase()}: {group.displayName}
+                      </div>
+                      <div className="mt-2 flex flex-col gap-1">
+                        {group.assignments.map((assignment) => {
+                          const checked = (rosterSelections[group.groupId] ?? []).includes(
+                            assignment.teamMemberId,
+                          );
+                          return (
+                            <label
+                              key={assignment.teamMemberId}
+                              className="flex cursor-pointer items-center gap-2 text-sm"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(e) =>
+                                  toggleRosterSelection(
+                                    group.groupId,
+                                    assignment.teamMemberId,
+                                    e.target.checked,
+                                  )
+                                }
+                              />
+                              <span>{assignment.positionName}</span>
+                              <span className="text-xs text-zinc-500">
+                                ({assignment.pcoPositionName})
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -1147,7 +1274,7 @@ export default function Home() {
               ) : (
                 <button
                   type="button"
-                  disabled={busy || !guestAssignmentsComplete}
+                  disabled={busy || !guestAssignmentsComplete || !rosterConflictSelectionsComplete}
                   onClick={buildPreview}
                   className="h-10 rounded-xl bg-zinc-900 px-3 text-sm text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
                 >
@@ -1184,11 +1311,17 @@ export default function Home() {
                       key={`${entry.teamName}-${entry.pcoPositionName}-${entry.displayName}`}
                       className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm dark:border-emerald-900 dark:bg-emerald-950"
                     >
-                      <span className="font-medium">{entry.teamName}</span>
+                      <span className="font-medium">{entry.section.toUpperCase()}</span>
                       <span className="text-zinc-700 dark:text-zinc-300"> — {entry.filledLine}</span>
-                      <span className="block text-xs text-zinc-500">
-                        PCO: {entry.pcoPositionName}
-                      </span>
+                      {entry.mergedFrom && entry.mergedFrom.length > 1 ? (
+                        <span className="block text-xs text-zinc-500">
+                          Merged: {entry.mergedFrom.join(", ")}
+                        </span>
+                      ) : (
+                        <span className="block text-xs text-zinc-500">
+                          PCO: {entry.pcoPositionName}
+                        </span>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -1251,11 +1384,45 @@ export default function Home() {
               <code className="text-xs">{"{{GRG_SCANS_BEGIN}}"}</code> with this week&apos;s scans. The template is
               never modified. Cancel leaves all Drive docs unchanged.
             </p>
+            {templateValidation ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm dark:border-amber-900 dark:bg-amber-950">
+                <div className="font-medium text-amber-900 dark:text-amber-200">
+                  Template placeholder issues
+                </div>
+                <ul className="mt-2 list-inside list-disc text-amber-800 dark:text-amber-300">
+                  {templateValidation.issues.map((issue) => (
+                    <li key={issue.message}>{issue.message}</li>
+                  ))}
+                </ul>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {templateValidation.canSkipIntro ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void applyChanges({ skipIntro: true })}
+                      className="h-9 rounded-lg bg-amber-800 px-3 text-xs font-medium text-white disabled:opacity-50"
+                    >
+                      Skip intro & apply scans only
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setTemplateValidation(null)}
+                    className="h-9 rounded-lg border border-amber-300 px-3 text-xs dark:border-amber-800"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
             <div className="flex flex-wrap gap-3">
               <button
                 type="button"
-                disabled={busy}
-                onClick={applyChanges}
+                disabled={
+                  busy || !guestAssignmentsComplete || !rosterConflictSelectionsComplete
+                }
+                onClick={() => void applyChanges()}
                 className="h-11 rounded-xl bg-emerald-600 px-4 text-sm font-medium text-white disabled:opacity-50"
               >
                 {busy ? "Applying…" : "Approve & update Google Doc"}

@@ -5,7 +5,12 @@ import {
   GRG_PLACEHOLDER_SONG_LIST,
 } from "@/lib/config/grg";
 import type { PlanRosterRow } from "@/lib/pco/plan-team";
-import { applyRosterToDocument } from "./grg-roster";
+import {
+  applyRosterToDocument,
+  ROSTER_LINE_RE,
+  sectionKeyFromHeader,
+  type RosterSelections,
+} from "./grg-roster";
 import { appendScanSection, buildSongListLines, type SongListLine, type SongSectionInput } from "./grg-mutate";
 
 function docEndIndex(doc: docs_v1.Schema$Document) {
@@ -35,6 +40,145 @@ export function findTextRange(
   }
 
   return null;
+}
+
+export type GrgTemplateValidationIssue = {
+  code: "missing_marker" | "missing_roster_slot";
+  marker?: string;
+  section?: "band" | "choir";
+  message: string;
+};
+
+export type GrgTemplateValidationResult = {
+  ok: boolean;
+  issues: GrgTemplateValidationIssue[];
+  /** Intro placeholders missing but scans region exists — apply may use skipIntro */
+  canSkipIntro: boolean;
+  /** Scans placeholder present */
+  canApplyScans: boolean;
+};
+
+function collectParagraphTexts(doc: docs_v1.Schema$Document): string[] {
+  const lines: string[] = [];
+  for (const el of doc.body?.content ?? []) {
+    const p = el.paragraph;
+    if (!p) continue;
+    let text = "";
+    for (const pe of p.elements ?? []) text += pe.textRun?.content ?? "";
+    const trimmed = text.replace(/\n$/, "").trim();
+    if (trimmed) lines.push(trimmed);
+  }
+  return lines;
+}
+
+function auditRosterPlaceholderSlots(doc: docs_v1.Schema$Document): Array<"band" | "choir"> {
+  const missing: Array<"band" | "choir"> = [];
+  const lines = collectParagraphTexts(doc);
+  let current: ReturnType<typeof sectionKeyFromHeader> = null;
+  let sawBandHeader = false;
+  let sawChoirHeader = false;
+  let bandHasSlot = false;
+  let choirHasSlot = false;
+
+  for (const text of lines) {
+    if (/song\s+list/i.test(text)) {
+      current = null;
+      continue;
+    }
+    const header = sectionKeyFromHeader(text);
+    if (header === "band") {
+      current = "band";
+      sawBandHeader = true;
+      continue;
+    }
+    if (header === "choir") {
+      current = "choir";
+      sawChoirHeader = true;
+      continue;
+    }
+    if (ROSTER_LINE_RE.test(text)) {
+      if (current === "band") bandHasSlot = true;
+      if (current === "choir") choirHasSlot = true;
+    }
+  }
+
+  if (sawBandHeader && !bandHasSlot) missing.push("band");
+  if (sawChoirHeader && !choirHasSlot) missing.push("choir");
+  return missing;
+}
+
+export async function validateGrgTemplate(
+  docs: docs_v1.Docs,
+  documentId: string,
+): Promise<GrgTemplateValidationResult> {
+  const doc = await docs.documents.get({ documentId });
+  const body = doc.data;
+  if (!body) throw new Error("Could not read template document.");
+
+  const issues: GrgTemplateValidationIssue[] = [];
+
+  const hasDate = Boolean(findTextRange(body, GRG_PLACEHOLDER_DATE));
+  const hasSongList = Boolean(findTextRange(body, GRG_PLACEHOLDER_SONG_LIST));
+  const hasScansBegin = Boolean(findTextRange(body, GRG_PLACEHOLDER_SCANS_BEGIN));
+
+  if (!hasDate) {
+    issues.push({
+      code: "missing_marker",
+      marker: GRG_PLACEHOLDER_DATE,
+      message: `Missing date placeholder ${GRG_PLACEHOLDER_DATE}.`,
+    });
+  }
+  if (!hasSongList) {
+    issues.push({
+      code: "missing_marker",
+      marker: GRG_PLACEHOLDER_SONG_LIST,
+      message: `Missing song list placeholder ${GRG_PLACEHOLDER_SONG_LIST}.`,
+    });
+  }
+  if (!hasScansBegin) {
+    issues.push({
+      code: "missing_marker",
+      marker: GRG_PLACEHOLDER_SCANS_BEGIN,
+      message: `Missing scans placeholder ${GRG_PLACEHOLDER_SCANS_BEGIN}.`,
+    });
+  }
+
+  for (const section of auditRosterPlaceholderSlots(body)) {
+    issues.push({
+      code: "missing_roster_slot",
+      section,
+      message: `${section.toUpperCase()} section has no roster placeholder line ([Name | …]: [Position]).`,
+    });
+  }
+
+  const introMarkersOk = hasDate && hasSongList;
+  const canSkipIntro = hasScansBegin && !introMarkersOk;
+
+  return {
+    ok: introMarkersOk && hasScansBegin,
+    issues,
+    canSkipIntro,
+    canApplyScans: hasScansBegin,
+  };
+}
+
+/** Whether apply should abort before writing (honors skipIntro / skipScans). */
+export function isTemplateValidationBlocking(
+  validation: GrgTemplateValidationResult,
+  options: { skipIntro?: boolean; skipScans?: boolean; hasScansToApply?: boolean },
+): boolean {
+  const introMissing = validation.issues.some(
+    (i) =>
+      i.code === "missing_marker" &&
+      (i.marker === GRG_PLACEHOLDER_DATE || i.marker === GRG_PLACEHOLDER_SONG_LIST),
+  );
+  const scansMissing = validation.issues.some(
+    (i) => i.code === "missing_marker" && i.marker === GRG_PLACEHOLDER_SCANS_BEGIN,
+  );
+
+  if (!options.skipIntro && introMissing) return true;
+  if (options.hasScansToApply && !options.skipScans && scansMissing) return true;
+  return false;
 }
 
 async function deleteScansRegion(docs: docs_v1.Docs, documentId: string) {
@@ -74,6 +218,7 @@ export async function applyTemplateGrgUpdate(
     songList: SongListLine[];
     sections: SongSectionInput[];
     roster?: PlanRosterRow[];
+    rosterSelections?: RosterSelections;
     skipIntro?: boolean;
     skipScans?: boolean;
   },
@@ -104,7 +249,13 @@ export async function applyTemplateGrgUpdate(
     requestCount += res.data.replies?.length ?? requests.length;
 
     if (input.roster && input.roster.length > 0) {
-      const rosterResult = await applyRosterToDocument(docs, documentId, input.roster);
+      const rosterResult = await applyRosterToDocument(
+        docs,
+        documentId,
+        input.roster,
+        undefined,
+        input.rosterSelections,
+      );
       requestCount += rosterResult.updated;
     }
   }
