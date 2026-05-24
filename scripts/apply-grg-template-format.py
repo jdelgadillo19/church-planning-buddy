@@ -13,6 +13,7 @@ from docx.oxml.ns import qn
 GRG_DATE = "{{GRG_DATE}}"
 GRG_SONG_LIST = "{{GRG_SONG_LIST}}"
 GRG_SCANS_BEGIN = "{{GRG_SCANS_BEGIN}}"
+ROSTER_NAME_POSITION = "[Name | First-name Last Initial]: [Position]"
 
 MONTH_DATE = re.compile(
     r"(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d",
@@ -72,7 +73,49 @@ def find_indices(doc: Document) -> dict[str, int]:
     }
 
 
+ROSTER_LINE_RE = re.compile(r"^\[Name\s*\|\s*[^\]]*\]:", re.I)
+BAND_HEADER_RE = re.compile(r"^BAND\s*[\(:]", re.I)
+CHOIR_HEADER_RE = re.compile(r"^CHOIR\s*[\(:]", re.I)
+ALL_TEAM_HEADER_RE = re.compile(r"^ALL\s+TEAM", re.I)
+
+
+def apply_roster_placeholders(doc: Document) -> None:
+    """One [Name]: [Position] line per BAND and CHOIR section; remove SUN-specific position rows."""
+    current_section: str | None = None
+    section_first_roster_idx: dict[str, int] = {}
+    roster_idxs_to_delete: list[int] = []
+
+    for i, p in enumerate(doc.paragraphs):
+        t = p.text.strip()
+        if BAND_HEADER_RE.match(t):
+            current_section = "band"
+            continue
+        if CHOIR_HEADER_RE.match(t):
+            current_section = "choir"
+            continue
+        if ALL_TEAM_HEADER_RE.match(t):
+            current_section = "all_team"
+            continue
+        if "song list" in t.lower():
+            current_section = None
+            continue
+
+        if current_section in ("band", "choir") and ROSTER_LINE_RE.match(t):
+            if current_section not in section_first_roster_idx:
+                section_first_roster_idx[current_section] = i
+            else:
+                roster_idxs_to_delete.append(i)
+
+    for i in sorted(roster_idxs_to_delete, reverse=True):
+        delete_paragraph(doc.paragraphs[i])
+
+    for section, idx in section_first_roster_idx.items():
+        set_paragraph_text(doc.paragraphs[idx], ROSTER_NAME_POSITION)
+
+
 def apply_template_format(doc: Document) -> None:
+    apply_roster_placeholders(doc)
+
     idx = find_indices(doc)
 
     set_paragraph_text(doc.paragraphs[idx["date"]], GRG_DATE)

@@ -4,7 +4,11 @@ import { formatPlanDateLikeSample } from "./format-date";
 import { formatPitchKey, keyFromItemAttribute } from "./format-key";
 import { formatArrangementDisplayName } from "./arrangement-display";
 import { resolveScanDriveUrl } from "./attachment-open";
+import { loadPlanTeamMembers, loadPlanTeamPositionNames, type PlanRosterRow } from "./plan-team";
+import { persistNewPcoPositions } from "./roster-position-sync";
 import { listSongAttachments, pickBestScanAttachment, type ScanTier } from "./scans";
+
+export type { PlanRosterRow } from "./plan-team";
 
 export type PlanSongRow = {
   itemId: string;
@@ -28,6 +32,8 @@ export type PlanBundle = {
   dateRaw: string;
   suggestedOutputTitle: string;
   songs: PlanSongRow[];
+  roster: PlanRosterRow[];
+  rosterMapAdded: string[];
 };
 
 type PcoItem = {
@@ -284,6 +290,10 @@ export async function loadPlanBundle(input: {
     });
   }
 
+  const planPositionNames = await loadPlanTeamPositionNames(serviceTypeId, planId, auth);
+  const { map: positionMap, added: rosterMapAdded } = persistNewPcoPositions(planPositionNames);
+  const roster = await loadPlanTeamMembers(serviceTypeId, planId, auth, positionMap);
+
   return {
     planId,
     serviceTypeId,
@@ -291,5 +301,7 @@ export async function loadPlanBundle(input: {
     dateRaw: String(dateRaw),
     suggestedOutputTitle: buildOutputDocTitle(dateRaw),
     songs,
+    roster,
+    rosterMapAdded,
   };
 }

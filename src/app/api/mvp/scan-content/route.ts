@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { extractPlainPreview, loadSourceGoogleDoc } from "@/lib/docs/scan-import";
 import { getAuthedClients } from "@/lib/google/auth";
 import { exportDocPlainText } from "@/lib/google/drive-files";
 import { googleConnected, loadTokensForCurrentSession } from "@/app/api/auth/google/_session";
@@ -16,17 +17,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Google Drive not connected." }, { status: 401 });
     }
 
-    const { drive } = getAuthedClients(tokens!);
-    const text = await exportDocPlainText(drive, fileId);
+    const { drive, docs } = getAuthedClients(tokens!);
 
-    if (!text.trim()) {
-      return NextResponse.json({
-        ok: false,
-        error: "No extractable text in this file (image-only PDF etc.). Notify and skip for MVP.",
-      });
+    try {
+      const source = await loadSourceGoogleDoc(docs, drive, fileId);
+      const text = extractPlainPreview(source, 50_000);
+      if (!text.trim()) {
+        return NextResponse.json({
+          ok: false,
+          error: "No extractable text in this file (image-only PDF etc.). Notify and skip for MVP.",
+        });
+      }
+      return NextResponse.json({ ok: true, text, importMode: "styled" });
+    } catch {
+      const text = await exportDocPlainText(drive, fileId);
+      if (!text.trim()) {
+        return NextResponse.json({
+          ok: false,
+          error: "No extractable text in this file (image-only PDF etc.). Notify and skip for MVP.",
+        });
+      }
+      return NextResponse.json({ ok: true, text, importMode: "plain" });
     }
-
-    return NextResponse.json({ ok: true, text });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Failed to load scan content.";
     return NextResponse.json({ ok: false, error: message }, { status: 400 });

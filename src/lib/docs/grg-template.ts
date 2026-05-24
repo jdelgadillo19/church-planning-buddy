@@ -4,6 +4,8 @@ import {
   GRG_PLACEHOLDER_SCANS_BEGIN,
   GRG_PLACEHOLDER_SONG_LIST,
 } from "@/lib/config/grg";
+import type { PlanRosterRow } from "@/lib/pco/plan-team";
+import { applyRosterToDocument } from "./grg-roster";
 import { appendScanSection, buildSongListLines, type SongListLine, type SongSectionInput } from "./grg-mutate";
 
 function docEndIndex(doc: docs_v1.Schema$Document) {
@@ -71,6 +73,7 @@ export async function applyTemplateGrgUpdate(
     dateFormatted: string;
     songList: SongListLine[];
     sections: SongSectionInput[];
+    roster?: PlanRosterRow[];
     skipIntro?: boolean;
     skipScans?: boolean;
   },
@@ -99,9 +102,14 @@ export async function applyTemplateGrgUpdate(
       requestBody: { requests },
     });
     requestCount += res.data.replies?.length ?? requests.length;
+
+    if (input.roster && input.roster.length > 0) {
+      const rosterResult = await applyRosterToDocument(docs, documentId, input.roster);
+      requestCount += rosterResult.updated;
+    }
   }
 
-  if (!input.skipScans && input.sections.length > 0) {
+  if (!input.skipScans) {
     await deleteScansRegion(docs, documentId);
     requestCount += 1;
 

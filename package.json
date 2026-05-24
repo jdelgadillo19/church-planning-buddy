@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "sync:roster-map": "npx tsx scripts/sync-roster-position-map.ts"
   },
   "dependencies": {
     "googleapis": "^171.4.0",

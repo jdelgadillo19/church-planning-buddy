@@ -17,7 +17,21 @@ Church Planning Buddy copies this document each apply. **Do not edit the templat
 
 3. Remove broken date text (e.g. `AMay 24th, 2026`) — the app replaces `{{GRG_DATE}}` from PCO.
 4. Keep roster / stage layout / team blocks **above** `{{GRG_SONG_LIST}}`.
-5. Do not put placeholders inside tables or images.
+5. Roster slots use **one placeholder line per section** (BAND and CHOIR), not fixed position names from the reference doc:
+
+   `[Name | First-name Last Initial]: [Position]`
+
+   On apply, **confirmed PCO team members** on **Platform Team** replace the entire roster block in each BAND / CHOIR section (`Timothy K.: Cajon`, etc.). Section is determined by the position prefix (`BAND - …`, `CHOIR - …`); **Guests** require choosing BAND or CHOIR in the app before preview/apply. Position labels come from PCO (`team_position_name`, with optional alias map in [`docs/roster-position-map.json`](./roster-position-map.json)).
+
+   Regenerate template roster placeholders from SUN:
+
+   `python3 scripts/apply-grg-template-format.py downloads/Get\ Ready\ Guide\ \(SUN\).docx downloads/Get\ Ready\ Guide\ \(TEMPLATE\).docx`
+
+   **MVP scope:** Only **Platform Team** worship roles are written to the GRG (PCO teams `BAND`, `CHOIR`, `ALL TEAM` by default). Other teams (FOH, Greeter, etc.) are ignored. Override with `GRG_ROSTER_TEAM_NAMES` or `GRG_ROSTER_TEAM_IDS` in `.env.local`.
+
+   **Sync catalog from PCO:** `npm run sync:roster-map -- --plan-id=YOUR_PLAN_ID` (or `--service-type-id=`). New positions discovered on plan load are appended automatically; use the Songs-step **Position aliases** panel to save overrides. Unconfigured `[ALIAS]` entries use the PCO position name with `BAND -` / `CHOIR -` prefix removed — never the literal `[ALIAS]` in the guide.
+
+6. Do not put placeholders inside tables or images.
 
 ## Output document
 

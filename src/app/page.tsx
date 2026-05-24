@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { isPlatformTeamPositionName } from "@/lib/pco/roster-team-scope";
 
 type ScanTier = "green" | "yellow" | "red";
 
@@ -19,6 +20,18 @@ type PlanSong = {
   warnings: string[];
 };
 
+type PlanRosterRow = {
+  teamMemberId: string;
+  personId: string;
+  displayName: string;
+  pcoPositionName: string;
+  positionName: string;
+  teamId?: string;
+  teamName?: string;
+  grgSection: "band" | "choir" | "all_team" | "guest" | "other";
+  status: string;
+};
+
 type PlanBundle = {
   planId: number;
   serviceTypeId: number;
@@ -26,6 +39,27 @@ type PlanBundle = {
   dateRaw: string;
   suggestedOutputTitle: string;
   songs: PlanSong[];
+  roster: PlanRosterRow[];
+  rosterMapAdded: string[];
+};
+
+type RosterMapEntry = {
+  pcoPosition: string;
+  mapValue?: string;
+  alias?: string;
+  effectiveAlias: string;
+  configured: boolean;
+  strippedDefault: string;
+  resolvedLabel: string;
+};
+
+type RosterPreviewEntry = {
+  teamName: string;
+  section: string;
+  pcoPositionName: string;
+  positionName: string;
+  displayName: string;
+  filledLine: string;
 };
 
 type DriveCandidate = {
@@ -141,6 +175,7 @@ type PreviewSection = {
   bodyPreview: string;
   skipped: boolean;
   status?: "skipped" | "no-selection" | "ready" | "error";
+  importMode?: string;
 };
 
 const STEPS = ["Setup", "Songs", "Preview", "Sign off"] as const;
@@ -174,6 +209,14 @@ export default function Home() {
   const [preview, setPreview] = useState<{
     dateFormatted: string;
     songListLines: string[];
+    roster?: Array<{
+      pcoPositionName: string;
+      positionName: string;
+      displayName: string;
+      teamName?: string;
+      status: string;
+    }>;
+    rosterPreview?: RosterPreviewEntry[];
     sections: PreviewSection[];
   } | null>(null);
 
@@ -181,7 +224,17 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [applyResult, setApplyResult] = useState<string | null>(null);
   const [bulkResolving, setBulkResolving] = useState(false);
+  const [showAliasPanel, setShowAliasPanel] = useState(false);
+  const [aliasEntries, setAliasEntries] = useState<RosterMapEntry[]>([]);
+  const [aliasDrafts, setAliasDrafts] = useState<Record<string, string>>({});
+  const [savingAliases, setSavingAliases] = useState(false);
+  const [guestSections, setGuestSections] = useState<Record<string, "band" | "choir">>({});
   const autoResolveGeneration = useRef(0);
+
+  const guestRosterRows = (bundle?.roster ?? []).filter((r) => r.grgSection === "guest");
+  const guestAssignmentsComplete =
+    guestRosterRows.length === 0 ||
+    guestRosterRows.every((r) => Boolean(guestSections[r.teamMemberId]));
 
   const refreshGoogle = useCallback(async () => {
     const res = await fetch("/api/auth/google/status");
@@ -250,7 +303,12 @@ export default function Home() {
       if (!res.ok || !payload.ok) throw new Error(payload.ok ? "Failed" : payload.error);
 
       setBundle(payload.bundle);
+      setGuestSections({});
       setGrgTitle(payload.bundle.suggestedOutputTitle);
+      void refreshAliasPanel(payload.bundle);
+      if ((payload.bundle.rosterMapAdded?.length ?? 0) > 0) {
+        setShowAliasPanel(true);
+      }
       const flows: SongWorkflow[] = payload.bundle.songs.map((song) => ({
         song,
         candidates: [],
@@ -428,8 +486,121 @@ export default function Home() {
       .map((f) => ({ title: f.song.title, key: f.song.key, artist: f.song.artist }));
   }
 
+  function rosterForApply() {
+    return (bundle?.roster ?? [])
+      .map((r) => {
+        let section = r.grgSection;
+        if (section === "guest") {
+          const picked = guestSections[r.teamMemberId];
+          if (!picked) return null;
+          section = picked;
+        }
+        if (section !== "band" && section !== "choir" && section !== "all_team") return null;
+        return {
+          teamMemberId: r.teamMemberId,
+          pcoPositionName: r.pcoPositionName,
+          positionName: r.positionName,
+          displayName: r.displayName,
+          teamName: r.teamName,
+          status: r.status,
+          grgSection: section,
+        };
+      })
+      .filter((row): row is NonNullable<typeof row> => row !== null);
+  }
+
+  const refreshAliasPanel = useCallback(async (planBundle: PlanBundle) => {
+    try {
+      const res = await fetch("/api/mvp/roster-position-map");
+      const payload = (await res.json()) as
+        | { ok: true; entries: RosterMapEntry[] }
+        | { ok: false; error: string };
+      if (!res.ok || !payload.ok) return;
+
+      const relevant = new Set<string>();
+      for (const r of planBundle.roster) relevant.add(r.pcoPositionName);
+      for (const a of planBundle.rosterMapAdded ?? []) relevant.add(a);
+
+      const entries = payload.entries.filter(
+        (e) => relevant.has(e.pcoPosition) && isPlatformTeamPositionName(e.pcoPosition),
+      );
+      setAliasEntries(entries);
+
+      const drafts: Record<string, string> = {};
+      for (const e of entries) {
+        drafts[e.pcoPosition] = e.configured
+          ? (e.mapValue ?? e.alias ?? e.effectiveAlias)
+          : e.effectiveAlias;
+      }
+      setAliasDrafts(drafts);
+    } catch {
+      /* non-fatal */
+    }
+  }, []);
+
+  async function savePositionAliases() {
+    if (!bundle) return;
+    setSavingAliases(true);
+    setError(null);
+    try {
+      const aliases: Record<string, string> = {};
+      for (const [pcoPosition, value] of Object.entries(aliasDrafts)) {
+        const trimmed = value.trim();
+        if (!trimmed || trimmed === "[ALIAS]") continue;
+        aliases[pcoPosition] = trimmed;
+      }
+
+      if (Object.keys(aliases).length === 0) {
+        setError("No alias changes to save.");
+        return;
+      }
+
+      const saveRes = await fetch("/api/mvp/roster-position-map", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ aliases }),
+      });
+      const savePayload = (await saveRes.json()) as { ok: boolean; error?: string };
+      if (!saveRes.ok || !savePayload.ok) {
+        throw new Error(savePayload.error ?? "Failed to save aliases");
+      }
+
+      const planRes = await fetch("/api/mvp/plan", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          planId: String(bundle.planId),
+          serviceTypeId: String(bundle.serviceTypeId),
+        }),
+      });
+      const planPayload = (await planRes.json()) as
+        | { ok: true; bundle: PlanBundle }
+        | { ok: false; error: string };
+      if (!planRes.ok || !planPayload.ok) {
+        throw new Error(planPayload.ok ? "Failed to reload plan" : planPayload.error);
+      }
+
+      setBundle(planPayload.bundle);
+      setSongFlows((prev) =>
+        prev.map((flow) => {
+          const updated = planPayload.bundle.songs.find((s) => s.itemId === flow.song.itemId);
+          return updated ? { ...flow, song: updated } : flow;
+        }),
+      );
+      await refreshAliasPanel(planPayload.bundle);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setSavingAliases(false);
+    }
+  }
+
   async function buildPreview() {
     if (!bundle) return;
+    if (!guestAssignmentsComplete) {
+      setError("Assign each Guest to BAND or CHOIR before preview.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -441,6 +612,7 @@ export default function Home() {
           grgDocTitle: grgTitle.trim(),
           dateFormatted: bundle.dateFormatted,
           songList: songListForApply(),
+          roster: rosterForApply(),
           songs: songFlows.map((f) => ({
             itemId: f.song.itemId,
             title: f.song.title,
@@ -450,7 +622,22 @@ export default function Home() {
         }),
       });
       const payload = (await res.json()) as
-        | { ok: true; preview: { dateFormatted: string; songListLines: string[]; sections: PreviewSection[] } }
+        | {
+            ok: true;
+            preview: {
+              dateFormatted: string;
+              songListLines: string[];
+              roster?: Array<{
+                pcoPositionName: string;
+                positionName: string;
+                displayName: string;
+                teamName?: string;
+                status: string;
+              }>;
+              rosterPreview?: RosterPreviewEntry[];
+              sections: PreviewSection[];
+            };
+          }
         | { ok: false; error: string };
       if (!res.ok || !payload.ok) throw new Error(payload.ok ? "Failed" : payload.error);
       setPreview(payload.preview);
@@ -476,6 +663,7 @@ export default function Home() {
           grgDocTitle: grgTitle.trim(),
           dateFormatted: bundle.dateFormatted,
           songList: songListForApply(),
+          roster: rosterForApply(),
           songs: songFlows.map((f) => ({
             itemId: f.song.itemId,
             title: f.song.title,
@@ -647,6 +835,133 @@ export default function Home() {
 
         {step === "Songs" && bundle && activeSong ? (
           <section className="flex flex-col gap-4 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+            {(bundle.rosterMapAdded?.length ?? 0) > 0 ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                {bundle.rosterMapAdded.length} new PCO position
+                {bundle.rosterMapAdded.length === 1 ? "" : "s"} added to{" "}
+                <code className="text-xs">docs/roster-position-map.json</code>. Unset aliases use the
+                PCO name with BAND-/CHOIR- prefix removed.
+              </div>
+            ) : null}
+
+            {(bundle.roster?.length ?? 0) > 0 ? (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm dark:border-emerald-900 dark:bg-emerald-950">
+                <div className="font-medium">Platform Team roster loaded</div>
+                <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+                  {bundle.roster.length} confirmed worship assignment
+                  {bundle.roster.length === 1 ? "" : "s"} from Planning Center.
+                </p>
+              </div>
+            ) : null}
+
+            {guestRosterRows.length > 0 ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm dark:border-amber-900 dark:bg-amber-950">
+                <div className="font-medium text-amber-900 dark:text-amber-200">
+                  Guest assignments
+                </div>
+                <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
+                  Choose whether each guest appears in the BAND or CHOIR section of the Get Ready
+                  Guide.
+                </p>
+                <ul className="mt-3 flex flex-col gap-2">
+                  {guestRosterRows.map((row) => (
+                    <li
+                      key={row.teamMemberId}
+                      className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-100 bg-white px-3 py-2 dark:border-amber-900 dark:bg-zinc-950"
+                    >
+                      <span className="font-medium">
+                        {row.displayName}: {row.positionName}
+                      </span>
+                      <label className="flex items-center gap-1 text-xs">
+                        <span className="text-zinc-500">Section</span>
+                        <select
+                          className="h-8 rounded-lg border border-zinc-200 bg-white px-2 dark:border-zinc-700 dark:bg-zinc-900"
+                          value={guestSections[row.teamMemberId] ?? ""}
+                          onChange={(e) =>
+                            setGuestSections((prev) => ({
+                              ...prev,
+                              [row.teamMemberId]: e.target.value as "band" | "choir",
+                            }))
+                          }
+                        >
+                          <option value="">Select…</option>
+                          <option value="band">BAND</option>
+                          <option value="choir">CHOIR</option>
+                        </select>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            <div className="rounded-lg border border-zinc-200 dark:border-zinc-800">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between px-3 py-2 text-left text-sm font-medium"
+                onClick={() => {
+                  const next = !showAliasPanel;
+                  setShowAliasPanel(next);
+                  if (next && aliasEntries.length === 0) void refreshAliasPanel(bundle);
+                }}
+              >
+                Position aliases (optional)
+                <span className="text-zinc-500">{showAliasPanel ? "▾" : "▸"}</span>
+              </button>
+              {showAliasPanel ? (
+                <div className="border-t border-zinc-200 px-3 py-3 dark:border-zinc-800">
+                  <p className="mb-3 text-xs text-zinc-600 dark:text-zinc-400">
+                    Map PCO position names to GRG template labels. Leave blank to use the stripped
+                    default (e.g. BAND - Drums → Drums).
+                  </p>
+                  {aliasEntries.length === 0 ? (
+                    <p className="text-sm text-zinc-500">No positions on this plan yet.</p>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      {aliasEntries.map((entry) => (
+                        <div
+                          key={entry.pcoPosition}
+                          className="grid gap-2 rounded-lg border border-zinc-100 p-2 text-sm dark:border-zinc-900 sm:grid-cols-[1fr_1fr_auto]"
+                        >
+                          <div>
+                            <div className="text-xs text-zinc-500">PCO position</div>
+                            <div className="font-medium">{entry.pcoPosition}</div>
+                          </div>
+                          <label className="flex flex-col gap-1">
+                            <span className="text-xs text-zinc-500">Template alias</span>
+                            <input
+                              type="text"
+                              className="h-9 rounded-lg border border-zinc-200 bg-white px-2 dark:border-zinc-700 dark:bg-zinc-900"
+                              placeholder={entry.strippedDefault}
+                              value={aliasDrafts[entry.pcoPosition] ?? ""}
+                              onChange={(e) =>
+                                setAliasDrafts((prev) => ({
+                                  ...prev,
+                                  [entry.pcoPosition]: e.target.value,
+                                }))
+                              }
+                            />
+                          </label>
+                          <div className="self-end text-xs text-zinc-500">
+                            {entry.configured ? "custom alias" : "default (prefix stripped)"}
+                            <div className="text-zinc-400">→ {entry.effectiveAlias}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    disabled={savingAliases || aliasEntries.length === 0}
+                    onClick={savePositionAliases}
+                    className="mt-3 h-9 rounded-xl border px-3 text-sm disabled:opacity-50 dark:border-zinc-700"
+                  >
+                    {savingAliases ? "Saving…" : "Save aliases & refresh roster"}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
             <div className="text-sm text-zinc-600 dark:text-zinc-400">
               Song {activeSongIndex + 1} of {songFlows.length} · Plan date: {bundle.dateFormatted}
             </div>
@@ -832,9 +1147,9 @@ export default function Home() {
               ) : (
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={busy || !guestAssignmentsComplete}
                   onClick={buildPreview}
-                  className="h-10 rounded-xl bg-zinc-900 px-3 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900"
+                  className="h-10 rounded-xl bg-zinc-900 px-3 text-sm text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
                 >
                   Preview GRG changes
                 </button>
@@ -856,6 +1171,33 @@ export default function Home() {
                 {preview.songListLines.join("\n")}
               </pre>
             </div>
+            {(preview.rosterPreview?.length ?? 0) > 0 ? (
+              <div className="text-sm">
+                <div className="font-medium">Team roster (confirmed from PCO → GRG)</div>
+                <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+                  Confirmed Platform Team positions from Planning Center. BAND / CHOIR sections are
+                  determined by the position prefix (e.g. BAND - Cajon, CHOIR - WL).
+                </p>
+                <ul className="mt-2 flex flex-col gap-1">
+                  {(preview.rosterPreview ?? []).map((entry) => (
+                    <li
+                      key={`${entry.teamName}-${entry.pcoPositionName}-${entry.displayName}`}
+                      className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm dark:border-emerald-900 dark:bg-emerald-950"
+                    >
+                      <span className="font-medium">{entry.teamName}</span>
+                      <span className="text-zinc-700 dark:text-zinc-300"> — {entry.filledLine}</span>
+                      <span className="block text-xs text-zinc-500">
+                        PCO: {entry.pcoPositionName}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <div className="text-sm text-zinc-500 dark:text-zinc-400">
+                No confirmed Platform Team worship positions on this plan.
+              </div>
+            )}
             {preview.sections.map((s) => (
               <div key={s.title} className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
                 <div className="font-medium">{s.title}</div>
@@ -867,7 +1209,7 @@ export default function Home() {
                       : s.status === "error"
                         ? "Scan preview error"
                         : s.status === "ready"
-                          ? "Will include on apply"
+                          ? `Will include on apply${s.importMode ? ` (${s.importMode} import)` : ""}`
                           : s.skipped
                             ? "Skipped"
                             : "Will include on apply"}
@@ -905,7 +1247,7 @@ export default function Home() {
             <h2 className="text-lg font-semibold">Sign off</h2>
             <p className="text-sm text-zinc-600 dark:text-zinc-400">
               Approving copies <strong>{templateTitle}</strong> to a fresh <strong>{grgTitle}</strong> output doc,
-              fills date and song list placeholders, then replaces everything after{" "}
+              fills date, confirmed roster names, and song list placeholders, then replaces everything after{" "}
               <code className="text-xs">{"{{GRG_SCANS_BEGIN}}"}</code> with this week&apos;s scans. The template is
               never modified. Cancel leaves all Drive docs unchanged.
             </p>

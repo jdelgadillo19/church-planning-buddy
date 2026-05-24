@@ -13,7 +13,9 @@ Use this file as the **session handoff** doc. Spec detail lives in [`PRODUCT.md`
 | Area | Status |
 |------|--------|
 | **MVP wizard** | Setup → Songs → Preview → Sign off (`src/app/page.tsx`) |
-| **PCO plan load** | Plan ID → date, song order, keys, scan tiers, arrangement artist (`src/lib/pco/plan-bundle.ts`) |
+| **PCO plan load** | Plan ID → date, song order, keys, scan tiers, arrangement artist, confirmed roster (`src/lib/pco/plan-bundle.ts`, `plan-team.ts`) |
+| **Roster fill** | Confirmed `team_members` → template `[Name \| …]: Position` lines (`src/lib/docs/grg-roster.ts`) |
+| **Scan import** | Google Doc scans → header + two-column lyrics with style replay (`src/lib/docs/scan-import.ts`) |
 | **PCO scan ranking** | Full attachment scan; prefer MASTER over incidental “song scan”; arrangement-aware pick (`src/lib/pco/scans.ts`) |
 | **Drive blank scan (green)** | Pass 1: PCO `open` URL → subtree search for `blank` in title (`src/lib/google/drive-files.ts`) |
 | **Drive scan fallback (yellow)** | Pass 2 when blank fails: direct doc as-is, or priority-ranked docs in folder (`src/lib/scan-selection/priority.ts`) |
@@ -27,7 +29,9 @@ Use this file as the **session handoff** doc. Spec detail lives in [`PRODUCT.md`
 
 **Verified by user (2026-05-22):** Template updates correctly; output copy works; date, keys, and song list populate as expected.
 
-**Song scan retrieval (2026-05-23):** User confirmed retrieval is in a good place for edge cases (Peace Be Still folder, Shout To The Lord direct doc). **Next session:** formatting migration (scan body fidelity in GRG).
+**Song scan retrieval (2026-05-23):** User confirmed retrieval is in a good place for edge cases (Peace Be Still folder, Shout To The Lord direct doc).
+
+**Roster + scan formatting (2026-05-23):** PCO confirmed team members fill intro slots; scan sections import from Google Docs with two-column lyrics and style replay (plain fallback).
 
 **Reference assets**
 
@@ -45,7 +49,7 @@ Use this file as the **session handoff** doc. Spec detail lives in [`PRODUCT.md`
 
 | Item | Severity | Notes |
 |------|----------|--------|
-| **Scan body = plain text** | **Next priority** | Scans exported as text; no two-column lyrics, colors, or bold from org scans — see next steps |
+| **Scan import fallback** | Low | Google Doc scans use structured import (two-column + styles); non-Docs or failures fall back to plain text |
 | **Song list bullets** | Low | `replaceAllText` for `{{GRG_SONG_LIST}}` may not match bulleted layout in every template |
 | **Heuristic mutate path** | Deprecated | `src/lib/docs/grg-mutate.ts` `applyGrgUpdate` unused by apply; do not re-enable without reason |
 | **Local-only auth** | Ops | OAuth tokens on disk; no hosted deploy or multi-user sessions |
@@ -67,9 +71,9 @@ Use this file as the **session handoff** doc. Spec detail lives in [`PRODUCT.md`
 
 ## Next steps (agreed priority)
 
-### Near-term — formatting migration (current focus)
+### Near-term polish
 
-1. **Scan formatting fidelity** — two-column lyrics; preserve highlight/bold/color from source scans ([`PRODUCT.md`](../PRODUCT.md) §1.7). User handoff: retrieval done; start here.
+1. **Scan format tuning** — refine header/lyrics split heuristics per [`GRG-SCAN-FORMAT.md`](./GRG-SCAN-FORMAT.md); golden tests against live plan `87788327`.
 
 ### Near-term polish
 
