@@ -65,9 +65,18 @@ Party archive + questionnaire: [`party/output/party-2026-05-24.md`](./party/outp
 
 ---
 
-## Current state — ProPresenter MVP (not started)
+## Current state — ProPresenter MVP (Phase 0 complete on operator Mac)
 
-No `src/lib/propresenter/` or local bridge yet. Spec: [`PROPRESENTER-MVP.md`](./PROPRESENTER-MVP.md).
+| Area | Status |
+|------|--------|
+| **Local API client** | `src/lib/propresenter/` — HTTP + **TCP** transport, safety, probe, diagnose |
+| **Operator connection** | `PP_TRANSPORT=tcp`, `PP_PORT=64509` — `pp:status` OK, `pp:probe` OK |
+| **HTTP routes** | `GET /api/propresenter/status`, `POST /api/propresenter/probe` |
+| **CLI** | `pp:status`, `pp:diagnose`, `pp:probe` |
+| **Phase 0 spike** | [`PROPRESENTER-API-SPIKE.md`](./PROPRESENTER-API-SPIKE.md) filled (libraries, arrangements paths) |
+| **Manifest / matcher / writes** | Not started — **next: PR1 dry-run manifest** |
+
+Spec: [`PROPRESENTER-MVP.md`](./PROPRESENTER-MVP.md).
 
 ---
 
@@ -86,14 +95,13 @@ No `src/lib/propresenter/` or local bridge yet. Spec: [`PROPRESENTER-MVP.md`](./
 
 ## Next steps (agreed priority)
 
-### ProPresenter MVP — Phase 0 (next session)
+### ProPresenter MVP — Phase 0
 
-1. **API spike doc** — arrangement select / duplicate / create; enumeration fields per song.
-2. **Safety checklist** — new presentation only; explicit target ID; abort on wrong asset.
+Done on operator Mac: TCP transport, probe, spike doc. Optional later: controlled write spike (`PP_ALLOW_WRITES=true`, throwaway playlist only).
 
-### ProPresenter MVP — Phase 1+
+### ProPresenter MVP — Phase 1+ (next)
 
-3. **Manifest + dry-run** — `worship-plan` types, preview UI, zero PP writes (PR 1).
+1. **Manifest + dry-run** — `worship-plan` types, preview UI, zero PP writes (PR 1).
 4. **GRG/reference picker** — detect, select, or apply GRG; manual steps for debug.
 5. **Library index + matcher** — enumerate → cache; title/lyrics/CCLI match.
 6. **Local bridge + playlist write** — after signoff; golden plans `87788328`, `87788327`.

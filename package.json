@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "sync:roster-map": "npx tsx scripts/sync-roster-position-map.ts"
+    "sync:roster-map": "npx tsx scripts/sync-roster-position-map.ts",
+    "pp:status": "npx tsx scripts/propresenter-probe.ts --status",
+    "pp:diagnose": "npx tsx scripts/propresenter-probe.ts --diagnose",
+    "pp:probe": "npx tsx scripts/propresenter-probe.ts"
   },
   "dependencies": {
     "googleapis": "^171.4.0",

@@ -7,8 +7,8 @@
  *   npx tsx scripts/sync-roster-position-map.ts --plan-id=87788328
  */
 
-import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
+import { loadEnvLocal } from "./_load-env-local";
 import { buildAuthHeader, parsePositiveIntOrNull, pcoGetJsonOrThrow } from "../src/lib/pco/client";
 import {
   defaultRosterMapPath,
@@ -20,27 +20,6 @@ import {
   collectPositionNamesFromCatalog,
   loadServiceTypeTeamPositions,
 } from "../src/lib/pco/team-positions";
-
-function loadEnvLocal() {
-  const envPath = path.join(process.cwd(), ".env.local");
-  if (!existsSync(envPath)) return;
-  const text = readFileSync(envPath, "utf8");
-  for (const line of text.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eq = trimmed.indexOf("=");
-    if (eq <= 0) continue;
-    const key = trimmed.slice(0, eq).trim();
-    let value = trimmed.slice(eq + 1).trim();
-    if (
-      (value.startsWith("\"") && value.endsWith("\"")) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    if (!(key in process.env)) process.env[key] = value;
-  }
-}
 
 function parseArgs() {
   let serviceTypeId: number | null = null;

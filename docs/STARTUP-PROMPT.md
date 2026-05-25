@@ -31,7 +31,7 @@ MVP scope highlights (see PROPRESENTER-MVP.md):
 - Reference doc: detect/select existing GRG or run GRG apply; manual steps OK for debugging
 - 8-week out of scope: SMS bot, extra integrations, Ableton SOT
 
-NEXT TASK (suggested): Phase 0 completion — document whether Local API can select/duplicate/create arrangements and what enumeration returns per song; then start PR1: worship-plan manifest + dry-run preview (no ProPresenter writes).
+NEXT TASK (suggested): Phase 0 done on operator Mac (TCP port 64509, PP_TRANSPORT=tcp). Start PR1: worship-plan manifest + dry-run preview (no ProPresenter writes). See docs/PROPRESENTER-API-SPIKE.md.
 
 Repo: https://github.com/jdelgadillo19/church-planning-buddy
 Do not edit .cursor/plans/ unless I ask.
