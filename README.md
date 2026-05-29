@@ -19,7 +19,7 @@ Open [http://localhost:3000](http://localhost:3000).
 1. **Connect Google** (Worship Leader account with read access to org scans + Drive/Docs write).
 2. **Verify template** — default `Get Ready Guide (TEMPLATE)` with `{{GRG_DATE}}`, `{{GRG_SONG_LIST}}`, `{{GRG_SCANS_BEGIN}}`.
 3. Set **output title** (defaults to `Get Ready Guide YYYY.MM.DD` after plan load).
-4. Enter **Plan ID** (e.g. `87788328`) → per-song Drive resolution → **Preview** → **Approve** (recreates output from template).
+4. Enter **Plan ID** (e.g. `87788328`) → per-song Drive resolution → **Preview** → **Approve** (recreates output from template) → optional **Post PDF to Planning Center** on the plan item titled **Get Ready Guide**.
 
 OAuth tokens persist under `.data/google-tokens.json` (gitignored) for local MVP.
 
@@ -33,6 +33,7 @@ OAuth tokens persist under `.data/google-tokens.json` (gitignored) for local MVP
 | `POST /api/mvp/find-grg` | Verify template + optional existing output |
 | `POST /api/mvp/preview` | Preview payload before signoff |
 | `POST /api/mvp/apply` | Copy template → output, fill placeholders, append scans |
+| `POST /api/mvp/export-grg` | Export output doc as PDF and upload to PCO Get Ready Guide item |
 
 ## Re-consent Google
 

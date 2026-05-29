@@ -68,7 +68,7 @@ Fill in the **Your answer** column. Leave blank if “use default / engineer’s
 |---|----------|----------------|-------------|
 | 6.1 | Runtime order: **inspect → user picks sources → preview GRG → signoff → commit**, or different? | Orchestration | For MVP, yes, this is correct order |
 | 6.2 | If signoff is denied, **no writes** to GRG — confirm? | Safety | confirmed. User may skip in part or in full. Any skipped section receives no write. If the process is cancelled, the doc reverts any changes |
-| 6.3 | **Export** after signoff: **PDF**, **.docx**, **copy link**, or **in-place Google Doc update only** (no export)? | Export feature | For MVP, **in-place Google Doc update only**. In later post-MVP builds, the behavior will be to export the Get Ready Guide to a dedicated item in PCO  |
+| 6.3 | **Export** after signoff: **PDF**, **.docx**, **copy link**, or **in-place Google Doc update only** (no export)? | Export feature | Google Doc apply on signoff; optional **Post PDF to Planning Center** on the **Get Ready Guide** plan item with `.update.N` versioning. PCO token needs Services write + file upload. |
 | 6.4 | Out of scope for MVP: confirm **ProPresenter**, local `CPB_SONG_FILES_ROOT`, debug `blank-doc` UI? | Repo scope | Confirmed. These elements are outside MVP scope |
 | 7.1 | MVP usage: **local dev only** or **deployed** (e.g. Vercel) for weekly use? | Token/session storage | MVP is local only. Deployment will be first task for post-MVP build |
 | 7.2 | Re-run same plan ID: **replace** scan sections in place (idempotent) — confirm? | Double-run behavior | I don't understand the meaning of this |

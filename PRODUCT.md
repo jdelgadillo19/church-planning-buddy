@@ -110,7 +110,7 @@ Given a Planning Center **plan ID**, help the Worship Leader produce an updated 
 - User may **skip** sections (intro partial, individual songs); skipped sections get **no write**.
 - Cancel → **revert** any tentative changes (implement via preview copy or deferred `batchUpdate` only after signoff).
 
-**Export (MVP):** In-place Google Doc update only (no PDF/docx export). Post-MVP: export to PCO plan item.
+**Export:** After signoff, optional **Post PDF to Planning Center** exports the dated output Google Doc as PDF and uploads it to the plan item titled **Get Ready Guide** (Files tab). Re-uploads use `.update.1`, `.update.2`, … suffixes; the immediately previous PDF on that item is removed.
 
 ---
 

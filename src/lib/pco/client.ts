@@ -64,3 +64,80 @@ export async function pcoGetJsonOrThrow(url: string, auth: string) {
   if (parsed.kind !== "json") throw new Error("Planning Center returned non-JSON");
   return parsed.json;
 }
+
+export async function pcoPostJson(url: string, auth: string, body?: unknown) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      authorization: auth,
+      accept: "application/json",
+      ...(body !== undefined ? { "content-type": "application/json" } : {}),
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+    cache: "no-store",
+  });
+  const parsed = await readJsonOrText(res);
+  return { res, parsed };
+}
+
+export async function pcoPostJsonOrThrow(url: string, auth: string, body?: unknown) {
+  const { res, parsed } = await pcoPostJson(url, auth, body);
+  if (!res.ok) {
+    if (parsed.kind === "json") throw new Error(formatPcoError(res.status, parsed.json));
+    throw new Error(`Planning Center request failed (${res.status})`);
+  }
+  if (parsed.kind !== "json") throw new Error("Planning Center returned non-JSON");
+  return parsed.json;
+}
+
+export async function pcoDelete(url: string, auth: string) {
+  const res = await fetch(url, {
+    method: "DELETE",
+    headers: { authorization: auth, accept: "application/json" },
+    cache: "no-store",
+  });
+  const parsed = await readJsonOrText(res);
+  return { res, parsed };
+}
+
+export async function pcoDeleteOrThrow(url: string, auth: string) {
+  const { res, parsed } = await pcoDelete(url, auth);
+  if (!res.ok && res.status !== 404) {
+    if (parsed.kind === "json") throw new Error(formatPcoError(res.status, parsed.json));
+    throw new Error(`Planning Center request failed (${res.status})`);
+  }
+}
+
+/** Upload binary to PCO file service; returns file UUID for attachment create. */
+export async function pcoUploadFile(auth: string, buffer: Buffer, filename: string): Promise<string> {
+  const boundary = `----cpb${Date.now().toString(16)}`;
+  const preamble = Buffer.from(
+    `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename.replace(/"/g, '\\"')}"\r\nContent-Type: application/pdf\r\n\r\n`,
+    "utf8",
+  );
+  const closing = Buffer.from(`\r\n--${boundary}--\r\n`, "utf8");
+  const body = Buffer.concat([preamble, buffer, closing]);
+
+  const res = await fetch("https://upload.planningcenteronline.com/v2/files", {
+    method: "POST",
+    headers: {
+      authorization: auth,
+      accept: "application/json",
+      "content-type": `multipart/form-data; boundary=${boundary}`,
+    },
+    body,
+    cache: "no-store",
+  });
+
+  const parsed = await readJsonOrText(res);
+  if (!res.ok) {
+    if (parsed.kind === "json") throw new Error(formatPcoError(res.status, parsed.json));
+    throw new Error(`Planning Center file upload failed (${res.status})`);
+  }
+  if (parsed.kind !== "json") throw new Error("Planning Center file upload returned non-JSON");
+
+  const data = (parsed.json as { data?: Array<{ id?: string }> }).data;
+  const id = Array.isArray(data) ? data[0]?.id : undefined;
+  if (!id?.trim()) throw new Error("Planning Center file upload did not return a file id.");
+  return id.trim();
+}

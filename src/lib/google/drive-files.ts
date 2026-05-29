@@ -634,3 +634,37 @@ export async function exportDocPlainText(drive: drive_v3.Drive, fileId: string):
 
   throw new Error(`Unsupported file type for text export: ${mime}`);
 }
+
+/** Export a Google Doc (or PDF) as application/pdf bytes. */
+export async function exportGoogleDocPdf(drive: drive_v3.Drive, fileId: string): Promise<Buffer> {
+  const meta = await drive.files.get({
+    fileId,
+    fields: "mimeType,name",
+    ...SHARED_DRIVE_OPTS,
+  });
+  const mime = meta.data.mimeType ?? "";
+
+  if (mime === "application/pdf") {
+    const downloaded = await drive.files.get(
+      { fileId, alt: "media", ...SHARED_DRIVE_OPTS },
+      { responseType: "arraybuffer" },
+    );
+    const data = downloaded.data;
+    if (data instanceof ArrayBuffer) return Buffer.from(data);
+    if (Buffer.isBuffer(data)) return data;
+    throw new Error("Drive download did not return PDF bytes.");
+  }
+
+  if (mime !== "application/vnd.google-apps.document") {
+    throw new Error(`Cannot export to PDF from file type: ${mime}`);
+  }
+
+  const exported = await drive.files.export(
+    { fileId, mimeType: "application/pdf" },
+    { responseType: "arraybuffer" },
+  );
+  const data = exported.data;
+  if (data instanceof ArrayBuffer) return Buffer.from(data);
+  if (Buffer.isBuffer(data)) return data;
+  throw new Error("Drive export did not return PDF bytes.");
+}

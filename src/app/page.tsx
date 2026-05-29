@@ -229,6 +229,8 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [applyResult, setApplyResult] = useState<string | null>(null);
+  const [pcoUploadBusy, setPcoUploadBusy] = useState(false);
+  const [pcoUploadResult, setPcoUploadResult] = useState<string | null>(null);
   const [bulkResolving, setBulkResolving] = useState(false);
   const [showAliasPanel, setShowAliasPanel] = useState(false);
   const [aliasEntries, setAliasEntries] = useState<RosterMapEntry[]>([]);
@@ -334,6 +336,7 @@ export default function Home() {
     setBusy(true);
     setError(null);
     setApplyResult(null);
+    setPcoUploadResult(null);
     try {
       const res = await fetch("/api/mvp/plan", {
         method: "POST",
@@ -761,6 +764,46 @@ export default function Home() {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function postPdfToPlanningCenter() {
+    if (!bundle || !grgDoc?.id) return;
+    setPcoUploadBusy(true);
+    setError(null);
+    setPcoUploadResult(null);
+    try {
+      const res = await fetch("/api/mvp/export-grg", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          planId: String(bundle.planId),
+          serviceTypeId: String(bundle.serviceTypeId),
+          grgDocId: grgDoc.id,
+          grgTitle: grgTitle.trim(),
+        }),
+      });
+      const payload = (await res.json()) as
+        | {
+            ok: true;
+            filename: string;
+            attachmentId: string;
+            itemId: string;
+            itemTitle: string;
+            deletedAttachmentId?: string;
+          }
+        | { ok: false; error: string };
+      if (!res.ok || !payload.ok) throw new Error(payload.ok ? "Failed" : payload.error);
+      const replaced = payload.deletedAttachmentId
+        ? " Replaced the previous file on the Get Ready Guide item."
+        : "";
+      setPcoUploadResult(
+        `Uploaded "${payload.filename}" to Planning Center item "${payload.itemTitle}".${replaced}`,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload to Planning Center failed.");
+    } finally {
+      setPcoUploadBusy(false);
     }
   }
 
@@ -1416,6 +1459,12 @@ export default function Home() {
               </div>
             ) : null}
 
+            {pcoUploadResult ? (
+              <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-200">
+                {pcoUploadResult}
+              </div>
+            ) : null}
+
             <div className="flex flex-wrap gap-3">
               <button
                 type="button"
@@ -1426,6 +1475,14 @@ export default function Home() {
                 className="h-11 rounded-xl bg-emerald-600 px-4 text-sm font-medium text-white disabled:opacity-50"
               >
                 {busy ? "Applying…" : "Approve & update Google Doc"}
+              </button>
+              <button
+                type="button"
+                disabled={busy || pcoUploadBusy || !bundle || !grgDoc?.id || !googleConnected}
+                onClick={() => void postPdfToPlanningCenter()}
+                className="h-11 rounded-xl bg-blue-600 px-4 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {pcoUploadBusy ? "Uploading PDF…" : "Post PDF to Planning Center"}
               </button>
               <button
                 type="button"
@@ -1440,12 +1497,19 @@ export default function Home() {
                   setStep("Setup");
                   setPreview(null);
                   setApplyResult(null);
+                  setPcoUploadResult(null);
                 }}
                 className="h-11 rounded-xl border px-4 text-sm dark:border-zinc-800"
               >
                 Cancel
               </button>
             </div>
+            {!grgDoc?.id ? (
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                Approve &amp; update the Google Doc first, then post the PDF to the &quot;Get Ready
+                Guide&quot; item on this plan.
+              </p>
+            ) : null}
           </section>
         ) : null}
       </div>
