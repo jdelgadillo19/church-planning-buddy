@@ -14,6 +14,7 @@ Church Planning Buddy copies this document each apply. **Do not edit the templat
 | `{{GRG_DATE}}` | Own paragraph directly under the title |
 | `{{GRG_SONG_LIST}}` | Single paragraph where the bulleted song list should go (bullets can be applied to this paragraph in the template) |
 | `{{GRG_SCANS_BEGIN}}` | Own paragraph immediately after the intro page break (before any sample scan content) |
+| `{{STYLE_TITLE}}` `{{STYLE_CREDIT}}` `{{STYLE_BAR}}` `{{STYLE_LABEL}}` `{{STYLE_LYRIC}}` | One styled exemplar paragraph each, after `{{GRG_SCANS_BEGIN}}`, grouped into a single-column section (title/credit) and a two-column section (bar/label/lyric) — see **Scan style exemplars** below |
 
 3. Remove broken date text (e.g. `AMay 24th, 2026`) — the app replaces `{{GRG_DATE}}` from PCO.
 4. Keep roster / stage layout / team blocks **above** `{{GRG_SONG_LIST}}`.
@@ -32,6 +33,33 @@ Church Planning Buddy copies this document each apply. **Do not edit the templat
    **Sync catalog from PCO:** `npm run sync:roster-map -- --plan-id=YOUR_PLAN_ID` (or `--service-type-id=`). New positions discovered on plan load are appended automatically; use the Songs-step **Position aliases** panel to save overrides. Unconfigured `[ALIAS]` entries use the PCO position name with `BAND -` / `CHOIR -` prefix removed — never the literal `[ALIAS]` in the guide.
 
 6. Do not put placeholders inside tables or images.
+
+## Scan style exemplars (`{{STYLE_*}}`)
+
+Scan-section formatting is **template-driven**. After `{{GRG_SCANS_BEGIN}}`, the template holds one styled exemplar paragraph per scan line type. On apply, the engine reads each exemplar's run style, removes the exemplars, then inserts **plaintext** scan content that adopts the matching style. **Edit these paragraphs in the Drive template to restyle all scans — no code change.**
+
+| Token | Applies to | Golden style |
+|-------|-----------|--------------|
+| `{{STYLE_TITLE}}` | Song title (header) | 14pt bold |
+| `{{STYLE_CREDIT}}` | `By:` / `©` / `CCLI …` lines | 9pt, Helvetica Neue |
+| `{{STYLE_BAR}}` | Bar / interlude / instrumental markers (`4 Bar Intro …`) | 12pt bold, red `#FF0000` |
+| `{{STYLE_LABEL}}` | Section labels (`VERSE 1: …`, `CHORUS: … + All`) | 12pt bold, yellow highlight |
+| `{{STYLE_LYRIC}}` | Lyric body lines (and the trailing `END`) | 12pt regular |
+
+Each scan source line is classified by type (bar markers start with `N Bar `; labels start with `VERSE/CHORUS/BRIDGE/PRE-CHORUS/INTRO/TAG/OUTRO/CODA`; the header's first line is the title, the rest are credits; everything else is a lyric) and styled from the matching token. The source scan's own fonts/colors are **discarded**.
+
+### Column layout is template-driven
+
+The engine also reads the **column layout of the section each `{{STYLE_*}}` exemplar sits in** and reuses it for that line type. In the generated template the exemplars are grouped into two sections:
+
+- **Single-column section:** `{{STYLE_TITLE}}`, `{{STYLE_CREDIT}}` → each song header.
+- **Two-column section:** `{{STYLE_BAR}}`, `{{STYLE_LABEL}}`, `{{STYLE_LYRIC}}` → the lyrics block.
+
+When a song is written, the engine creates an explicit single-column header section (title + credits + a full-width divider rule it draws itself) and a two-column lyrics section, using the captured column layouts. The lyrics block never cycles between one and two columns, and reverts to single column at the next song's header (each song starts on a fresh page via a `NEXT_PAGE` section break). The intro page stays single-column. **This is manually configurable:** change a `{{STYLE_*}}` exemplar's containing section to 1 or 2 columns in the Google Doc and the next run's scans follow it (header layout from the title/credit section, lyrics layout from the bar/label/lyric section).
+
+The structural inserts use `endOfSegmentLocation` and styling is applied from re-read indices, so no document positions are predicted (an earlier version hand-computed indices across section breaks, which failed and silently fell back to unstyled plain text).
+
+Run `scripts/apply-grg-template-format.py` (see below) to regenerate these exemplars and their column sections; missing tokens are non-blocking (the engine falls back to the golden defaults above — single-column header, two-column lyrics — and surfaces a warning).
 
 ## Output document
 

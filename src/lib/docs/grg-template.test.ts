@@ -27,5 +27,10 @@ const range = findTextRange(mockDoc, GRG_PLACEHOLDER_DATE);
 if (!range || range.end - range.start !== GRG_PLACEHOLDER_DATE.length) {
   throw new Error("findTextRange failed");
 }
+// Start must equal the paragraph's own startIndex (no +1 offset); otherwise a
+// deletion anchored here leaves the marker's first character behind.
+if (range.start !== 30) {
+  throw new Error(`findTextRange start should be 30, got ${range.start}`);
+}
 
 console.log("grg-template tests ok");

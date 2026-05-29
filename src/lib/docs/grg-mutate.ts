@@ -72,9 +72,15 @@ function findIntroEndIndex(doc: docs_v1.Schema$Document, listRuns: TextRun[]): n
   return lastList.end;
 }
 
+/** Drop a leading arrangement code (e.g. `XX - `) so only the artist/band remains. */
+export function stripArrangementPrefix(artist: string): string {
+  return artist.trim().replace(/^[A-Za-z0-9]{1,4}\s*[-–—]\s*/, "").trim();
+}
+
 export function buildSongListLines(songs: SongListLine[]) {
   return songs.map((s) => {
-    const artist = s.artist.trim() ? ` - ${s.artist.trim()}` : "";
+    const cleanedArtist = stripArrangementPrefix(s.artist);
+    const artist = cleanedArtist ? ` - ${cleanedArtist}` : "";
     const key = s.key.trim() ? s.key.trim() : "?";
     return `Key of ${key}: ${s.title.trim()}${artist}`;
   });

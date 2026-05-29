@@ -4,6 +4,30 @@ export const GRG_PLACEHOLDER_DATE = "{{GRG_DATE}}";
 export const GRG_PLACEHOLDER_SONG_LIST = "{{GRG_SONG_LIST}}";
 export const GRG_PLACEHOLDER_SCANS_BEGIN = "{{GRG_SCANS_BEGIN}}";
 
+/**
+ * Scan-section style exemplar tokens. Each lives in its own template paragraph
+ * after {{GRG_SCANS_BEGIN}}, formatted exactly like its golden counterpart.
+ * The fill engine reads each token's run style, then inserts plaintext that
+ * adopts the matching style. Editing these in the template restyles all scans.
+ */
+export const GRG_PLACEHOLDER_STYLE_TITLE = "{{STYLE_TITLE}}";
+export const GRG_PLACEHOLDER_STYLE_CREDIT = "{{STYLE_CREDIT}}";
+export const GRG_PLACEHOLDER_STYLE_BAR = "{{STYLE_BAR}}";
+export const GRG_PLACEHOLDER_STYLE_LABEL = "{{STYLE_LABEL}}";
+export const GRG_PLACEHOLDER_STYLE_LYRIC = "{{STYLE_LYRIC}}";
+
+/** Line classification used to pick a scan style. */
+export type ScanLineType = "title" | "credit" | "bar" | "label" | "lyric";
+
+/** Maps each scan line type to its style exemplar token. */
+export const SCAN_STYLE_TOKENS: Record<ScanLineType, string> = {
+  title: GRG_PLACEHOLDER_STYLE_TITLE,
+  credit: GRG_PLACEHOLDER_STYLE_CREDIT,
+  bar: GRG_PLACEHOLDER_STYLE_BAR,
+  label: GRG_PLACEHOLDER_STYLE_LABEL,
+  lyric: GRG_PLACEHOLDER_STYLE_LYRIC,
+};
+
 export const DEFAULT_GRG_TEMPLATE_TITLE = "Get Ready Guide (TEMPLATE)";
 /** Placeholder in output doc name pattern — replaced with YYYY.MM.DD from the plan. */
 export const GRG_OUTPUT_DATE_PLACEHOLDER = "{{GRG_DATE}}";

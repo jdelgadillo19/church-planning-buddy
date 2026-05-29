@@ -3,6 +3,7 @@ import {
   GRG_PLACEHOLDER_DATE,
   GRG_PLACEHOLDER_SCANS_BEGIN,
   GRG_PLACEHOLDER_SONG_LIST,
+  SCAN_STYLE_TOKENS,
 } from "@/lib/config/grg";
 import type { PlanRosterRow } from "@/lib/pco/plan-team";
 import {
@@ -33,7 +34,9 @@ export function findTextRange(
 
     const idx = text.indexOf(needle);
     if (idx >= 0) {
-      const start = el.startIndex + 1 + idx;
+      // A paragraph's text begins at its own startIndex; no +1 offset. The
+      // prior +1 left the marker's first character behind on deletion.
+      const start = el.startIndex + idx;
       const end = start + needle.length;
       return { start, end };
     }
@@ -43,7 +46,7 @@ export function findTextRange(
 }
 
 export type GrgTemplateValidationIssue = {
-  code: "missing_marker" | "missing_roster_slot";
+  code: "missing_marker" | "missing_roster_slot" | "missing_style_token";
   marker?: string;
   section?: "band" | "choir";
   message: string;
@@ -149,6 +152,17 @@ export async function validateGrgTemplate(
       section,
       message: `${section.toUpperCase()} section has no roster placeholder line ([Name | …]: [Position]).`,
     });
+  }
+
+  // Scan style exemplars are non-blocking: apply falls back to golden defaults.
+  for (const token of Object.values(SCAN_STYLE_TOKENS)) {
+    if (!findTextRange(body, token)) {
+      issues.push({
+        code: "missing_style_token",
+        marker: token,
+        message: `Missing scan style exemplar ${token}; scans will use the built-in default style.`,
+      });
+    }
   }
 
   const introMarkersOk = hasDate && hasSongList;

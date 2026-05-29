@@ -189,7 +189,9 @@ function rosterBlockInSection(
 
 function buildFilledBlockFromConsolidated(lines: ConsolidatedRosterLine[]): string {
   if (lines.length === 0) return "";
-  return `${lines.map((l) => l.filledLine).join("\n")}\n`;
+  // No trailing newline: the delete range preserves the block's final paragraph
+  // mark, so the names map exactly onto it (a trailing \n would leave an empty row).
+  return lines.map((l) => l.filledLine).join("\n");
 }
 
 async function fillRosterSection(

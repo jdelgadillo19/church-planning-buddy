@@ -2,6 +2,8 @@
 
 This document describes the **target architecture** for format retention. MVP today uses a fixed Google Doc template with literal placeholders and scan import heuristics ([`GRG-TEMPLATE.md`](./GRG-TEMPLATE.md), [`GRG-SCAN-FORMAT.md`](./GRG-SCAN-FORMAT.md)).
 
+> **Shipped (first slice of this direction):** scan styling is now **template-driven** via `{{STYLE_*}}` exemplar tokens. The template carries one styled paragraph per scan line type (title / credit / bar / label / lyric); the engine reads those styles, classifies each source line, and inserts plaintext that adopts the matching style. Editing the exemplars in the template restyles all scans — the "edit the template to change format" goal, without a full extracted `FormatSpec` JSON yet. See [`GRG-TEMPLATE.md`](./GRG-TEMPLATE.md) → *Scan style exemplars* and [`src/lib/docs/scan-style-template.ts`](../src/lib/docs/scan-style-template.ts).
+
 ## Goal
 
 Planning Buddy should **fill content without destroying layout**. PCO and Drive supply data; the template supplies typography, columns, and section structure.

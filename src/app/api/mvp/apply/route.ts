@@ -4,7 +4,11 @@ import {
   isTemplateValidationBlocking,
   validateGrgTemplate,
 } from "@/lib/docs/grg-template";
-import { importScanSection } from "@/lib/docs/scan-import";
+import { applyScanColumns, importScanSection } from "@/lib/docs/scan-import";
+import {
+  captureScanStyleSpec,
+  removeScanStyleExemplars,
+} from "@/lib/docs/scan-style-template";
 import { resolveGrgOutputTitle, resolveGrgTemplateRef } from "@/lib/config/grg";
 import { getAuthedClients } from "@/lib/google/auth";
 import { recreateOutputFromTemplate } from "@/lib/google/drive-files";
@@ -83,6 +87,19 @@ export async function POST(req: Request) {
     const errors: string[] = [];
     const scanImports: Array<{ title: string; mode: string; warning?: string }> = [];
 
+    // Read scan styles from the {{STYLE_*}} exemplars before they are cleared,
+    // then remove them so they never appear in the output (incl. skip-scans).
+    const { spec: scanStyleSpec, missing: missingStyleTokens } =
+      await captureScanStyleSpec(docs, output.id);
+    await removeScanStyleExemplars(docs, output.id);
+    if (missingStyleTokens.length > 0) {
+      errors.push(
+        `Template missing scan style exemplars (used defaults): ${missingStyleTokens
+          .map((t) => `{{STYLE_${t.toUpperCase()}}}`)
+          .join(", ")}.`,
+      );
+    }
+
     const result = await applyTemplateGrgUpdate(docs, output.id, {
       dateFormatted: body.dateFormatted,
       songList: body.songList,
@@ -101,7 +118,11 @@ export async function POST(req: Request) {
       );
     }
 
-    let addPageBreak = true;
+    // The first rendered scan relies on the template's own page break after the
+    // intro (so song 1 lands on the page right after it); later songs each get a
+    // NEXT_PAGE break of their own.
+    let isFirstScan = true;
+    let importedAnyScan = false;
     for (const song of body.songs ?? []) {
       if (song.skipped) continue;
       if (!song.selectedFileId) {
@@ -115,9 +136,11 @@ export async function POST(req: Request) {
           output.id,
           song.selectedFileId,
           song.title,
-          addPageBreak,
+          !isFirstScan,
+          scanStyleSpec,
         );
-        addPageBreak = true;
+        isFirstScan = false;
+        importedAnyScan = true;
         scanImports.push({
           title: song.title,
           mode: imported.mode,
@@ -128,6 +151,16 @@ export async function POST(req: Request) {
         }
       } catch (e) {
         errors.push(`${song.title}: ${e instanceof Error ? e.message : "import failed"}`);
+      }
+    }
+
+    // Apply column layout once, after every scan is in place (per-song column
+    // updates get reset by the next song's section break).
+    if (importedAnyScan) {
+      try {
+        await applyScanColumns(docs, output.id, scanStyleSpec);
+      } catch (e) {
+        errors.push(`Column layout: ${e instanceof Error ? e.message : "failed"}`);
       }
     }
 
