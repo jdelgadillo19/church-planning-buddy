@@ -1,41 +1,14 @@
-import { buildAuthHeader, formatPcoError, parsePositiveIntOrNull, pcoGetJson, pcoGetJsonOrThrow } from "./client";
-import { buildOutputDocTitle } from "@/lib/config/grg";
+import {
+  buildAuthHeader,
+  formatPcoError,
+  parsePositiveIntOrNull,
+  pcoGetJson,
+  pcoGetJsonOrThrow,
+} from "./client";
 import { formatPlanDateLikeSample } from "./format-date";
 import { formatPitchKey, keyFromItemAttribute } from "./format-key";
 import { formatArrangementDisplayName } from "./arrangement-display";
-import { resolveScanDriveUrl } from "./attachment-open";
-import { loadPlanTeamMembers, loadPlanTeamPositionNames, type PlanRosterRow } from "./plan-team";
-import { persistNewPcoPositions } from "./roster-position-sync";
-import { listSongAttachments, pickBestScanAttachment, type ScanTier } from "./scans";
-import { isWorshipSongPlanItem } from "./plan-item-filters";
-
-export type { PlanRosterRow } from "./plan-team";
-
-export type PlanSongRow = {
-  itemId: string;
-  title: string;
-  key: string;
-  artist: string;
-  sequence: number;
-  scanTier: ScanTier;
-  scanName: string;
-  scanUrl: string;
-  scanAttachmentId?: string;
-  songId?: string;
-  arrangementId?: string;
-  warnings: string[];
-};
-
-export type PlanBundle = {
-  planId: number;
-  serviceTypeId: number;
-  dateFormatted: string;
-  dateRaw: string;
-  suggestedOutputTitle: string;
-  songs: PlanSongRow[];
-  roster: PlanRosterRow[];
-  rosterMapAdded: string[];
-};
+import type { ServiceOrderItem, ServiceOrderPlan, ServiceOrderSong } from "@/lib/slide-deck/types";
 
 type PcoItem = {
   id: string;
@@ -45,6 +18,7 @@ type PcoItem = {
     key_name?: string | null;
     position?: number | null;
     sequence?: number | null;
+    description?: string | null;
   };
   relationships?: {
     song?: { data?: { id: string } | null };
@@ -59,12 +33,6 @@ type PcoSong = {
   attributes?: { title?: string | null; author?: string | null };
 };
 
-type PcoArrangement = {
-  id: string;
-  type?: string;
-  attributes?: { name?: string | null };
-};
-
 type PcoKey = {
   id: string;
   type?: string;
@@ -75,13 +43,13 @@ type PcoKey = {
   };
 };
 
-function isSongItem(item: PcoItem) {
-  const type = (item.attributes?.item_type ?? "").toLowerCase();
-  const title = item.attributes?.title ?? "";
-  return isWorshipSongPlanItem(type, title);
-}
+type PcoArrangement = {
+  id: string;
+  type?: string;
+  attributes?: { name?: string | null };
+};
 
-function itemSequence(item: PcoItem) {
+function itemSequence(item: PcoItem): number {
   return item.attributes?.sequence ?? item.attributes?.position ?? 0;
 }
 
@@ -154,10 +122,44 @@ async function fetchArrangementName(
   }
 }
 
-export async function loadPlanBundle(input: {
+async function buildSongDetails(
+  item: PcoItem,
+  songById: Map<string, PcoSong>,
+  arrangementById: Map<string, PcoArrangement>,
+  keyById: Map<string, PcoKey>,
+  serviceTypeId: number,
+  planId: number,
+  auth: string,
+): Promise<ServiceOrderSong> {
+  const title = item.attributes?.title?.trim() || "(Untitled)";
+  const songId = item.relationships?.song?.data?.id;
+  const arrangementId = item.relationships?.arrangement?.data?.id;
+
+  let artist = "";
+  if (arrangementId) {
+    const linkedArr = arrangementById.get(arrangementId);
+    artist = formatArrangementDisplayName(linkedArr?.attributes?.name);
+    if (!artist && songId) artist = await fetchArrangementName(songId, arrangementId, auth);
+  }
+
+  const key = await resolveItemKey(item, keyById, serviceTypeId, planId, auth);
+
+  return {
+    itemId: item.id,
+    title,
+    key,
+    artist,
+    sequence: itemSequence(item),
+    songId: songId ?? undefined,
+    arrangementId: arrangementId ?? undefined,
+  };
+}
+
+/** Full PCO service order (all plan items in sequence). PCO-only — no GRG, no scans. */
+export async function loadPlanServiceOrder(input: {
   planId: string;
   serviceTypeId?: string;
-}): Promise<PlanBundle> {
+}): Promise<ServiceOrderPlan> {
   const auth = buildAuthHeader();
   if (!auth) {
     throw new Error(
@@ -179,14 +181,17 @@ export async function loadPlanBundle(input: {
     auth,
   );
   if (!planResp.res.ok) {
-    if (planResp.parsed.kind === "json") throw new Error(formatPcoError(planResp.res.status, planResp.parsed.json));
+    if (planResp.parsed.kind === "json") {
+      throw new Error(formatPcoError(planResp.res.status, planResp.parsed.json));
+    }
     throw new Error(`Planning Center request failed (${planResp.res.status})`);
   }
 
   const planData =
     planResp.parsed.kind === "json"
-      ? (planResp.parsed.json as { data?: { attributes?: { dates?: string; sort_date?: string; short_dates?: string } } })
-          .data?.attributes
+      ? (planResp.parsed.json as {
+          data?: { attributes?: { dates?: string; sort_date?: string; short_dates?: string } };
+        }).data?.attributes
       : undefined;
 
   const dateRaw = planData?.sort_date ?? planData?.dates ?? planData?.short_dates ?? "";
@@ -195,7 +200,9 @@ export async function loadPlanBundle(input: {
   const itemsUrl = `https://api.planningcenteronline.com/services/v2/service_types/${serviceTypeId}/plans/${planId}/items?include=song,key,arrangement`;
   const itemsResp = await pcoGetJson(itemsUrl, auth);
   if (!itemsResp.res.ok) {
-    if (itemsResp.parsed.kind === "json") throw new Error(formatPcoError(itemsResp.res.status, itemsResp.parsed.json));
+    if (itemsResp.parsed.kind === "json") {
+      throw new Error(formatPcoError(itemsResp.res.status, itemsResp.parsed.json));
+    }
     throw new Error(`Planning Center request failed (${itemsResp.res.status})`);
   }
 
@@ -204,7 +211,7 @@ export async function loadPlanBundle(input: {
       ? (itemsResp.parsed.json as { data?: PcoItem[]; included?: Array<PcoSong | PcoKey | PcoArrangement> })
       : { data: [], included: [] };
 
-  const items = Array.isArray(itemsJson.data) ? itemsJson.data : [];
+  const rawItems = Array.isArray(itemsJson.data) ? itemsJson.data : [];
   const included = Array.isArray(itemsJson.included) ? itemsJson.included : [];
 
   const songById = new Map<string, PcoSong>();
@@ -217,88 +224,40 @@ export async function loadPlanBundle(input: {
     else songById.set(row.id, row as PcoSong);
   }
 
-  const orderedSongItems = items.filter(isSongItem).toSorted((a, b) => itemSequence(a) - itemSequence(b));
+  const orderedItems = rawItems.toSorted((a, b) => itemSequence(a) - itemSequence(b));
+  const items: ServiceOrderItem[] = [];
 
-  const songs: PlanSongRow[] = [];
-
-  for (const item of orderedSongItems) {
-    const itemId = item.id;
+  for (const item of orderedItems) {
+    const itemType = (item.attributes?.item_type ?? "item").trim() || "item";
     const title = item.attributes?.title?.trim() || "(Untitled)";
-    const songId = item.relationships?.song?.data?.id;
-    const warnings: string[] = [];
-
-    const arrangementId = item.relationships?.arrangement?.data?.id;
-
-    let artist = "";
-    if (arrangementId) {
-      const linkedArr = arrangementById.get(arrangementId);
-      artist = formatArrangementDisplayName(linkedArr?.attributes?.name);
-      if (!artist && songId) artist = await fetchArrangementName(songId, arrangementId, auth);
-    }
-
-    const key = await resolveItemKey(item, keyById, serviceTypeId, planId, auth);
-    if (!key) warnings.push("Key not found on plan item.");
-
-    let scanTier: ScanTier = "red";
-    let scanName = "";
-    let scanUrl = "";
-    let scanAttachmentId: string | undefined;
-
-    if (!songId) {
-      warnings.push("No linked song on plan item.");
-    } else {
-      const attachments = await listSongAttachments(songId, auth, arrangementId);
-      const pick = pickBestScanAttachment(attachments, arrangementId);
-      if (!pick) {
-        warnings.push("No song scan attachment found.");
-      } else {
-        scanTier = pick.tier;
-        scanName = pick.name;
-        scanAttachmentId = pick.attachmentId;
-        scanUrl = await resolveScanDriveUrl(auth, {
-          url: pick.url,
-          attachmentId: pick.attachmentId,
-          songId,
-          arrangementId,
-        });
-        if (!scanUrl) {
-          warnings.push(
-            "Song scan found in PCO but Drive link could not be resolved. Try Find blank scan after reconnecting Google.",
-          );
-        } else if (pick.tier === "yellow") {
-          warnings.push("Using non-MASTER scan (yellow tier).");
-        }
-      }
-    }
-
-    songs.push({
-      itemId,
+    const base: ServiceOrderItem = {
+      itemId: item.id,
+      itemType,
       title,
-      key,
-      artist,
       sequence: itemSequence(item),
-      scanTier,
-      scanName,
-      scanUrl,
-      scanAttachmentId,
-      songId: songId ?? undefined,
-      arrangementId: arrangementId ?? undefined,
-      warnings,
-    });
-  }
+      description: item.attributes?.description?.trim() || undefined,
+    };
 
-  const planPositionNames = await loadPlanTeamPositionNames(serviceTypeId, planId, auth);
-  const { map: positionMap, added: rosterMapAdded } = persistNewPcoPositions(planPositionNames);
-  const roster = await loadPlanTeamMembers(serviceTypeId, planId, auth, positionMap);
+    if (itemType.toLowerCase() === "song") {
+      base.song = await buildSongDetails(
+        item,
+        songById,
+        arrangementById,
+        keyById,
+        serviceTypeId,
+        planId,
+        auth,
+      );
+    }
+
+    items.push(base);
+  }
 
   return {
     planId,
     serviceTypeId,
-    dateFormatted,
     dateRaw: String(dateRaw),
-    suggestedOutputTitle: buildOutputDocTitle(dateRaw),
-    songs,
-    roster,
-    rosterMapAdded,
+    dateFormatted,
+    items,
   };
 }

@@ -10,7 +10,9 @@
     "sync:roster-map": "npx tsx scripts/sync-roster-position-map.ts",
     "pp:status": "npx tsx scripts/propresenter-probe.ts --status",
     "pp:diagnose": "npx tsx scripts/propresenter-probe.ts --diagnose",
-    "pp:probe": "npx tsx scripts/propresenter-probe.ts"
+    "pp:probe": "npx tsx scripts/propresenter-probe.ts",
+    "slide-deck:manifest": "npx tsx scripts/slide-deck-manifest.ts",
+    "slide-deck:apply": "npx tsx scripts/slide-deck-apply.ts"
   },
   "dependencies": {
     "googleapis": "^171.4.0",

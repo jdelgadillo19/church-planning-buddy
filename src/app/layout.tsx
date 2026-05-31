@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Church Planning Buddy",
-  description: "Update Get Ready Guide from Planning Center plans",
+  description: "Ministry operations tools — Get Ready Guide, Slide Deck Generator, and more",
 };
 
 export default function RootLayout({
