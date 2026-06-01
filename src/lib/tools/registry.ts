@@ -29,9 +29,10 @@ export const TOOLS: ToolDefinition[] = [
   {
     id: "messaging",
     name: "Team Messaging",
-    description: "Admin-in-the-loop weekly workflows for roster checklists and volunteer reminders.",
+    description:
+      "Sheet-backed reminders: headless draft to you, forward to the group; optional desktop post.",
     href: "/messaging",
-    status: "coming_soon",
+    status: "active",
   },
   {
     id: "tasks",

@@ -80,3 +80,12 @@ export async function loadTokensForCurrentSession(): Promise<GoogleTokens | null
 export function googleConnected(tokens: GoogleTokens | null) {
   return Boolean(tokens?.access_token || tokens?.refresh_token);
 }
+
+/** First stored session — for local CLI runners (launchd) without browser cookies. */
+export async function loadAnyStoredGoogleTokens(): Promise<GoogleTokens | null> {
+  const disk = await readDiskStore();
+  for (const tokens of Object.values(disk)) {
+    if (googleConnected(tokens)) return tokens;
+  }
+  return null;
+}

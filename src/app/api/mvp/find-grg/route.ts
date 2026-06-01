@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveGrgOutputTitle, resolveGrgTemplateRef } from "@/lib/config/grg";
-import { findDocByTitle } from "@/lib/google/drive-files";
+import { findGrgOutputDocFallback } from "@/lib/google/grg-drive-folders";
 import { resolveTemplateDoc } from "@/lib/google/grg-resolve";
 import { getAuthedClients } from "@/lib/google/auth";
 import { googleConnected, loadTokensForCurrentSession } from "@/app/api/auth/google/_session";
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
 
     const { drive } = getAuthedClients(tokens!);
     const template = await resolveTemplateDoc(drive, templateRef);
-    const output = await findDocByTitle(drive, outputTitle);
+    const output = await findGrgOutputDocFallback(drive, outputTitle);
 
     return NextResponse.json({
       ok: true,

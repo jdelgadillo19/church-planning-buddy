@@ -10,6 +10,8 @@ function must(name: string) {
 export const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/drive",
   "https://www.googleapis.com/auth/documents",
+  "https://www.googleapis.com/auth/spreadsheets.readonly",
+  "https://www.googleapis.com/auth/calendar.events",
 ];
 
 export function getOAuthClient() {
@@ -26,5 +28,7 @@ export function getAuthedClients(tokens: GoogleTokens) {
     auth,
     drive: google.drive({ version: "v3", auth }),
     docs: google.docs({ version: "v1", auth }),
+    sheets: google.sheets({ version: "v4", auth }),
+    calendar: google.calendar({ version: "v3", auth }),
   };
 }

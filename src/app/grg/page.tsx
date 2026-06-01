@@ -301,15 +301,13 @@ export default function Home() {
     return planId.trim().length > 0 && googleConnected && templateDoc?.id;
   }, [planId, googleConnected, templateDoc]);
 
-  async function verifyGrgSetup() {
-    setBusy(true);
-    setError(null);
-    try {
+  const lookupGrgOnDrive = useCallback(
+    async (outputTitle: string) => {
       const res = await fetch("/api/mvp/find-grg", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          title: grgTitle.trim(),
+          title: outputTitle.trim(),
           templateTitle: templateTitle.trim(),
         }),
       });
@@ -324,6 +322,23 @@ export default function Home() {
       if (!res.ok || !payload.ok) throw new Error(payload.ok ? "Failed" : payload.error);
       setTemplateDoc(payload.template);
       setGrgDoc(payload.output);
+      return payload;
+    },
+    [templateTitle],
+  );
+
+  useEffect(() => {
+    if (step !== "Sign off" || !bundle || !googleConnected || !grgTitle.trim()) return;
+    void lookupGrgOnDrive(grgTitle).catch(() => {
+      /* keep prior grgDoc if lookup fails */
+    });
+  }, [step, bundle?.planId, grgTitle, googleConnected, lookupGrgOnDrive]);
+
+  async function verifyGrgSetup() {
+    setBusy(true);
+    setError(null);
+    try {
+      await lookupGrgOnDrive(grgTitle);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
       setTemplateDoc(null);
@@ -377,6 +392,11 @@ export default function Home() {
       setStep("Songs");
       const generation = ++autoResolveGeneration.current;
       void resolveAllSongCandidates(flows, generation);
+      if (googleConnected) {
+        void lookupGrgOnDrive(payload.bundle.suggestedOutputTitle).catch(() => {
+          setGrgDoc(null);
+        });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
@@ -1475,7 +1495,7 @@ export default function Home() {
                 onClick={() => void postPdfToPlanningCenter()}
                 className="h-11 rounded-xl bg-blue-600 px-4 text-sm font-medium text-white disabled:opacity-50"
               >
-                {pcoUploadBusy ? "Uploading PDF…" : "Post PDF to Planning Center"}
+                {pcoUploadBusy ? "Uploading PDF…" : "Print & attach to Planning Center"}
               </button>
               <button
                 type="button"
@@ -1499,10 +1519,15 @@ export default function Home() {
             </div>
             {!grgDoc?.id ? (
               <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                Approve &amp; update the Google Doc first, then post the PDF to the &quot;Get Ready
-                Guide&quot; item on this plan.
+                No dated output in Drive yet — run Approve or place{" "}
+                <strong>{grgTitle}</strong> in the Output folder, then print &amp; attach.
               </p>
-            ) : null}
+            ) : (
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                Using output doc <strong>{grgDoc.name}</strong> from Drive (Approve optional if it is
+                already up to date).
+              </p>
+            )}
           </section>
         ) : null}
     </ToolShell>

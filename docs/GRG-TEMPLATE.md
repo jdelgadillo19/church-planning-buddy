@@ -61,19 +61,30 @@ The structural inserts use `endOfSegmentLocation` and styling is applied from re
 
 Run `scripts/apply-grg-template-format.py` (see below) to regenerate these exemplars and their column sections; missing tokens are non-blocking (the engine falls back to the golden defaults above — single-column header, two-column lyrics — and surfaces a warning).
 
+## Drive folders
+
+| Path | Role |
+|------|------|
+| `church-planning-buddy/Get Ready Guide/Template/` | **`Get Ready Guide (TEMPLATE)`** — never modified by the app |
+| `church-planning-buddy/Get Ready Guide/Output/` | Dated output docs (e.g. `Get Ready Guide 2026.05.24`) |
+
+Override paths or folder IDs via `.env.local` (see `GRG_*_FOLDER_*` in `.env.local.example`).
+
 ## Output document
 
 Each **Approve** run:
 
-1. Trashes any existing doc named **`GRG_OUTPUT_TITLE`** (default: `Get Ready Guide (Good Friday)`).
-2. Copies the template to that name.
+1. Trashes any existing doc with **`GRG_OUTPUT_TITLE`** in the **Output** folder (default name: `Get Ready Guide 2026.05.24`).
+2. Copies the template into **Output** with that name.
 3. Fills placeholders and appends song scans.
 
 The template file’s modified time should stay unchanged; only the output doc updates.
 
+**Print & attach:** If a dated output already exists in **Output**, you can post its PDF to Planning Center without re-running Approve.
+
 ## Env vars
 
-See `.env.local.example` for `GRG_TEMPLATE_TITLE`, `GRG_TEMPLATE_ID`, and `GRG_OUTPUT_TITLE`.
+See `.env.local.example` for folder paths, `GRG_TEMPLATE_TITLE`, `GRG_TEMPLATE_ID`, and `GRG_OUTPUT_TITLE`.
 
 After changing Google scopes, use **Reconnect Google** in the app.
 

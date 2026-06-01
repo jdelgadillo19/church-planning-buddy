@@ -571,10 +571,14 @@ export async function copyGoogleDoc(
   drive: drive_v3.Drive,
   templateId: string,
   outputName: string,
+  parentFolderId?: string,
 ): Promise<DriveCandidate> {
   const res = await drive.files.copy({
     fileId: templateId,
-    requestBody: { name: outputName },
+    requestBody: {
+      name: outputName,
+      ...(parentFolderId ? { parents: [parentFolderId] } : {}),
+    },
     fields: "id,name,mimeType,webViewLink",
     ...SHARED_DRIVE_OPTS,
   });
@@ -588,20 +592,54 @@ export async function copyGoogleDoc(
 }
 
 /** Remove an existing output doc so the next copy is idempotent. */
-export async function deleteDocIfExists(drive: drive_v3.Drive, title: string): Promise<void> {
-  const existing = await findDocByTitle(drive, title);
+export async function deleteDocIfExists(
+  drive: drive_v3.Drive,
+  title: string,
+  parentFolderId?: string,
+): Promise<void> {
+  const existing = parentFolderId
+    ? await findDocByTitleInParent(drive, title, parentFolderId)
+    : await findDocByTitle(drive, title);
   if (!existing) return;
   await drive.files.delete({ fileId: existing.id, ...SHARED_DRIVE_OPTS });
 }
 
-/** Fresh output from template: trash prior output (if any), then copy template by name. */
+async function findDocByTitleInParent(
+  drive: drive_v3.Drive,
+  title: string,
+  parentFolderId: string,
+): Promise<DriveCandidate | null> {
+  const escaped = title.replaceAll("'", "\\'");
+  const q =
+    `mimeType='application/vnd.google-apps.document' and name = '${escaped}' ` +
+    `and '${parentFolderId}' in parents and trashed=false`;
+  const list = await drive.files.list({
+    q,
+    fields: "files(id,name,mimeType,webViewLink)",
+    pageSize: 5,
+    orderBy: "modifiedTime desc",
+    corpora: "allDrives",
+    ...SHARED_DRIVE_OPTS,
+  });
+  const first = (list.data.files ?? []).find((f) => f.id && f.name);
+  if (!first?.id) return null;
+  return {
+    id: first.id,
+    name: first.name ?? title,
+    mimeType: first.mimeType ?? "application/vnd.google-apps.document",
+    webViewLink: first.webViewLink ?? undefined,
+  };
+}
+
+/** Fresh output from template: trash prior output (if any), then copy template into the output folder. */
 export async function recreateOutputFromTemplate(
   drive: drive_v3.Drive,
   templateId: string,
   outputTitle: string,
+  outputFolderId: string,
 ): Promise<DriveCandidate> {
-  await deleteDocIfExists(drive, outputTitle);
-  return copyGoogleDoc(drive, templateId, outputTitle);
+  await deleteDocIfExists(drive, outputTitle, outputFolderId);
+  return copyGoogleDoc(drive, templateId, outputTitle, outputFolderId);
 }
 
 export async function exportDocPlainText(drive: drive_v3.Drive, fileId: string): Promise<string> {

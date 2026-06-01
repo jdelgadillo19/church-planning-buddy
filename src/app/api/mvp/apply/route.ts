@@ -12,6 +12,7 @@ import {
 import { resolveGrgOutputTitle, resolveGrgTemplateRef } from "@/lib/config/grg";
 import { getAuthedClients } from "@/lib/google/auth";
 import { recreateOutputFromTemplate } from "@/lib/google/drive-files";
+import { resolveGrgOutputFolderId } from "@/lib/google/grg-drive-folders";
 import { resolveTemplateDoc } from "@/lib/google/grg-resolve";
 import type { PlanRosterRow } from "@/lib/pco/plan-team";
 import { resolveGrgSection } from "@/lib/pco/roster-team-scope";
@@ -82,7 +83,13 @@ export async function POST(req: Request) {
       );
     }
 
-    const output = await recreateOutputFromTemplate(drive, template.id, outputTitle);
+    const outputFolderId = await resolveGrgOutputFolderId(drive);
+    const output = await recreateOutputFromTemplate(
+      drive,
+      template.id,
+      outputTitle,
+      outputFolderId,
+    );
 
     const errors: string[] = [];
     const scanImports: Array<{ title: string; mode: string; warning?: string }> = [];
