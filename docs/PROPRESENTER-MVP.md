@@ -8,6 +8,8 @@ Strategic context: [`party/output/party-2026-05-24.md`](./party/output/party-202
 
 The **GRG MVP** remains documented in [`PRODUCT.md`](../PRODUCT.md) (shipped). This document is the **active** product spec for the next build.
 
+**Related (separate track):** [PROPRESENTER-SYNC.md](./PROPRESENTER-SYNC.md) — staged change-set sync to **replace unsafe whole-bundle Drive sync** (not generation from PCO/GRG). Build sequencing: finish this doc’s PR1 first, then sync Phase 1 per [planning/PROPRESENTER-SYNC-SEQUENCING.md](./planning/PROPRESENTER-SYNC-SEQUENCING.md).
+
 ---
 
 ## Goal (one sentence)

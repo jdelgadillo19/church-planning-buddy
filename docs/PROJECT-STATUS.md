@@ -1,6 +1,6 @@
 # Church Planning Buddy — project status
 
-**Last updated:** 2026-05-24  
+**Last updated:** 2026-06-01  
 **Repo:** https://github.com/jdelgadillo19/church-planning-buddy  
 **Latest commit (at update):** `e75d4c3` — song scan retrieval (yellow fallback, manual Drive picker)
 
@@ -10,6 +10,8 @@ Use this file as the **session handoff** doc.
 |-----|---------|
 | [`PRODUCT.md`](../PRODUCT.md) | **GRG MVP** spec (shipped) |
 | [`PROPRESENTER-MVP.md`](./PROPRESENTER-MVP.md) | **Active** next epic — PCO + GRG → ProPresenter |
+| [`PROPRESENTER-SYNC.md`](./PROPRESENTER-SYNC.md) | Staged sync replacement (Phase 1–2 planned; after PR1) |
+| [`PROPRESENTER-SYNC-ARCHITECTURE.md`](./PROPRESENTER-SYNC-ARCHITECTURE.md) | Sync system architecture |
 | [`STARTUP-PROMPT.md`](./STARTUP-PROMPT.md) | Copy-paste block for next Cursor session |
 | [`GRG-TEMPLATE.md`](./GRG-TEMPLATE.md) | Placeholder contract & upload steps |
 | [`GRG-FORMAT-SPEC.md`](./GRG-FORMAT-SPEC.md) | Post-MVP format architecture |
