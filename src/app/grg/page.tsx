@@ -49,6 +49,26 @@ type PlanBundle = {
   rosterMapAdded: string[];
 };
 
+type UpcomingPlanOption = {
+  planId: number;
+  serviceTypeId: number;
+  sortDate: string;
+  dateLabel: string;
+  timeLabel: string;
+  label: string;
+  serviceTypeName?: string;
+};
+
+type ServiceTypeOption = {
+  serviceTypeId: number;
+  name: string;
+};
+
+type PlanScope = {
+  name: string;
+  source: "env" | "profile";
+};
+
 type RosterMapEntry = {
   pcoPosition: string;
   mapValue?: string;
@@ -185,11 +205,12 @@ type PreviewSection = {
   importMode?: string;
 };
 
-const STEPS = ["Setup", "Songs", "Preview", "Sign off"] as const;
+const STEPS = ["Setup", "Review", "Preview", "Sign off"] as const;
 type Step = (typeof STEPS)[number];
 
 const DEFAULT_GRG_OUTPUT_TITLE_PATTERN = "Get Ready Guide {{GRG_DATE}}";
 const DEFAULT_GRG_TEMPLATE_TITLE = "Get Ready Guide (TEMPLATE)";
+const RESOLVING_STATUS = "Resolving…";
 
 function tierClass(tier: ScanTier) {
   if (tier === "green") return "text-emerald-600 dark:text-emerald-400";
@@ -197,10 +218,64 @@ function tierClass(tier: ScanTier) {
   return "text-red-600 dark:text-red-400";
 }
 
+function songAttentionReasons(flow: SongWorkflow) {
+  const reasons: string[] = [];
+
+  if (flow.song.scanTier === "yellow") {
+    reasons.push("Yellow-tier scan needs signoff");
+  }
+  if (flow.song.scanTier === "red") {
+    reasons.push("No usable scan found");
+  }
+  if (flow.skipped) {
+    reasons.push("Skipped");
+  }
+  if (flow.needsAck) {
+    reasons.push("Non-Drive link needs acknowledgement");
+  }
+  if (flow.lastResolveError) {
+    reasons.push(flow.lastResolveError);
+  }
+  if (!flow.skipped && flow.candidates.length > 1) {
+    reasons.push("Multiple candidate docs");
+  }
+  if (
+    !flow.skipped &&
+    flow.status !== RESOLVING_STATUS &&
+    !flow.selectedFileId &&
+    flow.song.scanTier !== "red"
+  ) {
+    reasons.push("No selected scan doc");
+  }
+
+  return [...new Set(reasons)];
+}
+
+function songNeedsAttention(flow: SongWorkflow) {
+  return songAttentionReasons(flow).length > 0;
+}
+
+function songIsCleanGreen(flow: SongWorkflow) {
+  return (
+    flow.song.scanTier === "green" &&
+    !flow.skipped &&
+    !flow.needsAck &&
+    !flow.lastResolveError &&
+    flow.status !== RESOLVING_STATUS &&
+    Boolean(flow.selectedFileId) &&
+    flow.candidates.length <= 1
+  );
+}
+
 export default function Home() {
   const [step, setStep] = useState<Step>("Setup");
-  const [planId, setPlanId] = useState("87788328");
+  const [planId, setPlanId] = useState("");
   const [serviceTypeId, setServiceTypeId] = useState("");
+  const [serviceTypeOptions, setServiceTypeOptions] = useState<ServiceTypeOption[]>([]);
+  const [planScope, setPlanScope] = useState<PlanScope | null>(null);
+  const [upcomingPlans, setUpcomingPlans] = useState<UpcomingPlanOption[]>([]);
+  const [upcomingPlansBusy, setUpcomingPlansBusy] = useState(false);
+  const [upcomingPlansError, setUpcomingPlansError] = useState<string | null>(null);
   const [grgTitle, setGrgTitle] = useState(DEFAULT_GRG_OUTPUT_TITLE_PATTERN);
   const [templateTitle, setTemplateTitle] = useState(DEFAULT_GRG_TEMPLATE_TITLE);
   const [googleConnected, setGoogleConnected] = useState(false);
@@ -245,6 +320,11 @@ export default function Home() {
     canApplyScans: boolean;
   } | null>(null);
   const autoResolveGeneration = useRef(0);
+  const autoPreviewAttempted = useRef(false);
+  const buildPreviewRef = useRef<(() => Promise<void>) | null>(null);
+  const loadUpcomingPlanOptionsRef = useRef<((serviceTypeId?: string) => Promise<void>) | null>(
+    null,
+  );
 
   const guestRosterRows = (bundle?.roster ?? []).filter((r) => r.grgSection === "guest");
   const guestAssignmentsComplete =
@@ -295,7 +375,39 @@ export default function Home() {
     if (params.get("google") === "connected") refreshGoogle();
   }, [refreshGoogle]);
 
+  useEffect(() => {
+    window.setTimeout(() => {
+      void loadUpcomingPlanOptionsRef.current?.("");
+    }, 0);
+  }, []);
+
   const activeSong = songFlows[activeSongIndex];
+
+  const selectedUpcomingPlan = useMemo(
+    () => upcomingPlans.find((plan) => String(plan.planId) === planId) ?? null,
+    [planId, upcomingPlans],
+  );
+
+  const attentionSongIndexes = useMemo(
+    () =>
+      songFlows
+        .map((flow, index) => ({ flow, index }))
+        .filter(({ flow }) => songNeedsAttention(flow))
+        .map(({ index }) => index),
+    [songFlows],
+  );
+
+  const cleanGreenCount = useMemo(
+    () => songFlows.filter((flow) => songIsCleanGreen(flow)).length,
+    [songFlows],
+  );
+
+  const autoPreviewReady =
+    Boolean(bundle) &&
+    songFlows.length > 0 &&
+    songFlows.every((flow) => songIsCleanGreen(flow)) &&
+    guestAssignmentsComplete &&
+    rosterConflictSelectionsComplete;
 
   const canLeaveSetup = useMemo(() => {
     return planId.trim().length > 0 && googleConnected && templateDoc?.id;
@@ -348,6 +460,60 @@ export default function Home() {
     }
   }
 
+  async function loadUpcomingPlanOptions(nextServiceTypeId = serviceTypeId) {
+    setUpcomingPlansBusy(true);
+    setUpcomingPlansError(null);
+    try {
+      const res = await fetch("/api/mvp/upcoming-plans", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          serviceTypeId: nextServiceTypeId.trim() || undefined,
+        }),
+      });
+      const payload = (await res.json()) as
+        | {
+            ok: true;
+            serviceTypeId?: number;
+            scopeName?: string;
+            scopeSource?: "env" | "profile";
+            defaultPlanId?: number;
+            serviceTypes?: ServiceTypeOption[];
+            plans: UpcomingPlanOption[];
+          }
+        | { ok: false; error: string };
+      if (!res.ok || !payload.ok) throw new Error(payload.ok ? "Failed" : payload.error);
+
+      setServiceTypeOptions(payload.serviceTypes ?? []);
+      setPlanScope(
+        payload.scopeName && payload.scopeSource
+          ? { name: payload.scopeName, source: payload.scopeSource }
+          : null,
+      );
+      setUpcomingPlans(payload.plans);
+      const currentPlan = payload.plans.find((plan) => String(plan.planId) === planId);
+      const defaultPlan =
+        payload.plans.find((plan) => plan.planId === payload.defaultPlanId) ?? null;
+      const nextPlan = currentPlan ?? defaultPlan ?? payload.plans[0] ?? null;
+      if (nextPlan) {
+        setPlanId(String(nextPlan.planId));
+        setServiceTypeId(String(nextPlan.serviceTypeId));
+      } else {
+        setPlanId("");
+        if (payload.serviceTypeId) setServiceTypeId(String(payload.serviceTypeId));
+      }
+      if (payload.plans.length === 0) {
+        setUpcomingPlansError("No upcoming plans found for this service type.");
+      }
+    } catch (e) {
+      setUpcomingPlans([]);
+      setPlanId("");
+      setUpcomingPlansError(e instanceof Error ? e.message : "Failed to load upcoming plans.");
+    } finally {
+      setUpcomingPlansBusy(false);
+    }
+  }
+
   async function loadPlan() {
     setBusy(true);
     setError(null);
@@ -383,13 +549,15 @@ export default function Home() {
             ? "No scan — skip or fix in PCO"
             : (song.scanTier === "green" || song.scanTier === "yellow") &&
                 (song.scanUrl?.trim() || song.scanAttachmentId)
-              ? "Resolving…"
+              ? RESOLVING_STATUS
               : "Pending",
         needsAck: false,
       }));
       setSongFlows(flows);
       setActiveSongIndex(0);
-      setStep("Songs");
+      setPreview(null);
+      autoPreviewAttempted.current = false;
+      setStep("Review");
       const generation = ++autoResolveGeneration.current;
       void resolveAllSongCandidates(flows, generation);
       if (googleConnected) {
@@ -480,7 +648,7 @@ export default function Home() {
     setBusy(true);
     setError(null);
     updateSongFlow(index, {
-      status: "Resolving…",
+      status: RESOLVING_STATUS,
       lastResolveError: undefined,
       showManualPcoPicker: false,
     });
@@ -547,6 +715,12 @@ export default function Home() {
       next[index] = { ...next[index], ...patch };
       return next;
     });
+  }
+
+  function selectUpcomingPlan(nextPlanId: string) {
+    setPlanId(nextPlanId);
+    const plan = upcomingPlans.find((option) => String(option.planId) === nextPlanId);
+    if (plan) setServiceTypeId(String(plan.serviceTypeId));
   }
 
   function songListForApply() {
@@ -828,6 +1002,26 @@ export default function Home() {
     }
   }
 
+  useEffect(() => {
+    buildPreviewRef.current = buildPreview;
+    loadUpcomingPlanOptionsRef.current = loadUpcomingPlanOptions;
+  });
+
+  useEffect(() => {
+    if (step !== "Review") return;
+    if (busy || bulkResolving || autoPreviewAttempted.current || !autoPreviewReady) return;
+
+    autoPreviewAttempted.current = true;
+    window.setTimeout(() => {
+      void buildPreviewRef.current?.();
+    }, 0);
+  }, [
+    autoPreviewReady,
+    bulkResolving,
+    busy,
+    step,
+  ]);
+
   return (
     <ToolShell toolId="grg">
         <nav className="flex flex-wrap gap-2" aria-label="Get Ready Guide steps">
@@ -867,20 +1061,80 @@ export default function Home() {
         {step === "Setup" ? (
           <section className="flex flex-col gap-4 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
             <label className="flex flex-col gap-2">
-              <span className="text-sm font-medium">Plan ID</span>
-              <input
+              <span className="text-sm font-medium">Plan</span>
+              <select
                 value={planId}
-                onChange={(e) => setPlanId(e.target.value)}
+                onChange={(e) => selectUpcomingPlan(e.target.value)}
+                disabled={upcomingPlansBusy}
                 className="h-11 rounded-xl border border-zinc-200 px-3 text-sm dark:border-zinc-800 dark:bg-zinc-950"
-              />
+              >
+                <option value="">
+                  {upcomingPlansBusy ? "Loading upcoming plans..." : "Select an upcoming plan"}
+                </option>
+                {upcomingPlans.map((plan) => (
+                  <option key={plan.planId} value={String(plan.planId)}>
+                    {plan.label}
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                Upcoming plans are sorted from closest to farthest. Same-day plans include the
+                service time.
+              </span>
+              {planScope ? (
+                <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Scope: {planScope.name} ({planScope.source === "profile" ? "from your PCO profile" : "from env config"})
+                </span>
+              ) : null}
+              {selectedUpcomingPlan ? (
+                <span className="text-xs text-emerald-600 dark:text-emerald-400">
+                  Selected: {selectedUpcomingPlan.label}
+                </span>
+              ) : null}
+              {upcomingPlansError ? (
+                <span className="text-xs text-amber-700 dark:text-amber-300">
+                  {upcomingPlansError}
+                </span>
+              ) : null}
             </label>
             <label className="flex flex-col gap-2">
-              <span className="text-sm font-medium">Service Type ID (optional)</span>
-              <input
-                value={serviceTypeId}
-                onChange={(e) => setServiceTypeId(e.target.value)}
-                className="h-11 rounded-xl border border-zinc-200 px-3 text-sm dark:border-zinc-800 dark:bg-zinc-950"
-              />
+              <span className="text-sm font-medium">Berlin plan type (advanced)</span>
+              <div className="flex flex-wrap gap-2">
+                {serviceTypeOptions.length > 0 ? (
+                  <select
+                    value={serviceTypeId}
+                    onChange={(e) => {
+                      setServiceTypeId(e.target.value);
+                      void loadUpcomingPlanOptions(e.target.value);
+                    }}
+                    className="h-11 min-w-0 flex-1 rounded-xl border border-zinc-200 px-3 text-sm dark:border-zinc-800 dark:bg-zinc-950"
+                  >
+                    <option value="">Select service type</option>
+                    {serviceTypeOptions.map((option) => (
+                      <option key={option.serviceTypeId} value={String(option.serviceTypeId)}>
+                        {option.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    value={serviceTypeId}
+                    onChange={(e) => setServiceTypeId(e.target.value)}
+                    className="h-11 min-w-0 flex-1 rounded-xl border border-zinc-200 px-3 text-sm dark:border-zinc-800 dark:bg-zinc-950"
+                  />
+                )}
+                <button
+                  type="button"
+                  disabled={upcomingPlansBusy}
+                  onClick={() => void loadUpcomingPlanOptions(serviceTypeId)}
+                  className="h-11 rounded-xl border border-zinc-200 px-3 text-sm disabled:opacity-50 dark:border-zinc-800"
+                >
+                  {upcomingPlansBusy ? "Refreshing..." : "Refresh plans"}
+                </button>
+              </div>
+              <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                Leave this as resolved unless you need another Berlin plan type.
+              </span>
             </label>
             <label className="flex flex-col gap-2">
               <span className="text-sm font-medium">GRG template title (read-only source)</span>
@@ -963,7 +1217,7 @@ export default function Home() {
           </section>
         ) : null}
 
-        {step === "Songs" && bundle && activeSong ? (
+        {step === "Review" && bundle && activeSong ? (
           <section className="flex flex-col gap-4 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
             {(bundle.rosterMapAdded?.length ?? 0) > 0 ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
@@ -1145,6 +1399,212 @@ export default function Home() {
               ) : null}
             </div>
 
+            <div className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold">Scan review</h2>
+                  <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+                    {bulkResolving
+                      ? "Resolving song scans from Planning Center and Drive."
+                      : attentionSongIndexes.length > 0
+                        ? `${attentionSongIndexes.length} song${
+                            attentionSongIndexes.length === 1 ? "" : "s"
+                          } need attention before signoff.`
+                        : "All songs are clean green and ready for preview."}
+                  </p>
+                  <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                    {cleanGreenCount} of {songFlows.length} songs clean green
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={
+                    busy ||
+                    bulkResolving ||
+                    !guestAssignmentsComplete ||
+                    !rosterConflictSelectionsComplete
+                  }
+                  onClick={buildPreview}
+                  className="h-10 rounded-xl bg-zinc-900 px-3 text-sm text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+                >
+                  {attentionSongIndexes.length > 0 ? "Preview with warnings" : "Preview now"}
+                </button>
+              </div>
+
+              {bulkResolving ? (
+                <div className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
+                  Background scan resolution is still running.
+                </div>
+              ) : null}
+
+              {!bulkResolving && attentionSongIndexes.length > 0 ? (
+                <ul className="mt-4 flex flex-col gap-3">
+                  {attentionSongIndexes.map((index) => {
+                    const flow = songFlows[index];
+                    const reasons = songAttentionReasons(flow);
+                    return (
+                      <li
+                        key={flow.song.itemId}
+                        className="rounded-lg border border-amber-200 bg-amber-50/60 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/30"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <div className="font-medium">{flow.song.title}</div>
+                            <div className={`text-xs font-medium ${tierClass(flow.song.scanTier)}`}>
+                              {flow.song.scanTier.toUpperCase()}
+                              {flow.song.scanName ? ` — ${flow.song.scanName}` : ""}
+                            </div>
+                            <div className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+                              Status: {flow.status}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setActiveSongIndex(index)}
+                            className="h-9 rounded-lg border border-zinc-200 bg-white px-3 text-xs dark:border-zinc-800 dark:bg-zinc-950"
+                          >
+                            Details
+                          </button>
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {reasons.map((reason) => (
+                            <span
+                              key={reason}
+                              className="rounded-full bg-white px-2 py-1 text-xs text-amber-900 dark:bg-zinc-950 dark:text-amber-200"
+                            >
+                              {reason}
+                            </span>
+                          ))}
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {!flow.skipped &&
+                          flow.status !== RESOLVING_STATUS &&
+                          (flow.candidates.length === 0 ||
+                            flow.candidates.length > 1 ||
+                            Boolean(flow.lastResolveError)) ? (
+                            <button
+                              type="button"
+                              disabled={busy || bulkResolving}
+                              onClick={() => resolveCandidates(index)}
+                              className="h-9 rounded-lg border border-amber-300 bg-white px-3 text-xs disabled:opacity-50 dark:border-amber-800 dark:bg-zinc-950"
+                            >
+                              {flow.candidates.length > 0 ? "Retry search" : "Find blank scan"}
+                            </button>
+                          ) : null}
+                          {!flow.skipped && flow.song.songId ? (
+                            <button
+                              type="button"
+                              disabled={busy || bulkResolving || flow.loadingPcoOptions}
+                              onClick={() => loadPcoScanOptions(index)}
+                              className="h-9 rounded-lg border border-amber-300 bg-white px-3 text-xs disabled:opacity-50 dark:border-amber-800 dark:bg-zinc-950"
+                            >
+                              {flow.loadingPcoOptions ? "Loading scans…" : "Manual select"}
+                            </button>
+                          ) : null}
+                          <label className="flex h-9 items-center gap-2 rounded-lg border border-amber-300 bg-white px-3 text-xs dark:border-amber-800 dark:bg-zinc-950">
+                            <input
+                              type="checkbox"
+                              checked={flow.skipped}
+                              onChange={(e) =>
+                                updateSongFlow(index, {
+                                  skipped: e.target.checked,
+                                  status: e.target.checked ? "Skipped" : "Pending",
+                                })
+                              }
+                            />
+                            Skip
+                          </label>
+                        </div>
+
+                        {flow.showManualPcoPicker && flow.pcoScanOptions ? (
+                          <div className="mt-3 flex flex-col gap-2">
+                            <div className="text-xs font-medium">Drive documents by priority</div>
+                            {flow.pcoScanOptions.length === 0 ? (
+                              <div className="text-xs text-zinc-600 dark:text-zinc-400">
+                                No documents found inside PCO song scan folders.
+                              </div>
+                            ) : (
+                              flow.pcoScanOptions.map((opt) => (
+                                <button
+                                  key={opt.driveFileId}
+                                  type="button"
+                                  className="flex flex-col items-start gap-0.5 rounded-lg border border-zinc-200 bg-white p-2 text-left text-xs hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:bg-zinc-900"
+                                  onClick={() => selectManualDriveDoc(index, opt)}
+                                >
+                                  <span className="font-medium">{opt.name}</span>
+                                  <span className="text-zinc-500">
+                                    {opt.tier.toUpperCase()} · priority {opt.priorityScore}
+                                    {opt.pcoAttachmentName !== opt.name
+                                      ? ` · via ${opt.pcoAttachmentName}`
+                                      : ""}
+                                  </span>
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        ) : null}
+
+                        {flow.candidates.length > 1 ||
+                        (flow.candidates.length === 1 && !flow.selectedFileId) ? (
+                          <div className="mt-3 flex flex-col gap-2">
+                            <div className="text-xs font-medium">Select document to incorporate</div>
+                            {flow.candidates.map((candidate) => (
+                              <label
+                                key={candidate.id}
+                                className="flex items-start gap-2 rounded-lg border border-zinc-200 bg-white p-2 text-xs dark:border-zinc-800 dark:bg-zinc-950"
+                              >
+                                <input
+                                  type="radio"
+                                  name={`quick-pick-${index}`}
+                                  checked={flow.selectedFileId === candidate.id}
+                                  onChange={() =>
+                                    updateSongFlow(index, {
+                                      selectedFileId: candidate.id,
+                                      status: `Selected: ${candidate.name}`,
+                                    })
+                                  }
+                                />
+                                <span>
+                                  {candidate.name}
+                                  {typeof candidate.priorityScore === "number" ? (
+                                    <span className="text-zinc-500">
+                                      {" "}
+                                      · priority {candidate.priorityScore}
+                                    </span>
+                                  ) : null}
+                                  {candidate.webViewLink ? (
+                                    <>
+                                      {" "}
+                                      <a
+                                        className="underline"
+                                        href={candidate.webViewLink}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                      >
+                                        open
+                                      </a>
+                                    </>
+                                  ) : null}
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : null}
+            </div>
+
+            <div className="border-t border-zinc-200 pt-4 dark:border-zinc-800">
+              <div className="text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">
+                Detailed song editor
+              </div>
+            </div>
+
             <div className="text-sm text-zinc-600 dark:text-zinc-400">
               Song {activeSongIndex + 1} of {songFlows.length} · Plan date: {bundle.dateFormatted}
             </div>
@@ -1194,7 +1654,7 @@ export default function Home() {
 
             <div className="flex flex-wrap gap-3">
               {!activeSong.skipped &&
-              activeSong.status !== "Resolving…" &&
+              activeSong.status !== RESOLVING_STATUS &&
               (activeSong.candidates.length === 0 ||
                 activeSong.candidates.length > 1 ||
                 Boolean(activeSong.lastResolveError)) ? (
@@ -1415,7 +1875,7 @@ export default function Home() {
             <div className="flex gap-3">
               <button
                 type="button"
-                onClick={() => setStep("Songs")}
+                onClick={() => setStep("Review")}
                 className="h-10 rounded-xl border px-3 text-sm dark:border-zinc-800"
               >
                 Back

@@ -19,7 +19,7 @@ Open [http://localhost:3000](http://localhost:3000).
 1. **Connect Google** (Worship Leader account with read access to org scans + Drive/Docs write).
 2. **Verify template** — default `Get Ready Guide (TEMPLATE)` with `{{GRG_DATE}}`, `{{GRG_SONG_LIST}}`, `{{GRG_SCANS_BEGIN}}`.
 3. Set **output title** (defaults to `Get Ready Guide YYYY.MM.DD` after plan load).
-4. Enter **Plan ID** (e.g. `87788328`) → per-song Drive resolution → **Preview** → **Approve** (recreates output from template) → optional **Post PDF to Planning Center** on the plan item titled **Get Ready Guide**.
+4. Select the upcoming **Plan** by date (scoped to the configured/user campus; the next Berlin Sunday service is preselected) → Drive resolution → **Preview** → **Approve** (recreates output from template) → optional **Post PDF to Planning Center** on the plan item titled **Get Ready Guide**.
 
 OAuth tokens persist under `.data/google-tokens.json` (gitignored) for local MVP.
 
