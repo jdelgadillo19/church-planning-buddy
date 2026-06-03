@@ -20,6 +20,7 @@ function parseArgs() {
   let planId = "";
   let serviceTypeId: string | undefined;
   let publishedBy: string | undefined;
+  let nativeExportPath: string | undefined;
   const newFilePaths: string[] = [];
 
   for (const arg of process.argv.slice(2)) {
@@ -27,6 +28,8 @@ function parseArgs() {
       serviceTypeId = arg.split("=")[1]?.trim() || undefined;
     } else if (arg.startsWith("--published-by=")) {
       publishedBy = arg.split("=")[1]?.trim() || undefined;
+    } else if (arg.startsWith("--native-export=")) {
+      nativeExportPath = arg.split("=")[1]?.trim() || undefined;
     } else if (arg.startsWith("--new-file=")) {
       const p = arg.split("=")[1]?.trim();
       if (p) newFilePaths.push(p);
@@ -35,14 +38,14 @@ function parseArgs() {
     }
   }
 
-  return { planId, serviceTypeId, publishedBy, newFilePaths };
+  return { planId, serviceTypeId, publishedBy, nativeExportPath, newFilePaths };
 }
 
 async function main() {
-  const { planId, serviceTypeId, publishedBy, newFilePaths } = parseArgs();
+  const { planId, serviceTypeId, publishedBy, nativeExportPath, newFilePaths } = parseArgs();
   if (!parsePositiveIntOrNull(planId)) {
     console.error(
-      "Usage: npm run slide-deck:publish -- <planId> [--service-type-id=<id>] [--published-by=Name] [--new-file=path]",
+      "Usage: npm run slide-deck:publish -- <planId> [--service-type-id=<id>] [--published-by=Name] [--native-export=path] [--new-file=path]",
     );
     process.exit(1);
   }
@@ -70,6 +73,7 @@ async function main() {
     drive,
     bundle,
     publishedBy,
+    nativeExportPath,
     newFilePayloads,
   });
 
@@ -88,7 +92,7 @@ async function main() {
     }
   }
   if (bundle.commitPlan.warnings.length > 0) {
-    console.log("\nWarnings (see build-report.json on Drive):");
+    console.log("\nWarnings:");
     for (const w of bundle.commitPlan.warnings) {
       console.log(`  - ${w}`);
     }

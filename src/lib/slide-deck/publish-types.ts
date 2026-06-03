@@ -1,5 +1,12 @@
 export const IMPORT_MARKER_SCHEMA_VERSION = 1;
 
+export type PublishNewFilePayload = {
+  /** Filename under New Files service folder, e.g. `My Song.pro` */
+  name: string;
+  content: Buffer;
+  mimeType?: string;
+};
+
 export type PublishedFileRef = {
   /** Path relative to service package root, e.g. `manifest.json` or `new-files/song.pro` */
   path: string;
@@ -43,6 +50,8 @@ export type SlideDeckBuildReport = {
     itemCount: number;
     warnings: string[];
   };
+  /** Items read from ProPresenter at publish time (source of truth after manual edits). */
+  livePlaylistItems?: Array<{ position: number; name: string }>;
 };
 
 export type SlideDeckPublishResult = {

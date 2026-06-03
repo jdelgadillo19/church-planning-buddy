@@ -81,6 +81,20 @@ export function googleConnected(tokens: GoogleTokens | null) {
   return Boolean(tokens?.access_token || tokens?.refresh_token);
 }
 
+export async function clearTokensForCurrentSession(): Promise<boolean> {
+  const jar = await cookies();
+  const id = jar.get(COOKIE_NAME)?.value;
+  if (!id) return false;
+
+  memoryStore().delete(id);
+  const disk = await readDiskStore();
+  if (disk[id]) {
+    delete disk[id];
+    await writeDiskStore(disk);
+  }
+  return true;
+}
+
 /** First stored session — for local CLI runners (launchd) without browser cookies. */
 export async function loadAnyStoredGoogleTokens(): Promise<GoogleTokens | null> {
   const disk = await readDiskStore();

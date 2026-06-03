@@ -1,13 +1,17 @@
 import { NextResponse } from "next/server";
+import { decodeOAuthState } from "@/lib/google/oauth-return";
 import { getOAuthClient } from "../_oauth";
 import { saveTokensForCurrentSession } from "../_session";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
+  const returnTo = decodeOAuthState(url.searchParams.get("state"));
 
   if (!code) {
-    return NextResponse.redirect(new URL("/?google=missing_code", url.origin));
+    const missing = new URL(returnTo, url.origin);
+    missing.searchParams.set("google", "missing_code");
+    return NextResponse.redirect(missing);
   }
 
   const oauth2 = getOAuthClient();
@@ -20,6 +24,8 @@ export async function GET(req: Request) {
     expiry_date: tokens.expiry_date ?? undefined,
   });
 
-  return NextResponse.redirect(new URL("/?google=connected", url.origin));
+  const dest = new URL(returnTo, url.origin);
+  dest.searchParams.set("google", "connected");
+  return NextResponse.redirect(dest);
 }
 

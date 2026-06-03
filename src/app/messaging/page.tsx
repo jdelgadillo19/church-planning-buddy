@@ -1,15 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
+import { GoogleConnectionCard } from "@/components/google-connection-card";
 import { ToolShell } from "@/components/tool-shell";
 import type { PendingDraft } from "@/lib/messaging/pending-drafts";
 import type { MessagingConfig, MessagingHealthResult, SendPlan } from "@/lib/messaging/types";
 
-type GoogleStatus = { connected: boolean; scopes: string[] };
-
 export default function MessagingPage() {
-  const [google, setGoogle] = useState<GoogleStatus | null>(null);
   const [config, setConfig] = useState<MessagingConfig | null>(null);
   const [workflowId, setWorkflowId] = useState("");
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
@@ -26,13 +23,11 @@ export default function MessagingPage() {
     (activeWorkflow?.deliveryMode ?? "draft_forward") === "draft_forward";
 
   const load = useCallback(async () => {
-    const [g, c, p] = await Promise.all([
-      fetch("/api/auth/google/status").then((r) => r.json()),
+    const [c, p] = await Promise.all([
       fetch("/api/messaging/config").then((r) => r.json()),
       fetch("/api/messaging/pending").then((r) => r.json()),
     ]);
     setPending((p as { drafts: PendingDraft[] }).drafts ?? []);
-    setGoogle(g as GoogleStatus);
     const cfg = (c as { config: MessagingConfig }).config;
     setConfig(cfg);
     if (!workflowId && cfg.workflows[0]) {
@@ -230,18 +225,9 @@ export default function MessagingPage() {
       description="Sheet-backed messages: scheduled prepare (headless) → draft to you → forward to the group. Optional desktop auto-post."
     >
       <div className="flex flex-col gap-6">
-        <section className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
-          <h2 className="text-sm font-semibold">Google</h2>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-            {google?.connected ? "Connected" : "Not connected"} — includes Sheets + Calendar after reconnect.
-          </p>
-          <Link
-            href="/api/auth/google/start"
-            className="mt-2 inline-block text-sm font-medium text-blue-600 hover:underline dark:text-blue-400"
-          >
-            {google?.connected ? "Reconnect Google" : "Connect Google"}
-          </Link>
-        </section>
+        <GoogleConnectionCard
+          hint="Includes Sheets and Calendar for Team Messaging after reconnect."
+        />
 
         {config ? (
           <>

@@ -1,8 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { GoogleConnectionCard } from "@/components/google-connection-card";
 import { PcoServicePlanPicker } from "@/components/pco-service-plan-picker";
 import { ToolShell } from "@/components/tool-shell";
+import { useGoogleConnection } from "@/hooks/use-google-connection";
 import { usePcoServicePlanSelection } from "@/hooks/use-pco-service-plan-selection";
 import type { SlideDeckManifest, ManifestElement } from "@/lib/slide-deck/types";
 import type { MockCommitPlan, MockCommitOperation, MockCommitPlaylistRow } from "@/lib/slide-deck/mock-commit";
@@ -14,6 +16,13 @@ type PpStatus = {
   connected: boolean;
   error?: string;
   allowWrites?: boolean;
+};
+
+type PlaylistConflictInfo = {
+  playlistId: string;
+  playlistName: string;
+  itemCount: number;
+  items: { position: number; name: string }[];
 };
 
 export default function SlideDeckPage() {
@@ -51,8 +60,53 @@ export default function SlideDeckPage() {
     fileCount: number;
     newFileCount: number;
   } | null>(null);
-  const [googleConnected, setGoogleConnected] = useState(false);
+  const { connected: googleConnected } = useGoogleConnection();
   const [ppStatus, setPpStatus] = useState<PpStatus | null>(null);
+  const [playlistConflict, setPlaylistConflict] = useState<PlaylistConflictInfo | null>(null);
+  const [showConflictItems, setShowConflictItems] = useState(false);
+  const [librarySelections, setLibrarySelections] = useState<Record<string, string>>({});
+  const [livePlaylistHint, setLivePlaylistHint] = useState<{
+    playlistName: string;
+    itemCount: number;
+  } | null>(null);
+
+  const refreshPublishPreflight = useCallback(async () => {
+    if (!planId.trim()) {
+      setLivePlaylistHint(null);
+      return;
+    }
+    try {
+      const params = new URLSearchParams({ planId: planId.trim() });
+      if (serviceTypeId.trim()) params.set("serviceTypeId", serviceTypeId.trim());
+      if (commitPlan?.playlistName) params.set("playlistName", commitPlan.playlistName);
+      const res = await fetch(`/api/slide-deck/publish/preflight?${params}`);
+      const data = (await res.json()) as {
+        ok?: boolean;
+        playlistName?: string;
+        livePlaylist?: { exists?: boolean; itemCount?: number };
+      };
+      if (data.ok && data.livePlaylist?.exists && data.playlistName) {
+        setLivePlaylistHint({
+          playlistName: data.playlistName,
+          itemCount: data.livePlaylist.itemCount ?? 0,
+        });
+      } else {
+        setLivePlaylistHint(null);
+      }
+    } catch {
+      setLivePlaylistHint(null);
+    }
+  }, [planId, serviceTypeId, commitPlan?.playlistName]);
+
+  const unresolvedLibraryRows = useMemo(() => {
+    if (!commitPlan) return [];
+    return commitPlan.playlistPreview.filter(
+      (row) =>
+        row.kind === "song_add" &&
+        row.libraryMatch?.status === "ambiguous" &&
+        !librarySelections[String(row.position)],
+    );
+  }, [commitPlan, librarySelections]);
 
   const refreshPpStatus = useCallback(async () => {
     try {
@@ -73,16 +127,8 @@ export default function SlideDeckPage() {
   }, [refreshPpStatus]);
 
   useEffect(() => {
-    void (async () => {
-      try {
-        const res = await fetch("/api/auth/google/status");
-        const data = (await res.json()) as { connected?: boolean };
-        setGoogleConnected(Boolean(data.connected));
-      } catch {
-        setGoogleConnected(false);
-      }
-    })();
-  }, []);
+    void refreshPublishPreflight();
+  }, [refreshPublishPreflight]);
 
   async function loadMockCommit() {
     setLoading(true);
@@ -91,6 +137,8 @@ export default function SlideDeckPage() {
     setCommitPlan(null);
     setApplyResult(null);
     setPublishResult(null);
+    setLibrarySelections({});
+    setPlaylistConflict(null);
     try {
       const res = await fetch("/api/slide-deck/mock-commit", {
         method: "POST",
@@ -120,12 +168,8 @@ export default function SlideDeckPage() {
     }
   }
 
-  async function applyToProPresenter() {
+  async function runApply(resolution?: "overwrite") {
     if (!planId.trim() || !commitPlan) return;
-    const ok = window.confirm(
-      `Apply "${commitPlan.playlistName}" to ProPresenter?\n\nThis creates a new playlist and writes ${commitPlan.playlistPreview.length} items. Requires PP_ALLOW_WRITES=true.`,
-    );
-    if (!ok) return;
 
     setApplyLoading(true);
     setError(null);
@@ -138,10 +182,15 @@ export default function SlideDeckPage() {
           planId: planId.trim(),
           serviceTypeId: serviceTypeId.trim() || undefined,
           confirm: true,
+          resolution,
+          commitPlan,
+          librarySelections:
+            Object.keys(librarySelections).length > 0 ? librarySelections : undefined,
         }),
       });
       const payload = (await res.json()) as {
         ok: boolean;
+        conflict?: boolean;
         result?: {
           playlistId: string;
           playlistName: string;
@@ -150,10 +199,24 @@ export default function SlideDeckPage() {
           warnings: string[];
         };
         error?: string;
+        playlistId?: string;
+        playlistName?: string;
+        itemCount?: number;
       };
+      if (res.status === 409 && payload.conflict) {
+        setPlaylistConflict({
+          playlistId: payload.playlistId ?? "",
+          playlistName: payload.playlistName ?? commitPlan.playlistName,
+          itemCount: payload.itemCount ?? 0,
+          items: [],
+        });
+        return;
+      }
       if (!payload.ok || !payload.result) {
         throw new Error(payload.error ?? "Apply failed.");
       }
+      setPlaylistConflict(null);
+      setShowConflictItems(false);
       setApplyResult(payload.result);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Apply to ProPresenter failed.");
@@ -162,16 +225,76 @@ export default function SlideDeckPage() {
     }
   }
 
-  async function publishToDrive() {
+  async function applyToProPresenter() {
     if (!planId.trim() || !commitPlan) return;
-    if (!googleConnected) {
-      setError("Connect Google on the Get Ready Guide tool first, then return here.");
+    if (unresolvedLibraryRows.length > 0) {
+      setError(
+        `Select a ProPresenter library variant for: ${unresolvedLibraryRows.map((r) => r.pcoTitle ?? r.name).join(", ")}`,
+      );
+      return;
+    }
+    setError(null);
+
+    try {
+      const params = new URLSearchParams();
+      if (commitPlan.playlistName) {
+        params.set("playlistName", commitPlan.playlistName);
+      } else {
+        params.set("planId", planId.trim());
+        if (serviceTypeId.trim()) params.set("serviceTypeId", serviceTypeId.trim());
+      }
+      const pre = await fetch(`/api/slide-deck/apply/preflight?${params}`);
+      const prePayload = (await pre.json()) as {
+        ok: boolean;
+        conflict?: PlaylistConflictInfo | null;
+        error?: string;
+      };
+      if (!prePayload.ok) {
+        throw new Error(prePayload.error ?? "Preflight failed.");
+      }
+      if (prePayload.conflict) {
+        setPlaylistConflict(prePayload.conflict);
+        setShowConflictItems(false);
+        return;
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Preflight failed.");
       return;
     }
 
     const ok = window.confirm(
-      `Publish "${commitPlan.playlistName}" to Google Drive?\n\n` +
-        `Creates or updates church-planning-buddy/ProPresenter/Playlists/{service}/ on your Drive.`,
+      `Apply "${commitPlan.playlistName}" to ProPresenter?\n\nThis creates a new playlist and writes ${commitPlan.playlistPreview.length} preview rows. Requires PP_ALLOW_WRITES=true.`,
+    );
+    if (!ok) return;
+    await runApply();
+  }
+
+  async function confirmOverwritePlaylist() {
+    if (!playlistConflict || !commitPlan) return;
+    const ok = window.confirm(
+      `Replace the existing playlist "${playlistConflict.playlistName}" (${playlistConflict.itemCount} items) with the new commit preview?`,
+    );
+    if (!ok) return;
+    await runApply("overwrite");
+  }
+
+  async function publishToDrive() {
+    if (!planId.trim()) return;
+    if (!googleConnected) {
+      setError("Connect Google above (or on the hub), then try publish again.");
+      return;
+    }
+
+    const targetName = commitPlan?.playlistName ?? livePlaylistHint?.playlistName ?? "this service";
+    const liveNote = livePlaylistHint
+      ? `\n\nWill export "${livePlaylistHint.playlistName}" (${livePlaylistHint.itemCount} items) from ProPresenter, then upload to Drive.`
+      : applyResult
+        ? `\n\nWill export "${applyResult.playlistName}" from ProPresenter (File → Export → Playlist), then upload.`
+        : "\n\nNo live playlist detected — publish needs an existing or applied ProPresenter playlist on this Mac.";
+
+    const ok = window.confirm(
+      `Publish "${targetName}" to Google Drive?${liveNote}\n\n` +
+        `Keep ProPresenter open and frontmost during publish. Uploads a transport .zip plus the .proplaylist to Playlists/{service}/.`,
     );
     if (!ok) return;
 
@@ -242,12 +365,9 @@ export default function SlideDeckPage() {
         <strong>Preview first.</strong> Build commit preview, optionally apply on this Mac’s ProPresenter,
         then <strong>Publish to Drive</strong> for the church rig. See{" "}
         <code className="font-mono text-xs">docs/PROPRESENTER-PUBLISH.md</code>.
-        {!googleConnected ? (
-          <span className="mt-1 block text-amber-800 dark:text-amber-200">
-            Google is not connected — open Get Ready Guide and use Reconnect Google.
-          </span>
-        ) : null}
       </div>
+
+      <GoogleConnectionCard compact hint="Required to publish handoff packages to Drive." />
 
       <section className="flex flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -304,6 +424,20 @@ export default function SlideDeckPage() {
           >
             {loading ? "Building preview…" : "Preview mock commit"}
           </button>
+          {livePlaylistHint ? (
+            <p className="text-sm text-emerald-700 dark:text-emerald-300">
+              Live playlist detected: <span className="font-mono">{livePlaylistHint.playlistName}</span> (
+              {livePlaylistHint.itemCount} items) — you can publish without applying in this session.
+            </p>
+          ) : null}
+          <button
+            type="button"
+            disabled={publishLoading || !googleConnected || !planId.trim()}
+            onClick={() => void publishToDrive()}
+            className="h-11 rounded-xl border border-sky-700 px-4 text-sm font-medium text-sky-800 disabled:opacity-50 dark:border-sky-500 dark:text-sky-200"
+          >
+            {publishLoading ? "Publishing to Drive…" : "Publish to Drive"}
+          </button>
         </section>
       ) : null}
 
@@ -312,9 +446,21 @@ export default function SlideDeckPage() {
           <section className="flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-lg font-medium">Mock commit summary</h2>
-              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-200">
-                Writes blocked
-              </span>
+              <div className="flex flex-wrap gap-2">
+                {commitPlan.playlistConflict ? (
+                  <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-900 dark:bg-red-950 dark:text-red-200">
+                    Playlist name conflict
+                  </span>
+                ) : null}
+                {livePlaylistHint ? (
+                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">
+                    Live playlist detected
+                  </span>
+                ) : null}
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                  Writes blocked
+                </span>
+              </div>
             </div>
             <dl className="grid gap-2 text-sm">
               <div className="flex flex-wrap gap-x-2">
@@ -340,9 +486,17 @@ export default function SlideDeckPage() {
               </ul>
             ) : null}
             <div className="flex flex-wrap gap-2">
+              {unresolvedLibraryRows.length > 0 ? (
+                <p className="text-sm text-amber-800 dark:text-amber-200">
+                  Select a library variant for {unresolvedLibraryRows.length} song(s) in the playlist
+                  preview before applying.
+                </p>
+              ) : null}
               <button
                 type="button"
-                disabled={applyLoading || Boolean(applyResult)}
+                disabled={
+                  applyLoading || Boolean(applyResult) || unresolvedLibraryRows.length > 0
+                }
                 onClick={() => void applyToProPresenter()}
                 className="h-11 rounded-xl bg-emerald-700 px-4 text-sm font-medium text-white disabled:opacity-50 dark:bg-emerald-600"
               >
@@ -377,6 +531,68 @@ export default function SlideDeckPage() {
                 Set <code className="font-mono">PP_ALLOW_WRITES=true</code> in .env.local and restart
                 the dev server to enable live apply.
               </p>
+            ) : null}
+
+            {playlistConflict ? (
+              <section className="flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950">
+                <h3 className="text-sm font-semibold text-red-900 dark:text-red-100">
+                  Existing ProPresenter playlist
+                </h3>
+                <p className="text-sm text-red-800 dark:text-red-200">
+                  A playlist named <strong className="font-mono">{playlistConflict.playlistName}</strong>{" "}
+                  already exists with {playlistConflict.itemCount} item(s). Choose Overwrite to replace
+                  it, View to inspect, or Cancel to keep ProPresenter unchanged.
+                </p>
+                {showConflictItems && playlistConflict.items.length > 0 ? (
+                  <ol className="max-h-48 list-decimal overflow-y-auto space-y-1 pl-5 text-sm text-red-900 dark:text-red-100">
+                    {playlistConflict.items.map((item) => (
+                      <li key={item.position}>{item.name}</li>
+                    ))}
+                  </ol>
+                ) : null}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="h-9 rounded-lg bg-red-800 px-3 text-sm font-medium text-white dark:bg-red-700"
+                    disabled={applyLoading}
+                    onClick={() => void confirmOverwritePlaylist()}
+                  >
+                    Overwrite
+                  </button>
+                  <button
+                    type="button"
+                    className="h-9 rounded-lg border border-red-300 px-3 text-sm dark:border-red-800"
+                    onClick={async () => {
+                      if (playlistConflict.items.length > 0) {
+                        setShowConflictItems(true);
+                        return;
+                      }
+                      const params = new URLSearchParams({ planId: planId.trim() });
+                      if (serviceTypeId.trim()) params.set("serviceTypeId", serviceTypeId.trim());
+                      const pre = await fetch(`/api/slide-deck/apply/preflight?${params}`);
+                      const data = (await pre.json()) as {
+                        conflict?: PlaylistConflictInfo | null;
+                      };
+                      if (data.conflict) {
+                        setPlaylistConflict(data.conflict);
+                        setShowConflictItems(true);
+                      }
+                    }}
+                  >
+                    View current plan
+                  </button>
+                  <button
+                    type="button"
+                    className="h-9 rounded-lg border border-red-300 px-3 text-sm dark:border-red-800"
+                    onClick={() => {
+                      setPlaylistConflict(null);
+                      setShowConflictItems(false);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </section>
             ) : null}
           </section>
 
@@ -438,7 +654,13 @@ export default function SlideDeckPage() {
 
           <CorrespondenceTable correspondences={commitPlan.correspondences} />
 
-          <PlaylistPreview rows={commitPlan.playlistPreview} />
+          <PlaylistPreview
+            rows={commitPlan.playlistPreview}
+            librarySelections={librarySelections}
+            onSelectLibrary={(position, itemId) =>
+              setLibrarySelections((prev) => ({ ...prev, [String(position)]: itemId }))
+            }
+          />
 
           <ManifestTable
             title="PCO songs included in commit"
@@ -550,7 +772,15 @@ function OperationStatusBadge({ status }: { status: MockCommitOperation["status"
   return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>{label}</span>;
 }
 
-function PlaylistPreview({ rows }: { rows: MockCommitPlaylistRow[] }) {
+function PlaylistPreview({
+  rows,
+  librarySelections,
+  onSelectLibrary,
+}: {
+  rows: MockCommitPlaylistRow[];
+  librarySelections: Record<string, string>;
+  onSelectLibrary: (position: number, itemId: string) => void;
+}) {
   return (
     <section className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
       <h2 className="border-b border-zinc-200 px-5 py-3 text-sm font-medium dark:border-zinc-800">
@@ -602,7 +832,11 @@ function PlaylistPreview({ rows }: { rows: MockCommitPlaylistRow[] }) {
                 <td className="px-4 py-2 text-xs text-zinc-600 dark:text-zinc-400">{row.source}</td>
                 <td className="px-4 py-2 text-xs">
                   {row.libraryMatch ? (
-                    <LibraryMatchCell match={row.libraryMatch} />
+                    <LibraryMatchCell
+                      match={row.libraryMatch}
+                      selectedId={librarySelections[String(row.position)]}
+                      onSelect={(itemId) => onSelectLibrary(row.position, itemId)}
+                    />
                   ) : (
                     "—"
                   )}
@@ -616,7 +850,46 @@ function PlaylistPreview({ rows }: { rows: MockCommitPlaylistRow[] }) {
   );
 }
 
-function LibraryMatchCell({ match }: { match: NonNullable<MockCommitPlaylistRow["libraryMatch"]> }) {
+function LibraryMatchCell({
+  match,
+  selectedId,
+  onSelect,
+}: {
+  match: NonNullable<MockCommitPlaylistRow["libraryMatch"]>;
+  selectedId?: string;
+  onSelect?: (itemId: string) => void;
+}) {
+  if (match.status === "ambiguous" && match.candidates?.length) {
+    const selected = match.candidates.find((c) => c.id === selectedId);
+    return (
+      <div className="flex flex-col gap-1" role="radiogroup" aria-label="Library variants">
+        <span className="text-amber-800 dark:text-amber-200">{match.note}</span>
+        {match.candidates.map((candidate) => {
+          const active = selectedId === candidate.id;
+          return (
+            <button
+              key={candidate.id}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => onSelect?.(candidate.id)}
+              className={`rounded-lg border px-2 py-1.5 text-left text-xs ${
+                active
+                  ? "border-amber-600 bg-amber-100 font-medium text-amber-950 dark:border-amber-500 dark:bg-amber-950 dark:text-amber-100"
+                  : "border-zinc-200 bg-white text-zinc-800 hover:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+              }`}
+            >
+              {candidate.name}
+              <span className="block text-zinc-500 dark:text-zinc-400">{candidate.libraryName}</span>
+            </button>
+          );
+        })}
+        {selected ? (
+          <span className="text-emerald-700 dark:text-emerald-300">Selected: {selected.name}</span>
+        ) : null}
+      </div>
+    );
+  }
   if (match.status === "found") {
     return (
       <span className="text-emerald-700 dark:text-emerald-300">

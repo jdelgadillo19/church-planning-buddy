@@ -9,11 +9,18 @@ import { getPlaylistItems } from "@/lib/propresenter/playlist-read";
 import { findPlaylistByName } from "@/lib/propresenter/playlists-read";
 import { resolveTemplatePlaylistName } from "@/lib/config/slide-deck";
 import type { ApplyCommitResult } from "./apply-commit";
+import {
+  applyResultFromLiveSnapshot,
+  readLivePlaylistByName,
+  type LivePlaylistSnapshot,
+} from "./resolve-live-playlist";
 
 export type SlideDeckBundle = {
   manifest: SlideDeckManifest;
   commitPlan: MockCommitPlan;
   applyResult?: ApplyCommitResult;
+  /** Current ProPresenter playlist items when detected by name (manual edits included). */
+  livePlaylist?: LivePlaylistSnapshot;
 };
 
 export type LoadSlideDeckBundleInput = {
@@ -76,5 +83,18 @@ export async function loadSlideDeckBundle(
     propresenterConnected,
   });
 
-  return { manifest, commitPlan, applyResult: input.applyResult };
+  let applyResult = input.applyResult;
+  let livePlaylist: LivePlaylistSnapshot | undefined;
+
+  if (propresenterConnected) {
+    const live = await readLivePlaylistByName(commitPlan.playlistName);
+    if (live) {
+      livePlaylist = live;
+      if (!applyResult) {
+        applyResult = applyResultFromLiveSnapshot(live, commitPlan.playlistPreview);
+      }
+    }
+  }
+
+  return { manifest, commitPlan, applyResult, livePlaylist };
 }

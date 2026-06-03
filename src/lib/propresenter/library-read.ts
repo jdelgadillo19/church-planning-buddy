@@ -90,9 +90,10 @@ export async function loadSongLibraryIndex(
 }
 
 export type LibraryMatchResult = {
-  status: "found" | "not_found" | "unchecked";
+  status: "found" | "not_found" | "unchecked" | "ambiguous";
   searchTerm: string;
   item?: PpLibraryItemRef;
+  candidates?: PpLibraryItemRef[];
   note?: string;
 };
 
@@ -127,13 +128,12 @@ export function matchLibraryItem(
   }
 
   if (contains.length > 1) {
+    const candidates = [...contains].sort((a, b) => a.name.localeCompare(b.name));
     return {
-      status: "not_found",
+      status: "ambiguous",
       searchTerm,
-      note: `Ambiguous (${contains.length} matches): ${contains
-        .slice(0, 3)
-        .map((c) => c.name)
-        .join("; ")}`,
+      candidates,
+      note: `${contains.length} library matches — select a variant.`,
     };
   }
 

@@ -6,7 +6,22 @@ import { formatArrangementDisplayName } from "./arrangement-display";
 import { resolveScanDriveUrl } from "./attachment-open";
 import { loadPlanTeamMembers, loadPlanTeamPositionNames, type PlanRosterRow } from "./plan-team";
 import { persistNewPcoPositions } from "./roster-position-sync";
-import { listSongAttachments, pickBestScanAttachment, type ScanTier } from "./scans";
+import {
+  attachmentName,
+  attachmentUrl,
+  classifyAttachmentTier,
+  isSongScanCandidateName,
+  listSongAttachments,
+  pickBestScanAttachment,
+  type ScanTier,
+} from "./scans";
+
+export type PcoScanAttachmentVariant = {
+  attachmentId: string;
+  name: string;
+  tier: ScanTier;
+  url: string;
+};
 import { isWorshipSongPlanItem } from "./plan-item-filters";
 
 export type { PlanRosterRow } from "./plan-team";
@@ -24,6 +39,8 @@ export type PlanSongRow = {
   songId?: string;
   arrangementId?: string;
   warnings: string[];
+  /** Multiple PCO song-scan attachments — user picks source before Drive search. */
+  pcoScanVariants?: PcoScanAttachmentVariant[];
 };
 
 export type PlanBundle = {
@@ -243,11 +260,23 @@ export async function loadPlanBundle(input: {
     let scanName = "";
     let scanUrl = "";
     let scanAttachmentId: string | undefined;
+    let pcoScanVariants: PcoScanAttachmentVariant[] | undefined;
 
     if (!songId) {
       warnings.push("No linked song on plan item.");
     } else {
       const attachments = await listSongAttachments(songId, auth, arrangementId);
+      const scanCandidates = attachments.filter(
+        (a) => a.id && isSongScanCandidateName(attachmentName(a)),
+      );
+      const variants: PcoScanAttachmentVariant[] = scanCandidates.map((att) => ({
+        attachmentId: att.id!,
+        name: attachmentName(att),
+        tier: classifyAttachmentTier(attachmentName(att)) ?? "yellow",
+        url: attachmentUrl(att),
+      }));
+      if (variants.length > 1) pcoScanVariants = variants;
+
       const pick = pickBestScanAttachment(attachments, arrangementId);
       if (!pick) {
         warnings.push("No song scan attachment found.");
@@ -268,6 +297,11 @@ export async function loadPlanBundle(input: {
         } else if (pick.tier === "yellow") {
           warnings.push("Using non-MASTER scan (yellow tier).");
         }
+        if (variants.length > 1) {
+          warnings.push(
+            `${variants.length} PCO scan attachments — choose a source if the auto-pick is wrong.`,
+          );
+        }
       }
     }
 
@@ -284,6 +318,7 @@ export async function loadPlanBundle(input: {
       songId: songId ?? undefined,
       arrangementId: arrangementId ?? undefined,
       warnings,
+      pcoScanVariants,
     });
   }
 

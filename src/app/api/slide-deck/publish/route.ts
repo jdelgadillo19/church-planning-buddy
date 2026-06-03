@@ -21,6 +21,7 @@ export async function POST(req: Request) {
       confirm?: boolean;
       publishedBy?: string;
       applyResult?: ApplyCommitResult;
+      nativeExportPath?: string;
       newFiles?: Array<{ name: string; contentBase64: string; mimeType?: string }>;
     };
 
@@ -56,6 +57,7 @@ export async function POST(req: Request) {
       drive,
       bundle,
       publishedBy: body.publishedBy?.trim() || undefined,
+      nativeExportPath: body.nativeExportPath?.trim() || undefined,
       newFilePayloads,
     });
 

@@ -1,29 +1,20 @@
 import { randomUUID } from "node:crypto";
 import type { drive_v3 } from "googleapis";
 import type { UploadedDriveFile } from "@/lib/google/drive-upload";
-import { upsertJsonInFolder, upsertFileInFolder } from "@/lib/google/drive-upload";
+import { upsertFileInFolder, upsertJsonInFolder } from "@/lib/google/drive-upload";
 import {
   driveFolderUrl,
   ensureChildFolder,
   resolvePpNewFilesFolderId,
   resolvePpPlaylistsFolderId,
 } from "@/lib/google/pp-drive-folders";
+import { exportPlaylistNative } from "@/lib/propresenter/playlist-native-export";
+import { buildTransportZip } from "@/lib/zip/transport-zip";
 import type { SlideDeckBundle } from "./load-bundle";
 import { buildServicePackageKey } from "./service-package-key";
-import type {
-  PublishedFileRef,
-  SlideDeckBuildReport,
-  SlideDeckImportMarker,
-  SlideDeckPublishResult,
-} from "./publish-types";
-import { IMPORT_MARKER_SCHEMA_VERSION } from "./publish-types";
+import type { PublishedFileRef, PublishNewFilePayload, SlideDeckPublishResult } from "./publish-types";
 
-export type PublishNewFilePayload = {
-  /** Filename under New Files service folder, e.g. `My Song.pro` */
-  name: string;
-  content: Buffer;
-  mimeType?: string;
-};
+export type { PublishNewFilePayload } from "./publish-types";
 
 export type PublishSlideDeckInput = {
   drive: drive_v3.Drive;
@@ -31,6 +22,8 @@ export type PublishSlideDeckInput = {
   publishedBy?: string;
   /** Optional binaries to upload into New Files/{service}/ */
   newFilePayloads?: PublishNewFilePayload[];
+  /** Operator-exported .proplaylist (skips AppleScript when set). */
+  nativeExportPath?: string;
 };
 
 function toFileRef(upload: UploadedDriveFile, path: string): PublishedFileRef {
@@ -42,44 +35,41 @@ function toFileRef(upload: UploadedDriveFile, path: string): PublishedFileRef {
   };
 }
 
-function buildBuildReport(bundle: SlideDeckBundle): SlideDeckBuildReport {
-  const { commitPlan, applyResult } = bundle;
-  return {
-    schemaVersion: 1,
-    generatedAt: new Date().toISOString(),
-    playlistName: commitPlan.playlistName,
-    planId: commitPlan.planId,
-    warnings: commitPlan.warnings,
-    playlistPreview: commitPlan.playlistPreview.map((row) => ({
-      position: row.position,
-      name: row.name,
-      kind: row.kind,
-      libraryMatchStatus: row.libraryMatch?.status,
-      pcoTitle: row.pcoTitle,
-    })),
-    applyResult: applyResult
-      ? {
-          playlistId: applyResult.playlistId,
-          playlistName: applyResult.playlistName,
-          itemCount: applyResult.itemCount,
-          warnings: applyResult.warnings,
-        }
-      : undefined,
-  };
+function resolvePublishPlaylist(bundle: SlideDeckBundle): { playlistName: string } {
+  const playlistName =
+    bundle.applyResult?.playlistName ??
+    bundle.livePlaylist?.playlistName ??
+    bundle.commitPlan.playlistName;
+
+  if (!playlistName?.trim()) {
+    throw new Error(
+      "Cannot publish playlist: no playlist name. " +
+        "Apply the commit on this Mac or ensure the service playlist exists in ProPresenter.",
+    );
+  }
+
+  return { playlistName: playlistName.trim() };
+}
+
+function zipDriveFileName(serviceFolderKey: string, playlistName: string): string {
+  const base = playlistName.replace(/[/\\?%*:|"<>]/g, "-").trim() || "playlist";
+  return `${serviceFolderKey}-${base}.zip`;
 }
 
 /**
- * Upload slide-deck package to Drive Playlists/{service}/ and optional assets to New Files/{service}/.
+ * Upload slide-deck handoff: ProPresenter native export (.proplaylist) in a transport zip.
+ * JSON instruction packages remain in `publish-instructions.ts` (tabled).
  */
 export async function publishSlideDeckPackage(
   input: PublishSlideDeckInput,
 ): Promise<SlideDeckPublishResult> {
   const { drive, bundle } = input;
-  const { manifest, commitPlan } = bundle;
+  const { manifest } = bundle;
 
   const serviceFolderKey = buildServicePackageKey(manifest.serviceDate);
   const packageId = randomUUID();
-  const publishedAt = new Date().toISOString();
+
+  const { playlistName } = resolvePublishPlaylist(bundle);
 
   const playlistsParentId = await resolvePpPlaylistsFolderId(drive);
   const newFilesParentId = await resolvePpNewFilesFolderId(drive);
@@ -95,32 +85,35 @@ export async function publishSlideDeckPackage(
     serviceFolderKey,
   );
 
-  const playlistFiles: PublishedFileRef[] = [];
+  const nativeExport = await exportPlaylistNative({
+    playlistName,
+    nativeExportPath: input.nativeExportPath,
+  });
 
-  const manifestUpload = await upsertJsonInFolder(
+  const zipBody = await buildTransportZip({
+    entryName: nativeExport.fileName,
+    fileBytes: nativeExport.bytes,
+  });
+  const zipFileName = zipDriveFileName(serviceFolderKey, playlistName);
+
+  const zipUpload = await upsertFileInFolder(
     drive,
     playlistsServiceFolderId,
-    "manifest.json",
-    manifest,
+    zipFileName,
+    zipBody,
+    "application/zip",
   );
-  playlistFiles.push(toFileRef(manifestUpload, "manifest.json"));
 
-  const buildReport = buildBuildReport(bundle);
-  const reportUpload = await upsertJsonInFolder(
+  const playlistFiles: PublishedFileRef[] = [toFileRef(zipUpload, zipFileName)];
+
+  const proplaylistUpload = await upsertFileInFolder(
     drive,
     playlistsServiceFolderId,
-    "build-report.json",
-    buildReport,
+    nativeExport.fileName,
+    nativeExport.bytes,
+    "application/octet-stream",
   );
-  playlistFiles.push(toFileRef(reportUpload, "build-report.json"));
-
-  const commitUpload = await upsertJsonInFolder(
-    drive,
-    playlistsServiceFolderId,
-    "commit-plan.json",
-    commitPlan,
-  );
-  playlistFiles.push(toFileRef(commitUpload, "commit-plan.json"));
+  playlistFiles.push(toFileRef(proplaylistUpload, nativeExport.fileName));
 
   const newFileRefs: PublishedFileRef[] = [];
   const payloads = input.newFilePayloads ?? [];
@@ -158,28 +151,6 @@ export async function publishSlideDeckPackage(
     );
     newFileRefs.push(toFileRef(newFilesManifestUpload, "new-files-manifest.json"));
   }
-
-  const importMarker: SlideDeckImportMarker = {
-    schemaVersion: IMPORT_MARKER_SCHEMA_VERSION,
-    packageId,
-    serviceFolderKey,
-    serviceDate: manifest.serviceDate,
-    playlistName: manifest.playlistName,
-    planId: manifest.planId,
-    serviceTypeId: manifest.serviceTypeId,
-    publishedAt,
-    publishedBy: input.publishedBy,
-    files: playlistFiles,
-    newFiles: newFileRefs,
-  };
-
-  const markerUpload = await upsertJsonInFolder(
-    drive,
-    playlistsServiceFolderId,
-    "import-marker.json",
-    importMarker,
-  );
-  playlistFiles.push(toFileRef(markerUpload, "import-marker.json"));
 
   return {
     packageId,

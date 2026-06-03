@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { GoogleConnectionCard } from "@/components/google-connection-card";
 import { TOOLS } from "@/lib/tools/registry";
 
 export default function HomePage() {
@@ -11,6 +12,8 @@ export default function HomePage() {
             Ministry operations tools — each workflow stays in its own lane.
           </p>
         </header>
+
+        <GoogleConnectionCard hint="Connect once for Get Ready Guide, Slide Deck publish, and Team Messaging." />
 
         <ul className="flex flex-col gap-4">
           {TOOLS.map((tool) => (

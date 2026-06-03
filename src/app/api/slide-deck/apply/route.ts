@@ -1,14 +1,11 @@
 import { NextResponse } from "next/server";
-import { loadPlanServiceOrder } from "@/lib/pco/plan-service-order";
-import { buildSlideDeckManifest } from "@/lib/slide-deck/manifest";
-import { buildMockCommitPlan } from "@/lib/slide-deck/mock-commit";
-import { applyCommitPlan } from "@/lib/slide-deck/apply-commit";
-import { ppPing, ProPresenterApiError } from "@/lib/propresenter/client";
 import { loadProPresenterConfig } from "@/lib/propresenter/config";
-import { loadSongLibraryIndex } from "@/lib/propresenter/library-read";
-import { getPlaylistItems } from "@/lib/propresenter/playlist-read";
-import { findPlaylistByName } from "@/lib/propresenter/playlists-read";
-import { resolveTemplatePlaylistName } from "@/lib/config/slide-deck";
+import { PlaylistConflictError } from "@/lib/propresenter/playlist-write";
+import { applyCommitPlan } from "@/lib/slide-deck/apply-commit";
+import type { MockCommitPlan } from "@/lib/slide-deck/mock-commit";
+import { prepareSlideDeckApply } from "@/lib/slide-deck/prepare-apply";
+import { resolveApplyContextFromClientPlan } from "@/lib/slide-deck/resolve-apply-context";
+import { ProPresenterApiError } from "@/lib/propresenter/client";
 
 export async function POST(req: Request) {
   try {
@@ -16,6 +13,9 @@ export async function POST(req: Request) {
       planId?: string;
       serviceTypeId?: string;
       confirm?: boolean;
+      resolution?: "overwrite";
+      librarySelections?: Record<string, string>;
+      commitPlan?: MockCommitPlan;
     };
 
     if (body.confirm !== true) {
@@ -36,45 +36,57 @@ export async function POST(req: Request) {
       );
     }
 
-    const plan = await loadPlanServiceOrder({
-      planId: body.planId ?? "",
-      serviceTypeId: body.serviceTypeId,
-    });
+    const planId = body.planId?.trim() ?? "";
+    const clientPlan = body.commitPlan;
 
-    await ppPing(config);
+    let commitPlan: MockCommitPlan;
+    let templateItems: Awaited<ReturnType<typeof resolveApplyContextFromClientPlan>>["templateItems"];
+    let libraryIndex: Awaited<ReturnType<typeof resolveApplyContextFromClientPlan>>["libraryIndex"];
 
-    const templateName = resolveTemplatePlaylistName();
-    const found = await findPlaylistByName(templateName);
-    if (!found?.id) {
-      return NextResponse.json(
-        { ok: false, error: `Template playlist "${templateName}" not found in ProPresenter.` },
-        { status: 400 },
-      );
+    if (clientPlan?.playlistName && clientPlan.playlistPreview?.length) {
+      const ctx = await resolveApplyContextFromClientPlan(clientPlan);
+      commitPlan = ctx.commitPlan;
+      templateItems = ctx.templateItems;
+      libraryIndex = ctx.libraryIndex;
+    } else {
+      if (!planId) {
+        return NextResponse.json(
+          { ok: false, error: "planId or commitPlan is required." },
+          { status: 400 },
+        );
+      }
+      const ctx = await prepareSlideDeckApply({
+        planId,
+        serviceTypeId: body.serviceTypeId?.trim() || undefined,
+      });
+      commitPlan = ctx.commitPlan;
+      templateItems = ctx.templateItems;
+      libraryIndex = ctx.libraryIndex;
     }
 
-    const templateItems = await getPlaylistItems(found.id);
-    const libraryIndex = await loadSongLibraryIndex();
-
-    const manifest = buildSlideDeckManifest({
-      plan,
-      templateSourceFound: true,
-      templateSourcePlaylistId: found.id,
-      templateSourcePlaylistPath: found.path ?? found.name,
-      propresenterConnected: true,
-      templateItems,
-    });
-
-    const commitPlan = buildMockCommitPlan({
-      manifest,
+    const result = await applyCommitPlan({
+      commitPlan,
       templateItems,
       libraryIndex,
-      propresenterConnected: true,
+      playlistResolution: body.resolution === "overwrite" ? "overwrite" : "reuse_empty",
+      librarySelections: body.librarySelections,
     });
-
-    const result = await applyCommitPlan({ commitPlan, templateItems, libraryIndex });
 
     return NextResponse.json({ ok: true, commitPlan, result });
   } catch (e) {
+    if (e instanceof PlaylistConflictError) {
+      return NextResponse.json(
+        {
+          ok: false,
+          conflict: true,
+          error: e.message,
+          playlistId: e.playlistId,
+          playlistName: e.playlistName,
+          itemCount: e.itemCount,
+        },
+        { status: 409 },
+      );
+    }
     if (e instanceof ProPresenterApiError) {
       return NextResponse.json({ ok: false, error: e.message, detail: e.body }, { status: 502 });
     }

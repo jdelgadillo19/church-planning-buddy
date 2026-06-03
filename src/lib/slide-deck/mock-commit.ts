@@ -49,6 +49,12 @@ export type MockCommitPlan = {
   }>;
   warnings: string[];
   propresenterConnected: boolean;
+  /** Set when target playlist name already exists in ProPresenter with items. */
+  playlistConflict?: {
+    playlistId: string;
+    playlistName: string;
+    itemCount: number;
+  };
 };
 
 export type BuildMockCommitInput = {
@@ -56,6 +62,7 @@ export type BuildMockCommitInput = {
   templateItems: PpPlaylistItemRef[];
   libraryIndex: PpLibraryItemRef[];
   propresenterConnected: boolean;
+  playlistConflict?: MockCommitPlan["playlistConflict"];
 };
 
 function buildOperations(
@@ -151,7 +158,10 @@ function buildPlaylistPreview(
       position: position++,
       kind: "song_add",
       name: libraryMatch.item?.name ?? song.pcoTitle,
-      source: "PCO plan → library match",
+      source:
+        libraryMatch.status === "ambiguous"
+          ? "PCO plan → pick library variant"
+          : "PCO plan → library match",
       libraryMatch,
       pcoTitle: song.pcoTitle,
       pcoOrder: song.order,
@@ -240,16 +250,29 @@ export function buildMockCommitPlan(input: BuildMockCommitInput): MockCommitPlan
     warnings.push(`PCO "Welcome" matches multiple template items: ${welcomeCorrespondence.note}`);
   }
 
+  const needsPick = input.libraryIndex.length
+    ? songs.filter((s) => {
+        const m = matchLibraryItem(s.propresenterSearchHint ?? s.pcoTitle, input.libraryIndex);
+        return m.status === "ambiguous";
+      })
+    : [];
+
+  if (needsPick.length > 0) {
+    warnings.push(
+      `${needsPick.length} song(s) need a library variant selected: ${needsPick.map((s) => s.pcoTitle).join(", ")}`,
+    );
+  }
+
   const unmatched = input.libraryIndex.length
     ? songs.filter((s) => {
         const m = matchLibraryItem(s.propresenterSearchHint ?? s.pcoTitle, input.libraryIndex);
-        return m.status !== "found";
+        return m.status === "not_found";
       })
     : songs;
 
   if (unmatched.length > 0 && input.libraryIndex.length > 0) {
     warnings.push(
-      `${unmatched.length} song(s) have no confident library match: ${unmatched.map((s) => s.pcoTitle).join(", ")}`,
+      `${unmatched.length} song(s) have no library match: ${unmatched.map((s) => s.pcoTitle).join(", ")}`,
     );
   }
 
@@ -258,6 +281,12 @@ export function buildMockCommitPlan(input: BuildMockCommitInput): MockCommitPlan
     input.templateItems,
     input.libraryIndex,
   );
+
+  if (input.playlistConflict) {
+    warnings.push(
+      `Playlist "${input.playlistConflict.playlistName}" already exists in ProPresenter (${input.playlistConflict.itemCount} items). Apply will prompt for Overwrite, View, or Cancel.`,
+    );
+  }
 
   return {
     dryRun: true,
@@ -271,5 +300,6 @@ export function buildMockCommitPlan(input: BuildMockCommitInput): MockCommitPlan
     correspondences: collectCorrespondences(input.manifest),
     warnings,
     propresenterConnected: input.propresenterConnected,
+    playlistConflict: input.playlistConflict,
   };
 }

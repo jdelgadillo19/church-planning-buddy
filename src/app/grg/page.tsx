@@ -7,8 +7,16 @@ import {
   type RosterSectionOverride,
 } from "@/lib/docs/grg-roster-consolidate";
 import { isPlatformTeamPositionName } from "@/lib/pco/roster-team-scope";
+import { GoogleConnectionCard } from "@/components/google-connection-card";
+import {
+  DriveCandidateButtons,
+  PcoAttachmentVariantButtons,
+  PcoScanOptionButtons,
+} from "@/components/grg-scan-picker-buttons";
 import { PcoServicePlanPicker } from "@/components/pco-service-plan-picker";
+import type { PcoScanAttachmentVariant } from "@/lib/pco/plan-bundle";
 import { ToolShell } from "@/components/tool-shell";
+import { useGoogleConnection } from "@/hooks/use-google-connection";
 import { usePcoServicePlanSelection } from "@/hooks/use-pco-service-plan-selection";
 
 type ScanTier = "green" | "yellow" | "red";
@@ -26,6 +34,7 @@ type PlanSong = {
   songId?: string;
   arrangementId?: string;
   warnings: string[];
+  pcoScanVariants?: PcoScanAttachmentVariant[];
 };
 
 type PlanRosterRow = {
@@ -267,7 +276,7 @@ export default function Home() {
   } = planSelection;
   const [grgTitle, setGrgTitle] = useState(DEFAULT_GRG_OUTPUT_TITLE_PATTERN);
   const [templateTitle, setTemplateTitle] = useState(DEFAULT_GRG_TEMPLATE_TITLE);
-  const [googleConnected, setGoogleConnected] = useState(false);
+  const { connected: googleConnected } = useGoogleConnection();
   const [templateDoc, setTemplateDoc] = useState<{ id: string; name: string; webViewLink?: string } | null>(
     null,
   );
@@ -347,18 +356,6 @@ export default function Home() {
       return { ...prev, [groupId]: [...next] };
     });
   }
-
-  const refreshGoogle = useCallback(async () => {
-    const res = await fetch("/api/auth/google/status");
-    const data = (await res.json()) as { connected?: boolean };
-    setGoogleConnected(Boolean(data.connected));
-  }, []);
-
-  useEffect(() => {
-    refreshGoogle();
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("google") === "connected") refreshGoogle();
-  }, [refreshGoogle]);
 
   const activeSong = songFlows[activeSongIndex];
 
@@ -605,6 +602,28 @@ export default function Home() {
       setError(e instanceof Error ? e.message : "Unknown error");
       updateSongFlow(index, { loadingPcoOptions: false, showManualPcoPicker: false });
     }
+  }
+
+  async function selectPcoScanAttachment(index: number, attachmentId: string) {
+    const flow = songFlows[index];
+    if (!flow) return;
+    const variant = flow.song.pcoScanVariants?.find((v) => v.attachmentId === attachmentId);
+    if (!variant) return;
+
+    updateSongFlow(index, {
+      song: {
+        ...flow.song,
+        scanAttachmentId: variant.attachmentId,
+        scanName: variant.name,
+        scanTier: variant.tier,
+        scanUrl: variant.url,
+      },
+      candidates: [],
+      selectedFileId: "",
+      lastResolveError: undefined,
+      status: `PCO source: ${variant.name}`,
+    });
+    await resolveCandidates(index);
   }
 
   function selectManualDriveDoc(index: number, option: PcoScanOption) {
@@ -1011,19 +1030,10 @@ export default function Home() {
               </span>
             </label>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <a
-                href="/api/auth/google/start"
-                className="inline-flex h-11 items-center rounded-xl border border-zinc-200 px-4 text-sm font-medium dark:border-zinc-800"
-              >
-                {googleConnected ? "Reconnect Google" : "Connect Google"}
-              </a>
-              <span className="text-sm text-zinc-600 dark:text-zinc-400">
-                {googleConnected
-                  ? "Connected"
-                  : "Required for scan fetch and GRG writes (reconnect after scope updates)"}
-              </span>
-            </div>
+            <GoogleConnectionCard
+              compact
+              hint="Required for scan fetch and GRG writes (reconnect after scope updates)."
+            />
 
             <div className="flex flex-wrap items-center gap-3">
               <button
@@ -1370,6 +1380,17 @@ export default function Home() {
                           </label>
                         </div>
 
+                        {!flow.skipped && (flow.song.pcoScanVariants?.length ?? 0) > 1 ? (
+                          <div className="mt-3 flex flex-col gap-2">
+                            <div className="text-xs font-medium">Choose PCO scan source</div>
+                            <PcoAttachmentVariantButtons
+                              variants={flow.song.pcoScanVariants!}
+                              selectedAttachmentId={flow.song.scanAttachmentId}
+                              onSelect={(attachmentId) => void selectPcoScanAttachment(index, attachmentId)}
+                            />
+                          </div>
+                        ) : null}
+
                         {flow.showManualPcoPicker && flow.pcoScanOptions ? (
                           <div className="mt-3 flex flex-col gap-2">
                             <div className="text-xs font-medium">Drive documents by priority</div>
@@ -1378,22 +1399,10 @@ export default function Home() {
                                 No documents found inside PCO song scan folders.
                               </div>
                             ) : (
-                              flow.pcoScanOptions.map((opt) => (
-                                <button
-                                  key={opt.driveFileId}
-                                  type="button"
-                                  className="flex flex-col items-start gap-0.5 rounded-lg border border-zinc-200 bg-white p-2 text-left text-xs hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:bg-zinc-900"
-                                  onClick={() => selectManualDriveDoc(index, opt)}
-                                >
-                                  <span className="font-medium">{opt.name}</span>
-                                  <span className="text-zinc-500">
-                                    {opt.tier.toUpperCase()} · priority {opt.priorityScore}
-                                    {opt.pcoAttachmentName !== opt.name
-                                      ? ` · via ${opt.pcoAttachmentName}`
-                                      : ""}
-                                  </span>
-                                </button>
-                              ))
+                              <PcoScanOptionButtons
+                                options={flow.pcoScanOptions}
+                                onSelect={(opt) => selectManualDriveDoc(index, opt)}
+                              />
                             )}
                           </div>
                         ) : null}
@@ -1402,46 +1411,17 @@ export default function Home() {
                         (flow.candidates.length === 1 && !flow.selectedFileId) ? (
                           <div className="mt-3 flex flex-col gap-2">
                             <div className="text-xs font-medium">Select document to incorporate</div>
-                            {flow.candidates.map((candidate) => (
-                              <label
-                                key={candidate.id}
-                                className="flex items-start gap-2 rounded-lg border border-zinc-200 bg-white p-2 text-xs dark:border-zinc-800 dark:bg-zinc-950"
-                              >
-                                <input
-                                  type="radio"
-                                  name={`quick-pick-${index}`}
-                                  checked={flow.selectedFileId === candidate.id}
-                                  onChange={() =>
-                                    updateSongFlow(index, {
-                                      selectedFileId: candidate.id,
-                                      status: `Selected: ${candidate.name}`,
-                                    })
-                                  }
-                                />
-                                <span>
-                                  {candidate.name}
-                                  {typeof candidate.priorityScore === "number" ? (
-                                    <span className="text-zinc-500">
-                                      {" "}
-                                      · priority {candidate.priorityScore}
-                                    </span>
-                                  ) : null}
-                                  {candidate.webViewLink ? (
-                                    <>
-                                      {" "}
-                                      <a
-                                        className="underline"
-                                        href={candidate.webViewLink}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                      >
-                                        open
-                                      </a>
-                                    </>
-                                  ) : null}
-                                </span>
-                              </label>
-                            ))}
+                            <DriveCandidateButtons
+                              candidates={flow.candidates}
+                              selectedId={flow.selectedFileId}
+                              groupName={`quick-pick-${index}`}
+                              onSelect={(id, name) =>
+                                updateSongFlow(index, {
+                                  selectedFileId: id,
+                                  status: `Selected: ${name}`,
+                                })
+                              }
+                            />
                           </div>
                         ) : null}
                       </li>
@@ -1544,6 +1524,19 @@ export default function Home() {
               </label>
             </div>
 
+            {!activeSong.skipped && (activeSong.song.pcoScanVariants?.length ?? 0) > 1 ? (
+              <div className="flex flex-col gap-2 rounded-lg border border-sky-200 bg-sky-50/50 p-3 dark:border-sky-900 dark:bg-sky-950/30">
+                <div className="text-sm font-medium">Choose PCO scan source</div>
+                <PcoAttachmentVariantButtons
+                  variants={activeSong.song.pcoScanVariants!}
+                  selectedAttachmentId={activeSong.song.scanAttachmentId}
+                  onSelect={(attachmentId) =>
+                    void selectPcoScanAttachment(activeSongIndex, attachmentId)
+                  }
+                />
+              </div>
+            ) : null}
+
             {activeSong.showManualPcoPicker && activeSong.pcoScanOptions ? (
               <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-900 dark:bg-amber-950/30">
                 <div className="text-sm font-medium">Drive documents (by priority)</div>
@@ -1552,20 +1545,10 @@ export default function Home() {
                     No documents found inside PCO song scan folders.
                   </div>
                 ) : (
-                  activeSong.pcoScanOptions.map((opt) => (
-                    <button
-                      key={opt.driveFileId}
-                      type="button"
-                      className="flex flex-col items-start gap-0.5 rounded-lg border border-zinc-200 bg-white p-3 text-left text-sm hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:bg-zinc-900"
-                      onClick={() => selectManualDriveDoc(activeSongIndex, opt)}
-                    >
-                      <span className="font-medium">{opt.name}</span>
-                      <span className="text-xs text-zinc-500">
-                        {opt.tier.toUpperCase()} · priority {opt.priorityScore}
-                        {opt.pcoAttachmentName !== opt.name ? ` · via ${opt.pcoAttachmentName}` : ""}
-                      </span>
-                    </button>
-                  ))
+                  <PcoScanOptionButtons
+                    options={activeSong.pcoScanOptions}
+                    onSelect={(opt) => selectManualDriveDoc(activeSongIndex, opt)}
+                  />
                 )}
               </div>
             ) : null}
@@ -1590,35 +1573,17 @@ export default function Home() {
             (activeSong.candidates.length === 1 && !activeSong.selectedFileId) ? (
               <div className="flex flex-col gap-2">
                 <div className="text-sm font-medium">Select document to incorporate</div>
-                {activeSong.candidates.map((c) => (
-                  <label key={c.id} className="flex items-start gap-2 rounded-lg border border-zinc-200 p-3 text-sm dark:border-zinc-800">
-                    <input
-                      type="radio"
-                      name={`pick-${activeSongIndex}`}
-                      checked={activeSong.selectedFileId === c.id}
-                      onChange={() =>
-                        updateSongFlow(activeSongIndex, {
-                          selectedFileId: c.id,
-                          status: `Selected: ${c.name}`,
-                        })
-                      }
-                    />
-                    <span>
-                      {c.name}
-                      {typeof c.priorityScore === "number" ? (
-                        <span className="text-zinc-500"> · priority {c.priorityScore}</span>
-                      ) : null}
-                      {c.webViewLink ? (
-                        <>
-                          {" "}
-                          <a className="underline" href={c.webViewLink} target="_blank" rel="noreferrer">
-                            open
-                          </a>
-                        </>
-                      ) : null}
-                    </span>
-                  </label>
-                ))}
+                <DriveCandidateButtons
+                  candidates={activeSong.candidates}
+                  selectedId={activeSong.selectedFileId}
+                  groupName={`pick-${activeSongIndex}`}
+                  onSelect={(id, name) =>
+                    updateSongFlow(activeSongIndex, {
+                      selectedFileId: id,
+                      status: `Selected: ${name}`,
+                    })
+                  }
+                />
               </div>
             ) : null}
 

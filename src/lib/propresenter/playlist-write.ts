@@ -112,21 +112,60 @@ export async function putPlaylistItems(
   });
 }
 
-export async function assertPlaylistNameAvailable(name: string): Promise<void> {
-  const existing = await findPlaylistByName(name);
-  if (!existing) return;
+export type PlaylistResolution = "reuse_empty" | "overwrite";
 
-  const items = await getPlaylistItems(existing.id);
-  if (items.length === 0) return;
+export type ExistingPlaylistSummary = {
+  exists: boolean;
+  empty: boolean;
+  id?: string;
+  name?: string;
+  itemCount: number;
+  items: PpPlaylistItemRef[];
+};
 
-  throw new Error(
-    `Playlist "${name}" already exists in ProPresenter (${items.length} items). Rename or remove it before applying.`,
-  );
+export class PlaylistConflictError extends Error {
+  readonly playlistId: string;
+  readonly playlistName: string;
+  readonly itemCount: number;
+
+  constructor(playlistId: string, playlistName: string, itemCount: number) {
+    super(
+      `A playlist named "${playlistName}" already exists with ${itemCount} item(s). Choose Overwrite to replace it, View to inspect, or Cancel.`,
+    );
+    this.name = "PlaylistConflictError";
+    this.playlistId = playlistId;
+    this.playlistName = playlistName;
+    this.itemCount = itemCount;
+  }
 }
 
-/** Find existing empty playlist by name, or create a new one. */
-export async function createOrReuseEmptyPlaylist(
+export async function getExistingPlaylistSummary(name: string): Promise<ExistingPlaylistSummary> {
+  const existing = await findPlaylistByName(name);
+  if (!existing) {
+    return { exists: false, empty: true, itemCount: 0, items: [] };
+  }
+  const items = await getPlaylistItems(existing.id);
+  return {
+    exists: true,
+    empty: items.length === 0,
+    id: existing.id,
+    name: existing.name,
+    itemCount: items.length,
+    items,
+  };
+}
+
+export async function assertPlaylistNameAvailable(name: string): Promise<void> {
+  const summary = await getExistingPlaylistSummary(name);
+  if (summary.exists && !summary.empty && summary.id && summary.name) {
+    throw new PlaylistConflictError(summary.id, summary.name, summary.itemCount);
+  }
+}
+
+/** Find existing playlist by name (empty reuse or overwrite), or create a new one. */
+export async function resolveTargetPlaylist(
   name: string,
+  resolution: PlaylistResolution = "reuse_empty",
   config?: ProPresenterConfig,
 ): Promise<CreatePlaylistResult> {
   const existing = await findPlaylistByName(name);
@@ -135,11 +174,20 @@ export async function createOrReuseEmptyPlaylist(
     if (items.length === 0) {
       return { id: existing.id, name: existing.name };
     }
-    throw new Error(
-      `Playlist "${name}" already exists in ProPresenter (${items.length} items). Rename or remove it before applying.`,
-    );
+    if (resolution === "overwrite") {
+      return { id: existing.id, name: existing.name };
+    }
+    throw new PlaylistConflictError(existing.id, existing.name, items.length);
   }
   return createPlaylist(name, config);
+}
+
+/** Find existing empty playlist by name, or create a new one. */
+export async function createOrReuseEmptyPlaylist(
+  name: string,
+  config?: ProPresenterConfig,
+): Promise<CreatePlaylistResult> {
+  return resolveTargetPlaylist(name, "reuse_empty", config);
 }
 
 export function findTemplateItemForName(
