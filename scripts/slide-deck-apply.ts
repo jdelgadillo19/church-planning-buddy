@@ -1,12 +1,13 @@
 /**
  * Live apply to ProPresenter (requires PP_ALLOW_WRITES=true).
  *
- *   npm run slide-deck:apply -- 87788328
+ *   npm run slide-deck:apply -- <planId> [--service-type-id=<id>]
  */
 import { loadEnvLocal } from "./_load-env-local";
 
 loadEnvLocal();
 
+import { parsePositiveIntOrNull } from "../src/lib/pco/client";
 import { loadPlanServiceOrder } from "../src/lib/pco/plan-service-order";
 import { buildSlideDeckManifest } from "../src/lib/slide-deck/manifest";
 import { buildMockCommitPlan } from "../src/lib/slide-deck/mock-commit";
@@ -18,8 +19,26 @@ import { getPlaylistItems } from "../src/lib/propresenter/playlist-read";
 import { loadSongLibraryIndex } from "../src/lib/propresenter/library-read";
 import { resolveTemplatePlaylistName } from "../src/lib/config/slide-deck";
 
+function parseArgs() {
+  let planId = "";
+  let serviceTypeId: string | undefined;
+  for (const arg of process.argv.slice(2)) {
+    if (arg.startsWith("--service-type-id=")) {
+      serviceTypeId = arg.split("=")[1]?.trim() || undefined;
+    } else if (!arg.startsWith("-") && !planId) {
+      planId = arg.trim();
+    }
+  }
+  return { planId, serviceTypeId };
+}
+
 async function main() {
-  const planId = process.argv[2] || "87788328";
+  const { planId, serviceTypeId } = parseArgs();
+  if (!parsePositiveIntOrNull(planId)) {
+    console.error("Usage: npm run slide-deck:apply -- <planId> [--service-type-id=<id>]");
+    process.exit(1);
+  }
+
   const config = loadProPresenterConfig();
   if (!config.allowWrites) {
     console.error("PP_ALLOW_WRITES is not true. Aborting.");
@@ -27,7 +46,7 @@ async function main() {
   }
 
   await ppPing(config);
-  const plan = await loadPlanServiceOrder({ planId });
+  const plan = await loadPlanServiceOrder({ planId, serviceTypeId });
   const found = await findPlaylistByName(resolveTemplatePlaylistName());
   if (!found?.id) throw new Error("Template playlist not found.");
 

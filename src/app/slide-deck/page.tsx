@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { PcoServicePlanPicker } from "@/components/pco-service-plan-picker";
 import { ToolShell } from "@/components/tool-shell";
+import { usePcoServicePlanSelection } from "@/hooks/use-pco-service-plan-selection";
 import type { SlideDeckManifest, ManifestElement } from "@/lib/slide-deck/types";
 import type { MockCommitPlan, MockCommitOperation, MockCommitPlaylistRow } from "@/lib/slide-deck/mock-commit";
 
@@ -16,7 +18,19 @@ type PpStatus = {
 
 export default function SlideDeckPage() {
   const [step, setStep] = useState<Step>("Setup");
-  const [planId, setPlanId] = useState("87788328");
+  const {
+    planId,
+    serviceTypeId,
+    setServiceTypeId,
+    serviceTypeOptions,
+    planScope,
+    upcomingPlans,
+    busy: plansBusy,
+    error: plansError,
+    selectedPlan,
+    loadOptions,
+    selectPlan,
+  } = usePcoServicePlanSelection();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [manifest, setManifest] = useState<SlideDeckManifest | null>(null);
@@ -59,7 +73,10 @@ export default function SlideDeckPage() {
       const res = await fetch("/api/slide-deck/mock-commit", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ planId: planId.trim() }),
+        body: JSON.stringify({
+          planId: planId.trim(),
+          serviceTypeId: serviceTypeId.trim() || undefined,
+        }),
       });
       const payload = (await res.json()) as {
         ok: boolean;
@@ -95,7 +112,11 @@ export default function SlideDeckPage() {
       const res = await fetch("/api/slide-deck/apply", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ planId: planId.trim(), confirm: true }),
+        body: JSON.stringify({
+          planId: planId.trim(),
+          serviceTypeId: serviceTypeId.trim() || undefined,
+          confirm: true,
+        }),
       });
       const payload = (await res.json()) as {
         ok: boolean;
@@ -176,20 +197,26 @@ export default function SlideDeckPage() {
 
       {step === "Setup" ? (
         <section className="flex flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium">Planning Center Plan ID</span>
-            <input
-              type="text"
-              inputMode="numeric"
-              value={planId}
-              onChange={(e) => setPlanId(e.target.value)}
-              placeholder="e.g. 87788328"
-              className="h-11 rounded-xl border border-zinc-300 bg-white px-3 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-            />
-          </label>
+          <PcoServicePlanPicker
+            planId={planId}
+            serviceTypeId={serviceTypeId}
+            setServiceTypeId={setServiceTypeId}
+            upcomingPlans={upcomingPlans}
+            serviceTypeOptions={serviceTypeOptions}
+            planScope={planScope}
+            selectedPlan={selectedPlan}
+            busy={plansBusy}
+            error={plansError}
+            onSelectPlan={selectPlan}
+            onLoadOptions={loadOptions}
+            serviceTypeLabel={
+              planScope ? `Plan type — ${planScope.name}` : "Plan type (advanced)"
+            }
+            serviceTypeHint="Change only if you need a different scoped service type."
+          />
           <button
             type="button"
-            disabled={loading || !planId.trim()}
+            disabled={loading || plansBusy || !planId.trim()}
             onClick={() => void loadMockCommit()}
             className="h-11 rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
           >

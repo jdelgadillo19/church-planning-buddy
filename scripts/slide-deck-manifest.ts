@@ -1,12 +1,13 @@
 /**
  * Dry-run manifest from CLI (no ProPresenter writes).
  *
- *   npm run slide-deck:manifest -- 87788328
+ *   npm run slide-deck:manifest -- <planId> [--service-type-id=<id>]
  */
 import { loadEnvLocal } from "./_load-env-local";
 
 loadEnvLocal();
 
+import { parsePositiveIntOrNull } from "../src/lib/pco/client";
 import { loadPlanServiceOrder } from "../src/lib/pco/plan-service-order";
 import { buildSlideDeckManifest } from "../src/lib/slide-deck/manifest";
 import { ppPing } from "../src/lib/propresenter/client";
@@ -14,9 +15,27 @@ import { loadProPresenterConfig } from "../src/lib/propresenter/config";
 import { findPlaylistByName } from "../src/lib/propresenter/playlists-read";
 import { resolveTemplatePlaylistName } from "../src/lib/config/slide-deck";
 
+function parseArgs() {
+  let planId = "";
+  let serviceTypeId: string | undefined;
+  for (const arg of process.argv.slice(2)) {
+    if (arg.startsWith("--service-type-id=")) {
+      serviceTypeId = arg.split("=")[1]?.trim() || undefined;
+    } else if (!arg.startsWith("-") && !planId) {
+      planId = arg.trim();
+    }
+  }
+  return { planId, serviceTypeId };
+}
+
 async function main() {
-  const planId = process.argv[2] || "87788328";
-  const plan = await loadPlanServiceOrder({ planId });
+  const { planId, serviceTypeId } = parseArgs();
+  if (!parsePositiveIntOrNull(planId)) {
+    console.error("Usage: npm run slide-deck:manifest -- <planId> [--service-type-id=<id>]");
+    process.exit(1);
+  }
+
+  const plan = await loadPlanServiceOrder({ planId, serviceTypeId });
 
   let connected = false;
   let templateFound: boolean | null = null;

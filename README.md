@@ -14,7 +14,15 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000) on the machine where you ran `npm run dev` (not another device on your LAN).
+
+### Local dev troubleshooting
+
+- Run commands from this directory (`church-planning-buddy/`), not the parent `Projects/` folder.
+- After changing Next config, clear the dev cache if needed: `rm -rf .next`
+- A stray `~/package-lock.json` can confuse Next’s workspace detection. If Turbopack fails to resolve `tailwindcss`, rename it: `mv ~/package-lock.json ~/package-lock.json.bak`
+- Do **not** set `turbopack.root` to this app directory in `next.config.ts` (Next.js [#90307](https://github.com/vercel/next.js/issues/90307) breaks Tailwind `@import` resolution).
+- If `npm run dev` (Turbopack) still fails: `npm run dev:webpack`
 
 1. **Connect Google** (Worship Leader account with read access to org scans + Drive/Docs write).
 2. **Verify template** — default `Get Ready Guide (TEMPLATE)` with `{{GRG_DATE}}`, `{{GRG_SONG_LIST}}`, `{{GRG_SCANS_BEGIN}}`.

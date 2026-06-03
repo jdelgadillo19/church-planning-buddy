@@ -7,7 +7,9 @@ import {
   type RosterSectionOverride,
 } from "@/lib/docs/grg-roster-consolidate";
 import { isPlatformTeamPositionName } from "@/lib/pco/roster-team-scope";
+import { PcoServicePlanPicker } from "@/components/pco-service-plan-picker";
 import { ToolShell } from "@/components/tool-shell";
+import { usePcoServicePlanSelection } from "@/hooks/use-pco-service-plan-selection";
 
 type ScanTier = "green" | "yellow" | "red";
 
@@ -47,26 +49,6 @@ type PlanBundle = {
   songs: PlanSong[];
   roster: PlanRosterRow[];
   rosterMapAdded: string[];
-};
-
-type UpcomingPlanOption = {
-  planId: number;
-  serviceTypeId: number;
-  sortDate: string;
-  dateLabel: string;
-  timeLabel: string;
-  label: string;
-  serviceTypeName?: string;
-};
-
-type ServiceTypeOption = {
-  serviceTypeId: number;
-  name: string;
-};
-
-type PlanScope = {
-  name: string;
-  source: "env" | "profile";
 };
 
 type RosterMapEntry = {
@@ -269,13 +251,20 @@ function songIsCleanGreen(flow: SongWorkflow) {
 
 export default function Home() {
   const [step, setStep] = useState<Step>("Setup");
-  const [planId, setPlanId] = useState("");
-  const [serviceTypeId, setServiceTypeId] = useState("");
-  const [serviceTypeOptions, setServiceTypeOptions] = useState<ServiceTypeOption[]>([]);
-  const [planScope, setPlanScope] = useState<PlanScope | null>(null);
-  const [upcomingPlans, setUpcomingPlans] = useState<UpcomingPlanOption[]>([]);
-  const [upcomingPlansBusy, setUpcomingPlansBusy] = useState(false);
-  const [upcomingPlansError, setUpcomingPlansError] = useState<string | null>(null);
+  const planSelection = usePcoServicePlanSelection();
+  const {
+    planId,
+    serviceTypeId,
+    setServiceTypeId,
+    serviceTypeOptions,
+    planScope,
+    upcomingPlans,
+    busy: upcomingPlansBusy,
+    error: upcomingPlansError,
+    selectedPlan: selectedUpcomingPlan,
+    loadOptions: loadUpcomingPlanOptions,
+    selectPlan: selectUpcomingPlan,
+  } = planSelection;
   const [grgTitle, setGrgTitle] = useState(DEFAULT_GRG_OUTPUT_TITLE_PATTERN);
   const [templateTitle, setTemplateTitle] = useState(DEFAULT_GRG_TEMPLATE_TITLE);
   const [googleConnected, setGoogleConnected] = useState(false);
@@ -322,10 +311,6 @@ export default function Home() {
   const autoResolveGeneration = useRef(0);
   const autoPreviewAttempted = useRef(false);
   const buildPreviewRef = useRef<(() => Promise<void>) | null>(null);
-  const loadUpcomingPlanOptionsRef = useRef<((serviceTypeId?: string) => Promise<void>) | null>(
-    null,
-  );
-
   const guestRosterRows = (bundle?.roster ?? []).filter((r) => r.grgSection === "guest");
   const guestAssignmentsComplete =
     guestRosterRows.length === 0 ||
@@ -375,18 +360,7 @@ export default function Home() {
     if (params.get("google") === "connected") refreshGoogle();
   }, [refreshGoogle]);
 
-  useEffect(() => {
-    window.setTimeout(() => {
-      void loadUpcomingPlanOptionsRef.current?.("");
-    }, 0);
-  }, []);
-
   const activeSong = songFlows[activeSongIndex];
-
-  const selectedUpcomingPlan = useMemo(
-    () => upcomingPlans.find((plan) => String(plan.planId) === planId) ?? null,
-    [planId, upcomingPlans],
-  );
 
   const attentionSongIndexes = useMemo(
     () =>
@@ -457,60 +431,6 @@ export default function Home() {
       setGrgDoc(null);
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function loadUpcomingPlanOptions(nextServiceTypeId = serviceTypeId) {
-    setUpcomingPlansBusy(true);
-    setUpcomingPlansError(null);
-    try {
-      const res = await fetch("/api/mvp/upcoming-plans", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          serviceTypeId: nextServiceTypeId.trim() || undefined,
-        }),
-      });
-      const payload = (await res.json()) as
-        | {
-            ok: true;
-            serviceTypeId?: number;
-            scopeName?: string;
-            scopeSource?: "env" | "profile";
-            defaultPlanId?: number;
-            serviceTypes?: ServiceTypeOption[];
-            plans: UpcomingPlanOption[];
-          }
-        | { ok: false; error: string };
-      if (!res.ok || !payload.ok) throw new Error(payload.ok ? "Failed" : payload.error);
-
-      setServiceTypeOptions(payload.serviceTypes ?? []);
-      setPlanScope(
-        payload.scopeName && payload.scopeSource
-          ? { name: payload.scopeName, source: payload.scopeSource }
-          : null,
-      );
-      setUpcomingPlans(payload.plans);
-      const currentPlan = payload.plans.find((plan) => String(plan.planId) === planId);
-      const defaultPlan =
-        payload.plans.find((plan) => plan.planId === payload.defaultPlanId) ?? null;
-      const nextPlan = currentPlan ?? defaultPlan ?? payload.plans[0] ?? null;
-      if (nextPlan) {
-        setPlanId(String(nextPlan.planId));
-        setServiceTypeId(String(nextPlan.serviceTypeId));
-      } else {
-        setPlanId("");
-        if (payload.serviceTypeId) setServiceTypeId(String(payload.serviceTypeId));
-      }
-      if (payload.plans.length === 0) {
-        setUpcomingPlansError("No upcoming plans found for this service type.");
-      }
-    } catch (e) {
-      setUpcomingPlans([]);
-      setPlanId("");
-      setUpcomingPlansError(e instanceof Error ? e.message : "Failed to load upcoming plans.");
-    } finally {
-      setUpcomingPlansBusy(false);
     }
   }
 
@@ -715,12 +635,6 @@ export default function Home() {
       next[index] = { ...next[index], ...patch };
       return next;
     });
-  }
-
-  function selectUpcomingPlan(nextPlanId: string) {
-    setPlanId(nextPlanId);
-    const plan = upcomingPlans.find((option) => String(option.planId) === nextPlanId);
-    if (plan) setServiceTypeId(String(plan.serviceTypeId));
   }
 
   function songListForApply() {
@@ -1004,7 +918,6 @@ export default function Home() {
 
   useEffect(() => {
     buildPreviewRef.current = buildPreview;
-    loadUpcomingPlanOptionsRef.current = loadUpcomingPlanOptions;
   });
 
   useEffect(() => {
@@ -1060,82 +973,21 @@ export default function Home() {
 
         {step === "Setup" ? (
           <section className="flex flex-col gap-4 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-            <label className="flex flex-col gap-2">
-              <span className="text-sm font-medium">Plan</span>
-              <select
-                value={planId}
-                onChange={(e) => selectUpcomingPlan(e.target.value)}
-                disabled={upcomingPlansBusy}
-                className="h-11 rounded-xl border border-zinc-200 px-3 text-sm dark:border-zinc-800 dark:bg-zinc-950"
-              >
-                <option value="">
-                  {upcomingPlansBusy ? "Loading upcoming plans..." : "Select an upcoming plan"}
-                </option>
-                {upcomingPlans.map((plan) => (
-                  <option key={plan.planId} value={String(plan.planId)}>
-                    {plan.label}
-                  </option>
-                ))}
-              </select>
-              <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                Upcoming plans are sorted from closest to farthest. Same-day plans include the
-                service time.
-              </span>
-              {planScope ? (
-                <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                  Scope: {planScope.name} ({planScope.source === "profile" ? "from your PCO profile" : "from env config"})
-                </span>
-              ) : null}
-              {selectedUpcomingPlan ? (
-                <span className="text-xs text-emerald-600 dark:text-emerald-400">
-                  Selected: {selectedUpcomingPlan.label}
-                </span>
-              ) : null}
-              {upcomingPlansError ? (
-                <span className="text-xs text-amber-700 dark:text-amber-300">
-                  {upcomingPlansError}
-                </span>
-              ) : null}
-            </label>
-            <label className="flex flex-col gap-2">
-              <span className="text-sm font-medium">Berlin plan type (advanced)</span>
-              <div className="flex flex-wrap gap-2">
-                {serviceTypeOptions.length > 0 ? (
-                  <select
-                    value={serviceTypeId}
-                    onChange={(e) => {
-                      setServiceTypeId(e.target.value);
-                      void loadUpcomingPlanOptions(e.target.value);
-                    }}
-                    className="h-11 min-w-0 flex-1 rounded-xl border border-zinc-200 px-3 text-sm dark:border-zinc-800 dark:bg-zinc-950"
-                  >
-                    <option value="">Select service type</option>
-                    {serviceTypeOptions.map((option) => (
-                      <option key={option.serviceTypeId} value={String(option.serviceTypeId)}>
-                        {option.name}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    value={serviceTypeId}
-                    onChange={(e) => setServiceTypeId(e.target.value)}
-                    className="h-11 min-w-0 flex-1 rounded-xl border border-zinc-200 px-3 text-sm dark:border-zinc-800 dark:bg-zinc-950"
-                  />
-                )}
-                <button
-                  type="button"
-                  disabled={upcomingPlansBusy}
-                  onClick={() => void loadUpcomingPlanOptions(serviceTypeId)}
-                  className="h-11 rounded-xl border border-zinc-200 px-3 text-sm disabled:opacity-50 dark:border-zinc-800"
-                >
-                  {upcomingPlansBusy ? "Refreshing..." : "Refresh plans"}
-                </button>
-              </div>
-              <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                Leave this as resolved unless you need another Berlin plan type.
-              </span>
-            </label>
+            <PcoServicePlanPicker
+              planId={planId}
+              serviceTypeId={serviceTypeId}
+              setServiceTypeId={setServiceTypeId}
+              upcomingPlans={upcomingPlans}
+              serviceTypeOptions={serviceTypeOptions}
+              planScope={planScope}
+              selectedPlan={selectedUpcomingPlan}
+              busy={upcomingPlansBusy}
+              error={upcomingPlansError}
+              onSelectPlan={selectUpcomingPlan}
+              onLoadOptions={loadUpcomingPlanOptions}
+              serviceTypeLabel="Berlin plan type (advanced)"
+              serviceTypeHint="Leave this as resolved unless you need another Berlin plan type."
+            />
             <label className="flex flex-col gap-2">
               <span className="text-sm font-medium">GRG template title (read-only source)</span>
               <input
