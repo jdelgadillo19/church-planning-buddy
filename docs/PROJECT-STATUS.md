@@ -1,6 +1,6 @@
 # Church Planning Buddy — project status
 
-**Last updated:** 2026-06-01  
+**Last updated:** 2026-06-03  
 **Repo:** https://github.com/jdelgadillo19/church-planning-buddy  
 **Latest commit (at update):** `e75d4c3` — song scan retrieval (yellow fallback, manual Drive picker)
 
@@ -15,6 +15,7 @@ Use this file as the **session handoff** doc.
 | [`STARTUP-PROMPT.md`](./STARTUP-PROMPT.md) | Copy-paste block for next Cursor session |
 | [`GRG-TEMPLATE.md`](./GRG-TEMPLATE.md) | Placeholder contract & upload steps |
 | [`GRG-FORMAT-SPEC.md`](./GRG-FORMAT-SPEC.md) | Post-MVP format architecture |
+| [`planning/RENAME-TO-GRAPEVINE.md`](./planning/RENAME-TO-GRAPEVINE.md) | **Deferred** — product rename Church Planning Buddy → **Grapevine** |
 
 ---
 
@@ -153,3 +154,4 @@ Use **[`docs/STARTUP-PROMPT.md`](./STARTUP-PROMPT.md)** — copy the fenced bloc
 | [`party/output/party-2026-05-24.md`](./party/output/party-2026-05-24.md) | Party mode + questionnaire |
 | [`party/output/party-2026-05-22.md`](./party/output/party-2026-05-22.md) | Early GRG discovery |
 | [`user-feedback/`](./user-feedback/) | Build feedback logs |
+| [`planning/RENAME-TO-GRAPEVINE.md`](./planning/RENAME-TO-GRAPEVINE.md) | Planned rebrand (not started) |
