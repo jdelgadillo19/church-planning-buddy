@@ -43,6 +43,15 @@ export default function SlideDeckPage() {
     items: { position: number; name: string }[];
     warnings: string[];
   } | null>(null);
+  const [publishLoading, setPublishLoading] = useState(false);
+  const [publishResult, setPublishResult] = useState<{
+    serviceFolderKey: string;
+    packageId: string;
+    driveFolderUrl: string;
+    fileCount: number;
+    newFileCount: number;
+  } | null>(null);
+  const [googleConnected, setGoogleConnected] = useState(false);
   const [ppStatus, setPpStatus] = useState<PpStatus | null>(null);
 
   const refreshPpStatus = useCallback(async () => {
@@ -63,12 +72,25 @@ export default function SlideDeckPage() {
     void refreshPpStatus();
   }, [refreshPpStatus]);
 
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/auth/google/status");
+        const data = (await res.json()) as { connected?: boolean };
+        setGoogleConnected(Boolean(data.connected));
+      } catch {
+        setGoogleConnected(false);
+      }
+    })();
+  }, []);
+
   async function loadMockCommit() {
     setLoading(true);
     setError(null);
     setManifest(null);
     setCommitPlan(null);
     setApplyResult(null);
+    setPublishResult(null);
     try {
       const res = await fetch("/api/slide-deck/mock-commit", {
         method: "POST",
@@ -140,6 +162,60 @@ export default function SlideDeckPage() {
     }
   }
 
+  async function publishToDrive() {
+    if (!planId.trim() || !commitPlan) return;
+    if (!googleConnected) {
+      setError("Connect Google on the Get Ready Guide tool first, then return here.");
+      return;
+    }
+
+    const ok = window.confirm(
+      `Publish "${commitPlan.playlistName}" to Google Drive?\n\n` +
+        `Creates or updates church-planning-buddy/ProPresenter/Playlists/{service}/ on your Drive.`,
+    );
+    if (!ok) return;
+
+    setPublishLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/slide-deck/publish", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          planId: planId.trim(),
+          serviceTypeId: serviceTypeId.trim() || undefined,
+          confirm: true,
+          applyResult: applyResult ?? undefined,
+        }),
+      });
+      const payload = (await res.json()) as {
+        ok: boolean;
+        result?: {
+          serviceFolderKey: string;
+          packageId: string;
+          driveFolderUrl: string;
+          files: unknown[];
+          newFiles: unknown[];
+        };
+        error?: string;
+      };
+      if (!payload.ok || !payload.result) {
+        throw new Error(payload.error ?? "Publish failed.");
+      }
+      setPublishResult({
+        serviceFolderKey: payload.result.serviceFolderKey,
+        packageId: payload.result.packageId,
+        driveFolderUrl: payload.result.driveFolderUrl,
+        fileCount: payload.result.files.length,
+        newFileCount: payload.result.newFiles.length,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Publish to Drive failed.");
+    } finally {
+      setPublishLoading(false);
+    }
+  }
+
   return (
     <ToolShell toolId="slide-deck">
       <nav className="flex flex-wrap gap-2" aria-label="Slide deck steps">
@@ -163,8 +239,14 @@ export default function SlideDeckPage() {
       </nav>
 
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
-        <strong>Mock commit — no ProPresenter writes.</strong> Commit preview shows the operations and
-        resulting playlist that would run if writes were enabled.
+        <strong>Preview first.</strong> Build commit preview, optionally apply on this Mac’s ProPresenter,
+        then <strong>Publish to Drive</strong> for the church rig. See{" "}
+        <code className="font-mono text-xs">docs/PROPRESENTER-PUBLISH.md</code>.
+        {!googleConnected ? (
+          <span className="mt-1 block text-amber-800 dark:text-amber-200">
+            Google is not connected — open Get Ready Guide and use Reconnect Google.
+          </span>
+        ) : null}
       </div>
 
       <section className="flex flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
@@ -272,6 +354,18 @@ export default function SlideDeckPage() {
               </button>
               <button
                 type="button"
+                disabled={publishLoading || !googleConnected}
+                onClick={() => void publishToDrive()}
+                className="h-11 rounded-xl bg-sky-700 px-4 text-sm font-medium text-white disabled:opacity-50 dark:bg-sky-600"
+              >
+                {publishLoading
+                  ? "Publishing to Drive…"
+                  : publishResult
+                    ? "Published"
+                    : "Publish to Drive"}
+              </button>
+              <button
+                type="button"
                 onClick={() => setStep("Setup")}
                 className="h-11 rounded-xl border px-4 text-sm dark:border-zinc-700"
               >
@@ -285,6 +379,33 @@ export default function SlideDeckPage() {
               </p>
             ) : null}
           </section>
+
+          {publishResult ? (
+            <section className="flex flex-col gap-3 rounded-xl border border-sky-200 bg-sky-50 p-5 dark:border-sky-900 dark:bg-sky-950">
+              <h2 className="text-lg font-medium text-sky-900 dark:text-sky-100">
+                Published to Drive
+              </h2>
+              <p className="text-sm text-sky-800 dark:text-sky-200">
+                Folder <strong className="font-mono">{publishResult.serviceFolderKey}</strong> —{" "}
+                {publishResult.fileCount} file(s) in Playlists
+                {publishResult.newFileCount > 0
+                  ? `, ${publishResult.newFileCount} in New Files`
+                  : ""}
+                .
+              </p>
+              <a
+                href={publishResult.driveFolderUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sm font-medium text-sky-700 underline dark:text-sky-300"
+              >
+                Open package on Google Drive
+              </a>
+              <p className="font-mono text-xs text-sky-700 dark:text-sky-400">
+                {publishResult.packageId}
+              </p>
+            </section>
+          ) : null}
 
           {applyResult ? (
             <section className="flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-900 dark:bg-emerald-950">

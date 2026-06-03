@@ -13,7 +13,7 @@ function escapeDriveQueryValue(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll("'", "\\'");
 }
 
-async function listMatchingFolders(
+export async function listMatchingFolders(
   drive: drive_v3.Drive,
   name: string,
   parentId?: string,

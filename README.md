@@ -16,6 +16,8 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) on the machine where you ran `npm run dev` (not another device on your LAN).
 
+**Slide Deck → Drive:** After commit preview, use **Publish to Drive** or `npm run slide-deck:publish -- <planId>`. See [`docs/PROPRESENTER-PUBLISH.md`](./docs/PROPRESENTER-PUBLISH.md).
+
 ### Local dev troubleshooting
 
 - Run commands from this directory (`church-planning-buddy/`), not the parent `Projects/` folder.

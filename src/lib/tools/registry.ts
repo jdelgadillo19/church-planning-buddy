@@ -22,7 +22,7 @@ export const TOOLS: ToolDefinition[] = [
     id: "slide-deck",
     name: "Slide Deck Generator",
     description:
-      "Assemble a ProPresenter playlist from Planning Center and Get Ready Guide — preview before any writes.",
+      "Assemble a ProPresenter playlist from Planning Center, preview, and publish a handoff package to Drive.",
     href: "/slide-deck",
     status: "active",
   },

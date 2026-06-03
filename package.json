@@ -14,6 +14,7 @@
     "pp:probe": "npx tsx scripts/propresenter-probe.ts",
     "slide-deck:manifest": "npx tsx scripts/slide-deck-manifest.ts",
     "slide-deck:apply": "npx tsx scripts/slide-deck-apply.ts",
+    "slide-deck:publish": "npx tsx scripts/slide-deck-publish.ts",
     "messaging:run": "npx tsx scripts/messaging-run.ts"
   },
   "dependencies": {
