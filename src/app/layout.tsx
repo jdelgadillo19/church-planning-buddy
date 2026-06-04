@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Church Planning Buddy",
-  description: "Ministry operations tools — Get Ready Guide, Slide Deck Generator, and more",
+  title: "Grapevine Prep",
+  description:
+    "Church planning tools — Get Ready Guide, slide deck workflows, and ministry operations",
 };
 
 export default function RootLayout({

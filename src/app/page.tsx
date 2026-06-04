@@ -7,7 +7,7 @@ export default function HomePage() {
     <div className="min-h-screen bg-zinc-50 text-zinc-950 dark:bg-black dark:text-zinc-50">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-6 py-10">
         <header className="flex flex-col gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight">Church Planning Buddy</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Grapevine Prep</h1>
           <p className="text-sm text-zinc-600 dark:text-zinc-400">
             Ministry operations tools — each workflow stays in its own lane.
           </p>

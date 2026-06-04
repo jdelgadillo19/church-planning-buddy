@@ -16,6 +16,12 @@
 # next.js
 /.next/
 /out/
+.open-next/
+
+# cloudflare local (secrets)
+.dev.vars
+.wrangler/
+supabase/.temp/
 
 # production
 /build
