@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 import { buildAuthHeader, parsePositiveIntOrNull } from "@/lib/pco/client";
-import {
-  clearRosterPositionMapCache,
-  loadRosterPositionMapFromDisk,
-  saveRosterPositionMap,
-} from "@/lib/pco/roster-position-map";
+import { loadRosterPositionMap } from "@/lib/pco/roster-position-map";
+import { saveRosterPositionMap } from "@/lib/pco/roster-position-map-io";
 import { syncMapWithCatalog } from "@/lib/pco/roster-position-sync";
 import {
   collectPositionNamesFromCatalog,
@@ -30,13 +27,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const existing = loadRosterPositionMapFromDisk();
+    const existing = loadRosterPositionMap();
     const { positions, teamsById } = await loadServiceTypeTeamPositions(serviceTypeId, auth);
     const catalogNames = collectPositionNamesFromCatalog(positions, teamsById);
     const { map, added } = syncMapWithCatalog(existing, catalogNames);
 
     saveRosterPositionMap(map);
-    clearRosterPositionMapCache();
 
     return NextResponse.json({
       ok: true,

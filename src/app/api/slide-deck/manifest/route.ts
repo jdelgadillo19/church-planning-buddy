@@ -5,6 +5,7 @@ import { ppPing, ProPresenterApiError } from "@/lib/propresenter/client";
 import { loadProPresenterConfig } from "@/lib/propresenter/config";
 import { findPlaylistByName } from "@/lib/propresenter/playlists-read";
 import { resolveTemplatePlaylistName } from "@/lib/config/slide-deck";
+import { isProPresenterUnavailableOnHosted } from "@/lib/propresenter/hosted";
 
 export async function POST(req: Request) {
   try {
@@ -26,7 +27,7 @@ export async function POST(req: Request) {
 
     const shouldCheckTemplate = body.checkTemplate !== false;
 
-    if (shouldCheckTemplate) {
+    if (shouldCheckTemplate && !isProPresenterUnavailableOnHosted()) {
       const config = loadProPresenterConfig();
       try {
         await ppPing(config);

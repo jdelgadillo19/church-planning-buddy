@@ -1,6 +1,6 @@
 "use client";
 
-import { useGoogleConnection } from "@/hooks/use-google-connection";
+import { useGoogleConnection, googleSaveErrorMessage } from "@/hooks/use-google-connection";
 
 type GoogleConnectionCardProps = {
   compact?: boolean;
@@ -8,7 +8,18 @@ type GoogleConnectionCardProps = {
 };
 
 export function GoogleConnectionCard({ compact = false, hint }: GoogleConnectionCardProps) {
-  const { connected, scopes, loading, connectHref, disconnect } = useGoogleConnection();
+  const {
+    connected,
+    scopes,
+    loading,
+    connectHref,
+    disconnect,
+    reauthRequired,
+    saveFailed,
+    saveError,
+    adminConfigured,
+    driveProbeOk,
+  } = useGoogleConnection();
 
   const scopeSummary =
     scopes.length > 0
@@ -45,6 +56,25 @@ export function GoogleConnectionCard({ compact = false, hint }: GoogleConnection
             ? "Drive, Docs, Sheets, and Calendar access persist across all CPB tools."
             : "Connect once to use Drive-backed workflows in any tool.")}
       </p>
+      {saveFailed ? (
+        <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-950 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100">
+          {googleSaveErrorMessage(saveError, adminConfigured)} Try Connect Google again or sign
+          out and back in.
+        </p>
+      ) : null}
+      {connected && !driveProbeOk && !saveFailed ? (
+        <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+          Google tokens are saved, but the GRG template is not reachable on Drive yet. Run{" "}
+          <strong>Diagnose Drive setup</strong> on GRG — confirm the connected account can open the
+          church template folder, or reconnect with the church Google account.
+        </p>
+      ) : null}
+      {reauthRequired && !connected && !saveFailed ? (
+        <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+          CPB login does not grant Drive access by itself. Click <strong>Connect Google</strong>{" "}
+          below to authorize Drive, Docs, Sheets, and Calendar.
+        </p>
+      ) : null}
       {connected && scopeSummary ? (
         <p className="mt-1 truncate text-xs text-zinc-500 dark:text-zinc-500" title={scopeSummary}>
           Scopes: {scopeSummary}

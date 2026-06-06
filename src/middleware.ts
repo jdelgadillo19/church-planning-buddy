@@ -3,9 +3,40 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isGrapevineAuthEnabled } from "@/lib/supabase/config";
 
 const PUBLIC_PREFIXES = ["/login", "/auth/"];
+const GOOGLE_OAUTH_CALLBACK = "/api/auth/google/callback";
 
 function isPublicPath(pathname: string): boolean {
+  if (pathname === GOOGLE_OAUTH_CALLBACK) return false;
   return PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}`));
+}
+
+async function refreshSupabaseSession(request: NextRequest) {
+  let response = NextResponse.next({
+    request: { headers: request.headers },
+  });
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!.trim();
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!.trim();
+
+  const supabase = createServerClient(url, key, {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll();
+      },
+      setAll(cookiesToSet) {
+        for (const { name, value } of cookiesToSet) {
+          request.cookies.set(name, value);
+        }
+        response = NextResponse.next({ request: { headers: request.headers } });
+        for (const { name, value, options } of cookiesToSet) {
+          response.cookies.set(name, value, options);
+        }
+      },
+    },
+  });
+
+  await supabase.auth.getUser();
+  return response;
 }
 
 export async function middleware(request: NextRequest) {
@@ -15,11 +46,14 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  // Supabase sometimes redirects to Site URL root with ?code= instead of /auth/callback
   if (pathname === "/" && request.nextUrl.searchParams.has("code")) {
     const callback = new URL("/auth/callback", request.url);
     callback.search = request.nextUrl.search;
     return NextResponse.redirect(callback);
+  }
+
+  if (pathname === GOOGLE_OAUTH_CALLBACK) {
+    return refreshSupabaseSession(request);
   }
 
   if (
@@ -60,7 +94,8 @@ export async function middleware(request: NextRequest) {
 
   if (!user) {
     const login = new URL("/login", request.url);
-    login.searchParams.set("next", pathname);
+    const returnPath = pathname + request.nextUrl.search;
+    login.searchParams.set("next", returnPath);
     return NextResponse.redirect(login);
   }
 

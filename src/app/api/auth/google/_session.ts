@@ -2,6 +2,15 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { cookies } from "next/headers";
+import { createClientIfConfigured } from "@/lib/supabase/server";
+import { isGrapevineAuthEnabled } from "@/lib/supabase/config";
+import {
+  clearGoogleTokensForUser,
+  loadGoogleTokensForUser,
+  saveGoogleTokensForUser,
+  type SaveGoogleTokensOptions,
+  type SaveGoogleTokensResult,
+} from "@/lib/google/token-store";
 
 export type GoogleTokens = {
   access_token?: string;
@@ -55,15 +64,7 @@ export async function getOrCreateSessionId() {
   return id;
 }
 
-export async function saveTokensForCurrentSession(tokens: GoogleTokens) {
-  const id = await getOrCreateSessionId();
-  memoryStore().set(id, tokens);
-  const disk = await readDiskStore();
-  disk[id] = tokens;
-  await writeDiskStore(disk);
-}
-
-export async function loadTokensForCurrentSession(): Promise<GoogleTokens | null> {
+async function loadLegacySessionTokens(): Promise<GoogleTokens | null> {
   const jar = await cookies();
   const id = jar.get(COOKIE_NAME)?.value;
   if (!id) return null;
@@ -77,11 +78,15 @@ export async function loadTokensForCurrentSession(): Promise<GoogleTokens | null
   return tokens;
 }
 
-export function googleConnected(tokens: GoogleTokens | null) {
-  return Boolean(tokens?.access_token || tokens?.refresh_token);
+async function saveLegacySessionTokens(tokens: GoogleTokens) {
+  const id = await getOrCreateSessionId();
+  memoryStore().set(id, tokens);
+  const disk = await readDiskStore();
+  disk[id] = tokens;
+  await writeDiskStore(disk);
 }
 
-export async function clearTokensForCurrentSession(): Promise<boolean> {
+async function clearLegacySessionTokens(): Promise<boolean> {
   const jar = await cookies();
   const id = jar.get(COOKIE_NAME)?.value;
   if (!id) return false;
@@ -93,6 +98,62 @@ export async function clearTokensForCurrentSession(): Promise<boolean> {
     await writeDiskStore(disk);
   }
   return true;
+}
+
+export async function saveTokensForCurrentSession(
+  tokens: GoogleTokens,
+  options?: SaveGoogleTokensOptions,
+): Promise<SaveGoogleTokensResult> {
+  if (isGrapevineAuthEnabled()) {
+    const supabase = await createClientIfConfigured();
+    if (supabase) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        return saveGoogleTokensForUser(user.id, tokens, options);
+      }
+      return { saved: false, error: "no_user" };
+    }
+    return { saved: false, error: "supabase_not_configured" };
+  }
+  await saveLegacySessionTokens(tokens);
+  return { saved: true };
+}
+
+export async function loadTokensForCurrentSession(): Promise<GoogleTokens | null> {
+  if (isGrapevineAuthEnabled()) {
+    const supabase = await createClientIfConfigured();
+    if (supabase) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        const stored = await loadGoogleTokensForUser(user.id);
+        if (stored) return stored;
+      }
+    }
+  }
+  return loadLegacySessionTokens();
+}
+
+export function googleConnected(tokens: GoogleTokens | null) {
+  return Boolean(tokens?.access_token || tokens?.refresh_token);
+}
+
+export async function clearTokensForCurrentSession(): Promise<boolean> {
+  if (isGrapevineAuthEnabled()) {
+    const supabase = await createClientIfConfigured();
+    if (supabase) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        return clearGoogleTokensForUser(user.id);
+      }
+    }
+  }
+  return clearLegacySessionTokens();
 }
 
 /** First stored session — for local CLI runners (launchd) without browser cookies. */

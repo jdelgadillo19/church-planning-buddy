@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { buildRosterPreviewFromPco, ROSTER_NAME_POSITION_PLACEHOLDER } from "@/lib/docs/grg-roster";
 import { extractPlainPreview, loadSourceGoogleDoc } from "@/lib/docs/scan-import";
 import { buildSongListLines } from "@/lib/docs/grg-mutate";
-import { getAuthedClients } from "@/lib/google/auth";
-import { exportDocPlainText } from "@/lib/google/drive-files";
+import { exportDriveFilePlainTextForTokens } from "@/lib/google/drive-fetch";
 import type { PlanRosterRow } from "@/lib/pco/plan-team";
 import { resolveGrgSection } from "@/lib/pco/roster-team-scope";
 import { googleConnected, loadTokensForCurrentSession } from "@/app/api/auth/google/_session";
@@ -44,8 +43,7 @@ export async function POST(req: Request) {
     }> = [];
 
     const tokens = await loadTokensForCurrentSession();
-    const clients =
-      tokens && googleConnected(tokens) ? getAuthedClients(tokens) : null;
+    const driveConnected = Boolean(tokens && googleConnected(tokens));
 
     for (const song of body.songs ?? []) {
       if (song.skipped) {
@@ -63,7 +61,7 @@ export async function POST(req: Request) {
         continue;
       }
 
-      if (!clients) {
+      if (!driveConnected || !tokens) {
         sections.push({
           title: song.title,
           bodyPreview: "(connect Google to preview)",
@@ -74,15 +72,14 @@ export async function POST(req: Request) {
       }
 
       try {
-        const { drive, docs } = clients;
         let bodyPreview = "";
         let importMode = "styled";
 
         try {
-          const source = await loadSourceGoogleDoc(docs, drive, song.selectedFileId);
+          const source = await loadSourceGoogleDoc(tokens, song.selectedFileId);
           bodyPreview = extractPlainPreview(source);
         } catch {
-          const text = await exportDocPlainText(drive, song.selectedFileId);
+          const text = await exportDriveFilePlainTextForTokens(tokens, song.selectedFileId);
           bodyPreview = text.slice(0, 1200) + (text.length > 1200 ? "\n…" : "");
           importMode = "plain";
         }

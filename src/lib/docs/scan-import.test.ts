@@ -6,7 +6,7 @@ import {
   splitScanParagraphs,
 } from "./scan-import";
 import { buildSongListLines, stripArrangementPrefix } from "./grg-mutate";
-import type { docs_v1 } from "googleapis";
+import type { docs_v1 } from "@/lib/google/api-types";
 
 function para(text: string): docs_v1.Schema$Paragraph {
   return {

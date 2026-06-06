@@ -1,4 +1,4 @@
-import type { docs_v1 } from "googleapis";
+import type { docs_v1 } from "@/lib/google/api-types";
 
 export type SongListLine = {
   title: string;

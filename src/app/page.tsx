@@ -1,19 +1,37 @@
 import Link from "next/link";
 import { GoogleConnectionCard } from "@/components/google-connection-card";
+import { SignOutButton } from "@/components/sign-out-button";
 import { TOOLS } from "@/lib/tools/registry";
+import { createClientIfConfigured } from "@/lib/supabase/server";
+import { isGrapevineAuthEnabled } from "@/lib/supabase/config";
 
-export default function HomePage() {
+export default async function HomePage() {
+  const authEnabled = isGrapevineAuthEnabled();
+  let signedIn = false;
+  if (authEnabled) {
+    const supabase = await createClientIfConfigured();
+    if (supabase) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      signedIn = Boolean(user);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-950 dark:bg-black dark:text-zinc-50">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-6 py-10">
         <header className="flex flex-col gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight">Grapevine Prep</h1>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h1 className="text-2xl font-semibold tracking-tight">Grapevine Prep</h1>
+            {signedIn ? <SignOutButton /> : null}
+          </div>
           <p className="text-sm text-zinc-600 dark:text-zinc-400">
             Ministry operations tools — each workflow stays in its own lane.
           </p>
         </header>
 
-        <GoogleConnectionCard hint="Connect once for Get Ready Guide, Slide Deck publish, and Team Messaging." />
+        <GoogleConnectionCard hint="Google sign-in connects Drive automatically. Use Reconnect if scopes change." />
 
         <ul className="flex flex-col gap-4">
           {TOOLS.map((tool) => (

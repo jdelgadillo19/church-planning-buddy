@@ -36,6 +36,14 @@ function parseEnvFile(path) {
   return out;
 }
 
+function envToDeployFileContent(envObj) {
+  return (
+    Object.entries(envObj)
+      .map(([key, value]) => `${key}=${value}`)
+      .join("\n") + "\n"
+  );
+}
+
 const prodRedirect =
   process.env.GOOGLE_REDIRECT_URI?.trim() ||
   "https://grapevineprep.com/api/auth/google/callback";
@@ -57,15 +65,15 @@ for (const [key, value] of Object.entries(env)) {
   if (SECRET_KEY.test(key)) secrets[key] = value;
 }
 
-const tmp = resolve(root, ".wrangler-secrets.json");
-writeFileSync(tmp, JSON.stringify(secrets, null, 2));
+const secretsTmp = resolve(root, ".wrangler-secrets.json");
+writeFileSync(secretsTmp, JSON.stringify(secrets, null, 2));
 
 const bulk = spawnSync(
   "npx",
-  ["wrangler", "secret", "bulk", tmp, "--config", config],
+  ["wrangler", "secret", "bulk", secretsTmp, "--config", config],
   { cwd: root, stdio: "inherit" }
 );
-unlinkSync(tmp);
+unlinkSync(secretsTmp);
 
 if (bulk.status !== 0) process.exit(bulk.status ?? 1);
 
@@ -74,19 +82,39 @@ if (!existsSync(resolve(root, ".open-next/worker.js"))) {
   process.exit(1);
 }
 
+const deployEnvPath = resolve(root, ".wrangler-deploy.env");
+writeFileSync(deployEnvPath, envToDeployFileContent(env));
+
 const deployArgs = [
   "wrangler",
   "deploy",
   "--config",
   config,
   "--env-file",
-  envPath,
+  deployEnvPath,
   "--keep-vars",
 ];
 
 const deploy = spawnSync("npx", deployArgs, { cwd: root, stdio: "inherit" });
-if (deploy.status !== 0) process.exit(deploy.status ?? 1);
+unlinkSync(deployEnvPath);
 
+if (deploy.status !== 0) {
+  console.error(
+    "Worker deploy failed (secrets were synced). Fix deploy errors, then re-run npm run env:cf."
+  );
+  console.error(
+    `If Connect Google still redirects to localhost, set GOOGLE_REDIRECT_URI in Cloudflare Dashboard → Workers → grapevine-prep → Settings → Variables to ${prodRedirect}.`
+  );
+  process.exit(deploy.status ?? 1);
+}
+
+const deployedRedirect = env.GOOGLE_REDIRECT_URI ?? "(unchanged)";
 console.log(
-  `Synced ${Object.keys(secrets).length} secrets and redeployed with vars from .env.local (Google redirect → ${prodRedirect}).`
+  `Synced ${Object.keys(secrets).length} secrets and redeployed Worker vars (GOOGLE_REDIRECT_URI → ${deployedRedirect}).`
 );
+
+if (!secrets.SUPABASE_SERVICE_ROLE_KEY) {
+  console.warn(
+    "Warning: SUPABASE_SERVICE_ROLE_KEY not in .env.local — Google Drive tokens will not persist in Supabase oauth_tokens."
+  );
+}

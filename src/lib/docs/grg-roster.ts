@@ -1,4 +1,4 @@
-import type { docs_v1 } from "googleapis";
+import type { docs_v1 } from "@/lib/google/api-types";
 import type { PlanRosterRow } from "@/lib/pco/plan-team";
 import {
   sectionKeyFromPcoPositionName,

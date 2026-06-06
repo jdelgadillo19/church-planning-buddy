@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
+import { guardProPresenterOnHosted } from "@/lib/propresenter/hosted-guard";
 import { runProPresenterProbe } from "@/lib/propresenter/probe";
 
 export async function POST(req: Request) {
+  const hostedBlock = guardProPresenterOnHosted();
+  if (hostedBlock) return hostedBlock;
+
   try {
     const body = (await req.json().catch(() => ({}))) as {
       presentationUuid?: string;

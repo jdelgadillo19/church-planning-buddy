@@ -1,5 +1,11 @@
-import type { docs_v1, drive_v3 } from "googleapis";
-import { exportDocPlainText, SHARED_DRIVE_OPTS } from "@/lib/google/drive-files";
+import type { GoogleTokens } from "@/app/api/auth/google/_session";
+import type { docs_v1, drive_v3 } from "@/lib/google/api-types";
+import { fetchGoogleDocumentForTokens } from "@/lib/google/docs-fetch";
+import {
+  driveGetFileMetaFetch,
+  exportDriveFilePlainTextForTokens,
+  resolveGoogleAccessToken,
+} from "@/lib/google/drive-fetch";
 import type { ScanLineType } from "@/lib/config/grg";
 import type { ScanStyleSpec } from "./scan-style-template";
 import { appendScanSection } from "./grg-mutate";
@@ -426,44 +432,37 @@ export function extractPlainPreview(
 }
 
 /** Best-effort mimeType lookup for diagnostics; never throws. */
-async function readSourceMimeType(
-  drive: drive_v3.Drive,
-  fileId: string,
-): Promise<string> {
+async function readSourceMimeType(tokens: GoogleTokens, fileId: string): Promise<string> {
   try {
-    const meta = await drive.files.get({
-      fileId,
-      fields: "mimeType",
-      ...SHARED_DRIVE_OPTS,
-    });
-    return meta.data.mimeType ?? "unknown";
+    const accessToken = await resolveGoogleAccessToken(tokens);
+    if (!accessToken) return "unknown";
+    const meta = await driveGetFileMetaFetch(accessToken, fileId);
+    return meta?.mimeType ?? "unknown";
   } catch {
     return "unknown";
   }
 }
 
 export async function loadSourceGoogleDoc(
-  docs: docs_v1.Docs,
-  drive: drive_v3.Drive,
+  tokens: GoogleTokens,
   fileId: string,
 ): Promise<docs_v1.Schema$Document> {
-  const meta = await drive.files.get({
-    fileId,
-    fields: "mimeType,name",
-    ...SHARED_DRIVE_OPTS,
-  });
+  const accessToken = await resolveGoogleAccessToken(tokens);
+  if (!accessToken) throw new Error("Google access token unavailable.");
 
-  const mime = meta.data.mimeType ?? "";
+  const meta = await driveGetFileMetaFetch(accessToken, fileId);
+  if (!meta?.id) throw new Error("Drive file not found.");
+
+  const mime = meta.mimeType ?? "";
   if (mime !== "application/vnd.google-apps.document") {
     throw new Error(`Scan must be a Google Doc for formatted import (got ${mime || "unknown"}).`);
   }
 
-  const doc = await docs.documents.get({ documentId: fileId });
-  if (!doc.data) throw new Error("Could not load source scan document.");
-  return doc.data;
+  return fetchGoogleDocumentForTokens(tokens, fileId);
 }
 
 export async function importScanSection(
+  tokens: GoogleTokens,
   docs: docs_v1.Docs,
   drive: drive_v3.Drive,
   targetDocumentId: string,
@@ -473,7 +472,7 @@ export async function importScanSection(
   spec: ScanStyleSpec,
 ): Promise<ScanImportResult> {
   try {
-    const source = await loadSourceGoogleDoc(docs, drive, sourceFileId);
+    const source = await loadSourceGoogleDoc(tokens, sourceFileId);
     const { header, lyrics } = parseSourceDocument(source);
     await appendStructuredScan(
       docs,
@@ -486,12 +485,12 @@ export async function importScanSection(
     );
     return { mode: "styled" };
   } catch (styledErr) {
-    const sourceMime = await readSourceMimeType(drive, sourceFileId);
+    const sourceMime = await readSourceMimeType(tokens, sourceFileId);
     console.error(
       `[scan-import] styled import failed for "${sectionTitle}" (file ${sourceFileId}, mimeType ${sourceMime}) — falling back to plain:`,
       styledErr,
     );
-    const plain = await exportDocPlainText(drive, sourceFileId);
+    const plain = await exportDriveFilePlainTextForTokens(tokens, sourceFileId);
     await appendScanSection(
       docs,
       targetDocumentId,

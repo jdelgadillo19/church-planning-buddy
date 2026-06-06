@@ -25,7 +25,7 @@ export async function POST(req: Request) {
     const outputTitle = resolveGrgOutputTitle({ grgDocTitle: body.title });
 
     const { drive } = getAuthedClients(tokens!);
-    const template = await resolveTemplateDoc(drive, templateRef);
+    const template = await resolveTemplateDoc(tokens!, drive, templateRef);
     const output = await findGrgOutputDocFallback(drive, outputTitle);
 
     return NextResponse.json({

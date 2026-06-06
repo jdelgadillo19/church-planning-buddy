@@ -1,19 +1,18 @@
 import { NextResponse } from "next/server";
 import {
-  clearRosterPositionMapCache,
+  effectiveTemplateAlias,
   isAliasConfigured,
   listUnconfiguredAliasKeys,
-  loadRosterPositionMapFromDisk,
-  effectiveTemplateAlias,
+  loadRosterPositionMap,
   ROSTER_ALIAS_PLACEHOLDER,
   resolveTemplateAlias,
-  saveRosterPositionMap,
   stripTeamPrefix,
 } from "@/lib/pco/roster-position-map";
+import { saveRosterPositionMap } from "@/lib/pco/roster-position-map-io";
 
 export async function GET() {
   try {
-    const map = loadRosterPositionMapFromDisk();
+    const map = loadRosterPositionMap();
     const unconfigured = listUnconfiguredAliasKeys(map);
 
     const entries = Object.keys(map)
@@ -47,7 +46,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "No aliases provided." }, { status: 400 });
     }
 
-    const current = loadRosterPositionMapFromDisk();
+    const current = loadRosterPositionMap();
     const next = { ...current };
 
     for (const [pcoPosition, alias] of Object.entries(aliases)) {
@@ -59,7 +58,6 @@ export async function POST(req: Request) {
     }
 
     saveRosterPositionMap(next);
-    clearRosterPositionMapCache();
 
     return NextResponse.json({
       ok: true,

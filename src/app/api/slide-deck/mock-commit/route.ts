@@ -9,6 +9,7 @@ import { getPlaylistItems } from "@/lib/propresenter/playlist-read";
 import { getExistingPlaylistSummary } from "@/lib/propresenter/playlist-write";
 import { findPlaylistByName } from "@/lib/propresenter/playlists-read";
 import { resolveTemplatePlaylistName } from "@/lib/config/slide-deck";
+import { isProPresenterUnavailableOnHosted } from "@/lib/propresenter/hosted";
 import { buildPlaylistNameFromPlanDate } from "@/lib/slide-deck/playlist-name";
 
 export async function POST(req: Request) {
@@ -27,26 +28,28 @@ export async function POST(req: Request) {
     let templateItems: Awaited<ReturnType<typeof getPlaylistItems>> = [];
     let libraryIndex: Awaited<ReturnType<typeof loadSongLibraryIndex>> = [];
 
-    try {
-      await ppPing(loadProPresenterConfig());
-      propresenterConnected = true;
+    if (!isProPresenterUnavailableOnHosted()) {
+      try {
+        await ppPing(loadProPresenterConfig());
+        propresenterConnected = true;
 
-      const templateName = resolveTemplatePlaylistName();
-      const found = await findPlaylistByName(templateName);
-      templateSourceFound = found !== null;
-      templateSourcePlaylistId = found?.id;
-      templateSourcePlaylistPath = found?.path ?? found?.name;
+        const templateName = resolveTemplatePlaylistName();
+        const found = await findPlaylistByName(templateName);
+        templateSourceFound = found !== null;
+        templateSourcePlaylistId = found?.id;
+        templateSourcePlaylistPath = found?.path ?? found?.name;
 
-      if (found?.id) {
-        templateItems = await getPlaylistItems(found.id);
+        if (found?.id) {
+          templateItems = await getPlaylistItems(found.id);
+        }
+
+        libraryIndex = await loadSongLibraryIndex();
+      } catch (e) {
+        if (!(e instanceof ProPresenterApiError)) {
+          /* offline ok */
+        }
+        templateSourceFound = propresenterConnected ? false : null;
       }
-
-      libraryIndex = await loadSongLibraryIndex();
-    } catch (e) {
-      if (!(e instanceof ProPresenterApiError)) {
-        /* offline ok */
-      }
-      templateSourceFound = propresenterConnected ? false : null;
     }
 
     const manifest = buildSlideDeckManifest({

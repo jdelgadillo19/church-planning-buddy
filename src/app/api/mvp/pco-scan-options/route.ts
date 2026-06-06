@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { getAuthedClients } from "@/lib/google/auth";
 import { listImmediateDriveDocuments } from "@/lib/google/drive-files";
 import { isGoogleDriveUrl, parseGoogleDriveUrl } from "@/lib/google/drive-url";
 import { googleConnected, loadTokensForCurrentSession } from "@/app/api/auth/google/_session";
@@ -45,7 +44,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Planning Center auth not configured." }, { status: 500 });
     }
 
-    const { drive } = getAuthedClients(tokens!);
     const attachments = await listSongAttachments(songId, pcoAuth, arrangementId);
     const seen = new Set<string>();
     const options: ManualDriveScanOption[] = [];
@@ -68,7 +66,7 @@ export async function POST(req: Request) {
       const parsed = parseGoogleDriveUrl(driveUrl);
       if (!parsed?.id) continue;
 
-      const docs = await listImmediateDriveDocuments(drive, parsed.id);
+      const docs = await listImmediateDriveDocuments(tokens!, parsed.id);
       for (const doc of docs) {
         if (seen.has(doc.id)) continue;
         seen.add(doc.id);

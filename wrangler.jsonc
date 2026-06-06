@@ -20,6 +20,9 @@
   "observability": {
     "enabled": true
   },
+  "vars": {
+    "GOOGLE_REDIRECT_URI": "https://grapevineprep.com/api/auth/google/callback"
+  },
   "routes": [
     {
       "pattern": "grapevineprep.com",

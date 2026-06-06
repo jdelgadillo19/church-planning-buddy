@@ -1,4 +1,4 @@
-import type { drive_v3 } from "googleapis";
+import type { drive_v3 } from "@/lib/google/api-types";
 import { resolvePpDriveFolderRefs } from "@/lib/config/pp-drive";
 import { resolveFolderByPath, listMatchingFolders } from "./grg-drive-folders";
 import { SHARED_DRIVE_OPTS } from "./drive-files";

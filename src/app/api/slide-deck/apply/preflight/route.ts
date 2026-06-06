@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
+import { guardProPresenterOnHosted } from "@/lib/propresenter/hosted-guard";
 import { getExistingPlaylistSummary } from "@/lib/propresenter/playlist-write";
 import { ProPresenterApiError } from "@/lib/propresenter/client";
 import { resolvePlaylistNameForPlan } from "@/lib/slide-deck/resolve-playlist-name";
 
 export async function GET(req: Request) {
+  const hostedBlock = guardProPresenterOnHosted();
+  if (hostedBlock) return hostedBlock;
+
   try {
     const url = new URL(req.url);
     const planId = url.searchParams.get("planId")?.trim() ?? "";

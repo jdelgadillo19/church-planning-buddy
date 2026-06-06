@@ -1,7 +1,8 @@
-import type { drive_v3 } from "googleapis";
+import type { GoogleTokens } from "@/app/api/auth/google/_session";
+import type { drive_v3 } from "@/lib/google/api-types";
 import { resolveGrgDriveFolderRefs } from "@/lib/config/grg-drive";
 import {
-  findDocById,
+  findDocByIdWithAccess,
   findDocByTitle,
   SHARED_DRIVE_OPTS,
   type DriveCandidate,
@@ -97,6 +98,27 @@ export async function resolveGrgOutputFolderId(drive: drive_v3.Drive): Promise<s
   return id;
 }
 
+export async function listDocNamesInFolder(
+  drive: drive_v3.Drive,
+  folderId: string,
+  limit = 10,
+): Promise<string[]> {
+  const q =
+    `mimeType='application/vnd.google-apps.document' ` +
+    `and '${folderId}' in parents and trashed=false`;
+  const list = await drive.files.list({
+    q,
+    fields: "files(name)",
+    pageSize: limit,
+    orderBy: "modifiedTime desc",
+    corpora: "allDrives",
+    ...SHARED_DRIVE_OPTS,
+  });
+  return (list.data.files ?? [])
+    .map((f) => f.name)
+    .filter((name): name is string => Boolean(name));
+}
+
 export async function findDocByTitleInFolder(
   drive: drive_v3.Drive,
   folderId: string,
@@ -127,23 +149,47 @@ export async function findDocByTitleInFolder(
 }
 
 export async function findGrgTemplateDoc(
+  tokens: GoogleTokens,
   drive: drive_v3.Drive,
   ref: { id?: string; title: string },
 ): Promise<DriveCandidate> {
+  let idLookupCode: number | undefined;
+
   if (ref.id) {
-    const byId = await findDocById(drive, ref.id);
-    if (byId) return byId;
+    const byId = await findDocByIdWithAccess(tokens, ref.id);
+    if (byId.ok) return byId.doc;
+    idLookupCode = byId.code;
+    if (byId.code === 403) {
+      throw new Error(byId.message);
+    }
+    if (byId.code === 404) {
+      throw new Error(
+        `Template ID \`${ref.id}\` not visible to the connected Google account (Drive returned 404). ` +
+          "Open the doc in Drive while signed in as the same account, or use Connect Google with the church Drive account.",
+      );
+    }
+    throw new Error(byId.message);
   }
 
   const folderId = await resolveGrgTemplateFolderId(drive);
   const byTitle = await findDocByTitleInFolder(drive, folderId, ref.title);
   if (byTitle) return byTitle;
 
-  const hint = ref.id
-    ? `id ${ref.id} or title "${ref.title}" in template folder`
-    : `title "${ref.title}" in template folder`;
+  const docNames = await listDocNamesInFolder(drive, folderId, 10);
+  const folderHint =
+    docNames.length > 0
+      ? ` Template folder contains ${docNames.length} doc(s): ${docNames.join(", ")}.`
+      : " Template folder has no visible Google Docs.";
+  const idHint =
+    ref.id && idLookupCode != null
+      ? ` Template ID lookup returned ${idLookupCode}.`
+      : ref.id
+        ? ` Template ID ${ref.id} was not found.`
+        : "";
+
   throw new Error(
-    `GRG template not found (${hint}). Create it per docs/GRG-TEMPLATE.md and set GRG_TEMPLATE_TITLE or GRG_TEMPLATE_ID.`,
+    `GRG template not found (title "${ref.title}" in template folder).${idHint}${folderHint} ` +
+      "Use Diagnose Drive setup on this page, or see docs/GRG-TEMPLATE.md.",
   );
 }
 

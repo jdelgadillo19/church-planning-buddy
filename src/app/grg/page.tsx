@@ -203,6 +203,30 @@ const DEFAULT_GRG_OUTPUT_TITLE_PATTERN = "Get Ready Guide {{GRG_DATE}}";
 const DEFAULT_GRG_TEMPLATE_TITLE = "Get Ready Guide (TEMPLATE)";
 const RESOLVING_STATUS = "Resolving…";
 
+type GrgDriveDiagnoseReport = {
+  ok: true;
+  token: {
+    connected: boolean;
+    hasRefreshToken: boolean;
+    storedHasDriveScope: boolean;
+    email?: string;
+    liveScopeSummary?: string;
+    hasFullDriveScope?: boolean;
+    driveFileScopeOnly?: boolean;
+  };
+  driveProbe: { ok: boolean; code?: number; message?: string };
+  env: { templateId?: string; templateFolderId?: string; templateTitle: string };
+  templateIdGet: { code: number; message: string; name?: string };
+  templateFolderGet: { code: number; message: string; name?: string };
+  templateFolderDocs: { count: number; names: string[] };
+};
+
+function diagnoseRowClass(ok: boolean) {
+  return ok
+    ? "border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100"
+    : "border-red-200 bg-red-50 text-red-950 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100";
+}
+
 function tierClass(tier: ScanTier) {
   if (tier === "green") return "text-emerald-600 dark:text-emerald-400";
   if (tier === "yellow") return "text-amber-600 dark:text-amber-400";
@@ -281,6 +305,8 @@ export default function Home() {
     null,
   );
   const [grgDoc, setGrgDoc] = useState<{ id: string; name: string; webViewLink?: string } | null>(null);
+  const [driveDiagnose, setDriveDiagnose] = useState<GrgDriveDiagnoseReport | null>(null);
+  const [diagnoseBusy, setDiagnoseBusy] = useState(false);
 
   const [bundle, setBundle] = useState<PlanBundle | null>(null);
   const [songFlows, setSongFlows] = useState<SongWorkflow[]>([]);
@@ -417,15 +443,33 @@ export default function Home() {
     });
   }, [step, bundle?.planId, grgTitle, googleConnected, lookupGrgOnDrive]);
 
+  const runGrgDiagnose = useCallback(async () => {
+    setDiagnoseBusy(true);
+    try {
+      const res = await fetch("/api/mvp/grg-drive-diagnose");
+      const data = (await res.json()) as GrgDriveDiagnoseReport;
+      setDriveDiagnose(data);
+      return data;
+    } finally {
+      setDiagnoseBusy(false);
+    }
+  }, []);
+
   async function verifyGrgSetup() {
     setBusy(true);
     setError(null);
     try {
       await lookupGrgOnDrive(grgTitle);
+      setDriveDiagnose(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
       setTemplateDoc(null);
       setGrgDoc(null);
+      try {
+        await runGrgDiagnose();
+      } catch {
+        /* diagnose is best-effort after verify failure */
+      }
     } finally {
       setBusy(false);
     }
@@ -1044,6 +1088,14 @@ export default function Home() {
               >
                 Verify template on Drive
               </button>
+              <button
+                type="button"
+                disabled={!googleConnected || busy || diagnoseBusy}
+                onClick={() => void runGrgDiagnose()}
+                className="inline-flex h-11 items-center rounded-xl border border-zinc-200 px-4 text-sm font-medium dark:border-zinc-700"
+              >
+                {diagnoseBusy ? "Diagnosing…" : "Diagnose Drive setup"}
+              </button>
               {templateDoc ? (
                 <span className="text-sm text-emerald-600 dark:text-emerald-400">
                   Template: {templateDoc.name}
@@ -1067,6 +1119,70 @@ export default function Home() {
                 </span>
               )}
             </div>
+
+            {driveDiagnose ? (
+              <div className="flex flex-col gap-2 rounded-xl border border-zinc-200 p-3 text-sm dark:border-zinc-800">
+                <p className="font-medium">Drive diagnostic</p>
+                <div className={`rounded-lg border px-3 py-2 ${diagnoseRowClass(driveDiagnose.token.connected)}`}>
+                  Token: {driveDiagnose.token.connected ? "connected" : "not connected"}
+                  {driveDiagnose.token.hasRefreshToken ? ", refresh token present" : ", no refresh token"}
+                  {driveDiagnose.token.email ? ` — ${driveDiagnose.token.email}` : ""}
+                </div>
+                <div
+                  className={`rounded-lg border px-3 py-2 ${diagnoseRowClass(Boolean(driveDiagnose.token.hasFullDriveScope))}`}
+                >
+                  Live token scopes: {driveDiagnose.token.liveScopeSummary ?? "(unknown)"}
+                </div>
+                {driveDiagnose.token.driveFileScopeOnly ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+                    Token has per-file Drive access only (drive.file), not full Drive — church Shared
+                    drive files will 404. Click Disconnect, then Connect Google, and approve all Drive
+                    permissions.
+                  </div>
+                ) : null}
+                {!driveDiagnose.token.hasFullDriveScope && !driveDiagnose.token.driveFileScopeOnly ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+                    Token is missing full Drive scope. Disconnect Google, then Connect Google and approve
+                    Drive access.
+                  </div>
+                ) : null}
+                <div
+                  className={`rounded-lg border px-3 py-2 ${diagnoseRowClass(driveDiagnose.driveProbe.ok)}`}
+                >
+                  Drive API probe:{" "}
+                  {driveDiagnose.driveProbe.ok
+                    ? "OK"
+                    : driveDiagnose.driveProbe.message ?? `failed (${driveDiagnose.driveProbe.code})`}
+                </div>
+                <div className="rounded-lg border border-zinc-200 px-3 py-2 text-zinc-700 dark:border-zinc-700 dark:text-zinc-300">
+                  Server env: template ID {driveDiagnose.env.templateId ?? "(not set)"}, folder{" "}
+                  {driveDiagnose.env.templateFolderId ?? "(path walk)"}, title &quot;
+                  {driveDiagnose.env.templateTitle}&quot;
+                </div>
+                <div
+                  className={`rounded-lg border px-3 py-2 ${diagnoseRowClass(driveDiagnose.templateIdGet.code === 200)}`}
+                >
+                  Template by ID:{" "}
+                  {driveDiagnose.templateIdGet.code === 200
+                    ? `OK — ${driveDiagnose.templateIdGet.name}`
+                    : `${driveDiagnose.templateIdGet.message} (${driveDiagnose.templateIdGet.code})`}
+                </div>
+                <div
+                  className={`rounded-lg border px-3 py-2 ${diagnoseRowClass(driveDiagnose.templateFolderGet.code === 200)}`}
+                >
+                  Template folder:{" "}
+                  {driveDiagnose.templateFolderGet.code === 200
+                    ? `OK — ${driveDiagnose.templateFolderGet.name}`
+                    : driveDiagnose.templateFolderGet.message}
+                </div>
+                <div className="rounded-lg border border-zinc-200 px-3 py-2 text-zinc-700 dark:border-zinc-700 dark:text-zinc-300">
+                  Docs in template folder ({driveDiagnose.templateFolderDocs.count}):{" "}
+                  {driveDiagnose.templateFolderDocs.names.length > 0
+                    ? driveDiagnose.templateFolderDocs.names.join(", ")
+                    : "(none visible)"}
+                </div>
+              </div>
+            ) : null}
 
             <button
               type="button"

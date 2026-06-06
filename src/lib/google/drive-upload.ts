@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
-import type { drive_v3 } from "googleapis";
+import type { drive_v3 } from "@/lib/google/api-types";
 import { SHARED_DRIVE_OPTS } from "./drive-files";
 import { listMatchingFolders } from "./grg-drive-folders";
 

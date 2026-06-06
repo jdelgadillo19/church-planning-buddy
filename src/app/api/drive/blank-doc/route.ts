@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { google } from "googleapis";
-import { getOAuthClient } from "../../auth/google/_oauth";
+import { getAuthedClients } from "@/lib/google/auth";
 import { loadTokensForCurrentSession } from "../../auth/google/_session";
 
 function isGoogleDoc(file: unknown): file is { id?: string | null; name?: string | null } {
@@ -13,10 +12,7 @@ export async function POST() {
     return NextResponse.json({ ok: false, error: "Google Drive not connected." }, { status: 401 });
   }
 
-  const auth = getOAuthClient();
-  auth.setCredentials(tokens);
-
-  const drive = google.drive({ version: "v3", auth });
+  const { drive } = getAuthedClients(tokens);
 
   const list = await drive.files.list({
     q: "mimeType='application/vnd.google-apps.document' and name contains 'blank' and trashed=false",
@@ -45,4 +41,3 @@ export async function POST() {
     text,
   });
 }
-

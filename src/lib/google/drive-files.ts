@@ -1,4 +1,12 @@
-import type { drive_v3 } from "googleapis";
+import type { GoogleTokens } from "@/app/api/auth/google/_session";
+import type { drive_v3 } from "@/lib/google/api-types";
+import {
+  type DriveFileMeta,
+  driveGetFileByIdFetch,
+  driveGetFileMetaFetch,
+  driveListFilesFetch,
+  resolveGoogleAccessToken,
+} from "@/lib/google/drive-fetch";
 import { pickClearFrontrunner, scoreScanFilename, sortByScanPriority } from "@/lib/scan-selection/priority";
 import type { ScanTier } from "@/lib/pco/scans";
 import { parseGoogleDriveUrl } from "./drive-url";
@@ -7,8 +15,6 @@ export const SHARED_DRIVE_OPTS = {
   supportsAllDrives: true,
   includeItemsFromAllDrives: true,
 } as const;
-
-const FILE_FIELDS = "id,name,mimeType,webViewLink,parents,driveId,shortcutDetails";
 
 export type DriveCandidate = {
   id: string;
@@ -57,23 +63,38 @@ function driveAccessErrorMessage(err: unknown): string {
   return e?.message ?? "Drive API request failed.";
 }
 
-export async function findDocById(drive: drive_v3.Drive, fileId: string): Promise<DriveCandidate | null> {
-  try {
-    const res = await drive.files.get({
-      fileId,
-      fields: "id,name,mimeType,webViewLink",
-      ...SHARED_DRIVE_OPTS,
-    });
-    if (!res.data.id) return null;
-    return {
-      id: res.data.id,
-      name: res.data.name ?? "(untitled)",
-      mimeType: res.data.mimeType ?? "application/vnd.google-apps.document",
-      webViewLink: res.data.webViewLink ?? undefined,
-    };
-  } catch {
-    return null;
+export type DriveFileAccessResult =
+  | { ok: true; doc: DriveCandidate }
+  | { ok: false; code: number; message: string };
+
+export function driveFileAccessErrorMessage(code: number): string {
+  if (code === 401) return "Google Drive not connected.";
+  if (code === 403) {
+    return (
+      "Connected account cannot access this file — check sharing or sign in with the church Drive account."
+    );
   }
+  if (code === 404) return "File not found on Drive.";
+  return "Drive API request failed.";
+}
+
+export async function findDocByIdWithAccess(
+  tokens: GoogleTokens,
+  fileId: string,
+): Promise<DriveFileAccessResult> {
+  const accessToken = await resolveGoogleAccessToken(tokens);
+  if (!accessToken) {
+    return { ok: false, code: 401, message: driveFileAccessErrorMessage(401) };
+  }
+  return driveGetFileByIdFetch(accessToken, fileId);
+}
+
+export async function findDocById(
+  tokens: GoogleTokens,
+  fileId: string,
+): Promise<DriveCandidate | null> {
+  const result = await findDocByIdWithAccess(tokens, fileId);
+  return result.ok ? result.doc : null;
 }
 
 export async function findDocByTitle(drive: drive_v3.Drive, title: string): Promise<DriveCandidate | null> {
@@ -100,37 +121,36 @@ export async function findDocByTitle(drive: drive_v3.Drive, title: string): Prom
   };
 }
 
-async function listChildren(drive: drive_v3.Drive, parentId: string): Promise<drive_v3.Schema$File[]> {
-  const out: drive_v3.Schema$File[] = [];
+async function listChildren(tokens: GoogleTokens, parentId: string): Promise<DriveFileMeta[]> {
+  const accessToken = await resolveGoogleAccessToken(tokens);
+  if (!accessToken) return [];
+
+  const out: DriveFileMeta[] = [];
   let pageToken: string | undefined;
 
   do {
-    const res = await drive.files.list({
-      q: `'${parentId}' in parents and trashed=false`,
-      fields: "nextPageToken, files(id,name,mimeType,webViewLink,shortcutDetails)",
+    const res = await driveListFilesFetch(accessToken, {
+      q: `'${parentId.replaceAll("'", "\\'")}' in parents and trashed=false`,
       pageSize: 200,
       pageToken,
-      corpora: "allDrives",
-      ...SHARED_DRIVE_OPTS,
     });
-    out.push(...(res.data.files ?? []));
-    pageToken = res.data.nextPageToken ?? undefined;
+    out.push(...res.files);
+    pageToken = res.nextPageToken;
   } while (pageToken);
 
   return out;
 }
 
-async function getFileMeta(drive: drive_v3.Drive, fileId: string) {
-  const res = await drive.files.get({
-    fileId,
-    fields: FILE_FIELDS,
-    ...SHARED_DRIVE_OPTS,
-  });
-  return res.data;
+async function getFileMeta(tokens: GoogleTokens, fileId: string): Promise<DriveFileMeta> {
+  const accessToken = await resolveGoogleAccessToken(tokens);
+  if (!accessToken) throw new Error("Google Drive not connected.");
+  const meta = await driveGetFileMetaFetch(accessToken, fileId);
+  if (!meta?.id) throw new Error("Drive file not found.");
+  return meta;
 }
 
 export type DriveRootResolution = {
-  file: drive_v3.Schema$File;
+  file: DriveFileMeta;
   searchRoot?: DriveSearchRoot;
   /** Parent folder unavailable — search Drive by song title tokens instead. */
   useNameHintSearch?: boolean;
@@ -180,10 +200,13 @@ export function buildBlankNameHintQuery(tokens: string[], driveId?: string | nul
 }
 
 export async function searchBlankDocsByNameHint(
-  drive: drive_v3.Drive,
+  googleTokens: GoogleTokens,
   scanFileName: string,
   driveId?: string | null,
 ): Promise<DriveCandidate[]> {
+  const accessToken = await resolveGoogleAccessToken(googleTokens);
+  if (!accessToken) return [];
+
   const tokens = extractBlankSearchTokens(scanFileName);
   if (tokens.length === 0) return [];
 
@@ -192,22 +215,14 @@ export async function searchBlankDocsByNameHint(
 
   for (const token of tokens) {
     const q = buildBlankNameHintQuery([token], driveId);
-    const listOpts: drive_v3.Params$Resource$Files$List = {
+    const { files } = await driveListFilesFetch(accessToken, {
       q,
-      fields: "files(id,name,mimeType,webViewLink)",
       pageSize: 25,
       orderBy: "modifiedTime desc",
-      ...SHARED_DRIVE_OPTS,
-    };
-    if (driveId) {
-      listOpts.corpora = "drive";
-      listOpts.driveId = driveId;
-    } else {
-      listOpts.corpora = "allDrives";
-    }
-
-    const res = await drive.files.list(listOpts);
-    for (const f of res.data.files ?? []) {
+      corpora: driveId ? "drive" : "allDrives",
+      driveId: driveId ?? undefined,
+    });
+    for (const f of files) {
       if (!f.id || seen.has(f.id)) continue;
       const fname = f.name ?? "";
       if (!fname.toLowerCase().includes("blank")) continue;
@@ -226,15 +241,13 @@ export async function searchBlankDocsByNameHint(
 
 /** Resolve shortcuts and return the file/folder metadata to search from. */
 export async function resolveDriveRoot(
-  drive: drive_v3.Drive,
+  googleTokens: GoogleTokens,
   entryId: string,
 ): Promise<DriveRootResolution> {
-  let file = await getFileMeta(drive, entryId);
-  if (!file.id) throw new Error("Drive file not found.");
+  let file = await getFileMeta(googleTokens, entryId);
 
   if (isShortcutMime(file.mimeType ?? "") && file.shortcutDetails?.targetId) {
-    file = await getFileMeta(drive, file.shortcutDetails.targetId);
-    if (!file.id) throw new Error("Drive shortcut target not found.");
+    file = await getFileMeta(googleTokens, file.shortcutDetails.targetId);
   }
 
   const mime = file.mimeType ?? "";
@@ -267,8 +280,7 @@ export async function resolveDriveRoot(
     };
   }
 
-  const parent = await getFileMeta(drive, parentId);
-  if (!parent.id) throw new Error("Parent folder not found.");
+  const parent = await getFileMeta(googleTokens, parentId);
 
   return {
     file,
@@ -290,15 +302,22 @@ function isExportableDocMime(mime: string) {
 
 /** Documents directly inside a Drive folder, or the file itself when the link is a document. */
 export async function listImmediateDriveDocuments(
-  drive: drive_v3.Drive,
+  googleTokens: GoogleTokens,
   entryId: string,
 ): Promise<DriveCandidate[]> {
-  let file = await getFileMeta(drive, entryId);
-  if (!file.id) return [];
+  let file: DriveFileMeta;
+  try {
+    file = await getFileMeta(googleTokens, entryId);
+  } catch {
+    return [];
+  }
 
   if (isShortcutMime(file.mimeType ?? "") && file.shortcutDetails?.targetId) {
-    file = await getFileMeta(drive, file.shortcutDetails.targetId);
-    if (!file.id) return [];
+    try {
+      file = await getFileMeta(googleTokens, file.shortcutDetails.targetId);
+    } catch {
+      return [];
+    }
   }
 
   const mime = file.mimeType ?? "";
@@ -308,7 +327,7 @@ export async function listImmediateDriveDocuments(
   }
 
   const docs: DriveCandidate[] = [];
-  const children = await listChildren(drive, file.id);
+  const children = await listChildren(googleTokens, file.id);
   for (const child of children) {
     if (!child.id) continue;
     let id = child.id;
@@ -318,8 +337,7 @@ export async function listImmediateDriveDocuments(
 
     if (isShortcutMime(childMime) && child.shortcutDetails?.targetId) {
       try {
-        const target = await getFileMeta(drive, child.shortcutDetails.targetId);
-        if (!target.id) continue;
+        const target = await getFileMeta(googleTokens, child.shortcutDetails.targetId);
         id = target.id;
         name = target.name ?? name;
         childMime = target.mimeType ?? childMime;
@@ -346,7 +364,7 @@ export async function listImmediateDriveDocuments(
 }
 
 export async function searchSubtreeForDocuments(
-  drive: drive_v3.Drive,
+  googleTokens: GoogleTokens,
   rootId: string,
 ): Promise<DriveCandidate[]> {
   const matches: DriveCandidate[] = [];
@@ -358,7 +376,7 @@ export async function searchSubtreeForDocuments(
     if (seen.has(parentId)) continue;
     seen.add(parentId);
 
-    const children = await listChildren(drive, parentId);
+    const children = await listChildren(googleTokens, parentId);
     for (const child of children) {
       if (!child.id) continue;
       let id = child.id;
@@ -368,13 +386,11 @@ export async function searchSubtreeForDocuments(
 
       if (isShortcutMime(mime) && child.shortcutDetails?.targetId) {
         try {
-          const target = await getFileMeta(drive, child.shortcutDetails.targetId);
-          if (target.id) {
-            id = target.id;
-            name = target.name ?? name;
-            mime = target.mimeType ?? mime;
-            webViewLink = target.webViewLink ?? webViewLink;
-          }
+          const target = await getFileMeta(googleTokens, child.shortcutDetails.targetId);
+          id = target.id;
+          name = target.name ?? name;
+          mime = target.mimeType ?? mime;
+          webViewLink = target.webViewLink ?? webViewLink;
         } catch {
           continue;
         }
@@ -395,7 +411,7 @@ export async function searchSubtreeForDocuments(
 }
 
 export async function searchSubtreeForBlankDocs(
-  drive: drive_v3.Drive,
+  googleTokens: GoogleTokens,
   rootId: string,
 ): Promise<DriveCandidate[]> {
   const matches: DriveCandidate[] = [];
@@ -407,7 +423,7 @@ export async function searchSubtreeForBlankDocs(
     if (seen.has(parentId)) continue;
     seen.add(parentId);
 
-    const children = await listChildren(drive, parentId);
+    const children = await listChildren(googleTokens, parentId);
     for (const child of children) {
       if (!child.id) continue;
       let id = child.id;
@@ -417,13 +433,11 @@ export async function searchSubtreeForBlankDocs(
 
       if (isShortcutMime(mime) && child.shortcutDetails?.targetId) {
         try {
-          const target = await getFileMeta(drive, child.shortcutDetails.targetId);
-          if (target.id) {
-            id = target.id;
-            name = target.name ?? name;
-            mime = target.mimeType ?? mime;
-            webViewLink = target.webViewLink ?? webViewLink;
-          }
+          const target = await getFileMeta(googleTokens, child.shortcutDetails.targetId);
+          id = target.id;
+          name = target.name ?? name;
+          mime = target.mimeType ?? mime;
+          webViewLink = target.webViewLink ?? webViewLink;
         } catch {
           continue;
         }
@@ -443,7 +457,7 @@ export async function searchSubtreeForBlankDocs(
   return matches;
 }
 
-function candidateFromFile(file: drive_v3.Schema$File): DriveCandidate | null {
+function candidateFromFile(file: DriveFileMeta): DriveCandidate | null {
   if (!file.id) return null;
   const name = file.name ?? "(untitled)";
   return {
@@ -478,7 +492,7 @@ function finalizeCandidates(
 
 /** Pass 1: blank-title search (green default). Pass 2 (yellow only): priority-ranked fallbacks. */
 export async function resolveScanCandidatesFromPcoUrl(
-  drive: drive_v3.Drive,
+  googleTokens: GoogleTokens,
   pcoUrl: string,
   scanTier: ScanTier = "green",
 ): Promise<ResolveScanResult> {
@@ -493,7 +507,7 @@ export async function resolveScanCandidatesFromPcoUrl(
 
   try {
     const entryId = parsed.id;
-    const { file, searchRoot, useNameHintSearch } = await resolveDriveRoot(drive, entryId);
+    const { file, searchRoot, useNameHintSearch } = await resolveDriveRoot(googleTokens, entryId);
     const fileName = file.name ?? "";
     const mime = file.mimeType ?? "";
     const isFolder = isFolderMime(mime);
@@ -505,9 +519,9 @@ export async function resolveScanCandidatesFromPcoUrl(
     }
 
     const blankCandidates = useNameHintSearch
-      ? await searchBlankDocsByNameHint(drive, fileName, file.driveId)
+      ? await searchBlankDocsByNameHint(googleTokens, fileName, file.driveId)
       : searchRoot
-        ? await searchSubtreeForBlankDocs(drive, searchRoot.id)
+        ? await searchSubtreeForBlankDocs(googleTokens, searchRoot.id)
         : [];
 
     if (blankCandidates.length > 0) {
@@ -534,7 +548,7 @@ export async function resolveScanCandidatesFromPcoUrl(
     }
 
     if (searchRoot && !useNameHintSearch) {
-      const allDocs = await searchSubtreeForDocuments(drive, searchRoot.id);
+      const allDocs = await searchSubtreeForDocuments(googleTokens, searchRoot.id);
       if (allDocs.length > 0) {
         return finalizeCandidates(allDocs, ctx, 2);
       }
@@ -561,10 +575,10 @@ export async function resolveScanCandidatesFromPcoUrl(
 
 /** @deprecated Use resolveScanCandidatesFromPcoUrl */
 export async function resolveBlankCandidatesFromPcoUrl(
-  drive: drive_v3.Drive,
+  googleTokens: GoogleTokens,
   pcoUrl: string,
 ): Promise<ResolveBlankResult> {
-  return resolveScanCandidatesFromPcoUrl(drive, pcoUrl, "green");
+  return resolveScanCandidatesFromPcoUrl(googleTokens, pcoUrl, "green");
 }
 
 export async function copyGoogleDoc(
@@ -640,37 +654,6 @@ export async function recreateOutputFromTemplate(
 ): Promise<DriveCandidate> {
   await deleteDocIfExists(drive, outputTitle, outputFolderId);
   return copyGoogleDoc(drive, templateId, outputTitle, outputFolderId);
-}
-
-export async function exportDocPlainText(drive: drive_v3.Drive, fileId: string): Promise<string> {
-  const meta = await drive.files.get({
-    fileId,
-    fields: "mimeType,name",
-    ...SHARED_DRIVE_OPTS,
-  });
-  const mime = meta.data.mimeType ?? "";
-
-  if (mime === "application/vnd.google-apps.document") {
-    const exported = await drive.files.export(
-      { fileId, mimeType: "text/plain" },
-      { responseType: "text" },
-    );
-    return typeof exported.data === "string" ? exported.data : "";
-  }
-
-  if (mime.startsWith("text/") || mime === "application/pdf") {
-    try {
-      const exported = await drive.files.export(
-        { fileId, mimeType: "text/plain" },
-        { responseType: "text" },
-      );
-      return typeof exported.data === "string" ? exported.data : "";
-    } catch {
-      throw new Error(`Cannot extract text from file type: ${mime}`);
-    }
-  }
-
-  throw new Error(`Unsupported file type for text export: ${mime}`);
 }
 
 /** Export a Google Doc (or PDF) as application/pdf bytes. */

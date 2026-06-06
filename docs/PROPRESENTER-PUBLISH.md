@@ -27,6 +27,17 @@ Publish uses **ProPresenter → File → Export → Playlist** (automated on mac
 
 Optional: export manually first (**File → Export → Playlist**), then publish with `nativeExportPath` (API/CLI) if automation fails.
 
+## Hosted site (grapevineprep.com)
+
+The cloud Worker cannot reach ProPresenter or run AppleScript. On the hosted Slide Deck page:
+
+- **Preview** works (PCO order; library match degraded without PP).
+- **Send to Mac agent** — queue apply + publish; run `npm run slide-deck:agent` on the prep Mac (see `docs/SLIDE-DECK-AGENT.md`).
+- **CLI** — `npm run slide-deck:apply` / `slide-deck:publish` on the Mac with `.env.local`.
+- **Upload publish** — export `.proplaylist` on the Mac, upload in the browser, then **Publish to Drive**.
+
+See `docs/HOSTING-GRAPEVINE.md` (Slide Deck section).
+
 ## Rig import
 
 1. Download **`{playlist}.proplaylist`** from Drive (or unzip the transport `.zip` once).

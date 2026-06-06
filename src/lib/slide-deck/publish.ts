@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { drive_v3 } from "googleapis";
+import type { drive_v3 } from "@/lib/google/api-types";
 import type { UploadedDriveFile } from "@/lib/google/drive-upload";
 import { upsertFileInFolder, upsertJsonInFolder } from "@/lib/google/drive-upload";
 import {
@@ -22,8 +22,10 @@ export type PublishSlideDeckInput = {
   publishedBy?: string;
   /** Optional binaries to upload into New Files/{service}/ */
   newFilePayloads?: PublishNewFilePayload[];
-  /** Operator-exported .proplaylist (skips AppleScript when set). */
+  /** Operator-exported .proplaylist on disk (skips AppleScript when set). */
   nativeExportPath?: string;
+  /** Browser-uploaded .proplaylist bytes (hosted publish; skips AppleScript). */
+  uploadedProplaylist?: { bytes: Buffer; fileName: string };
 };
 
 function toFileRef(upload: UploadedDriveFile, path: string): PublishedFileRef {
@@ -85,10 +87,16 @@ export async function publishSlideDeckPackage(
     serviceFolderKey,
   );
 
-  const nativeExport = await exportPlaylistNative({
-    playlistName,
-    nativeExportPath: input.nativeExportPath,
-  });
+  const nativeExport = input.uploadedProplaylist
+    ? {
+        bytes: input.uploadedProplaylist.bytes,
+        fileName: input.uploadedProplaylist.fileName,
+        sourcePath: "(uploaded)",
+      }
+    : await exportPlaylistNative({
+        playlistName,
+        nativeExportPath: input.nativeExportPath,
+      });
 
   const zipBody = await buildTransportZip({
     entryName: nativeExport.fileName,

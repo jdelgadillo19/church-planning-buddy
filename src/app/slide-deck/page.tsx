@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GoogleConnectionCard } from "@/components/google-connection-card";
 import { PcoServicePlanPicker } from "@/components/pco-service-plan-picker";
+import { SlideDeckHostedPanel } from "@/components/slide-deck-hosted-panel";
 import { ToolShell } from "@/components/tool-shell";
 import { useGoogleConnection } from "@/hooks/use-google-connection";
 import { usePcoServicePlanSelection } from "@/hooks/use-pco-service-plan-selection";
@@ -14,6 +15,7 @@ type Step = (typeof STEPS)[number];
 
 type PpStatus = {
   connected: boolean;
+  hosted?: boolean;
   error?: string;
   allowWrites?: boolean;
 };
@@ -69,6 +71,25 @@ export default function SlideDeckPage() {
     playlistName: string;
     itemCount: number;
   } | null>(null);
+  const [proplaylistFile, setProplaylistFile] = useState<File | null>(null);
+  const [agentJobs, setAgentJobs] = useState<
+    Array<{
+      id: string;
+      status: string;
+      error_message?: string | null;
+      result?: { publish?: { driveFolderUrl?: string } } | null;
+    }>
+  >([]);
+  const [agentQueueBusy, setAgentQueueBusy] = useState(false);
+
+  const isHosted = Boolean(ppStatus?.hosted);
+  const canPublishOnHosted = Boolean(proplaylistFile);
+  const canLocalApply = Boolean(ppStatus?.connected && ppStatus?.allowWrites);
+  const publishDisabled =
+    publishLoading ||
+    !googleConnected ||
+    !planId.trim() ||
+    (isHosted && !canPublishOnHosted);
 
   const refreshPublishPreflight = useCallback(async () => {
     if (!planId.trim()) {
@@ -114,6 +135,7 @@ export default function SlideDeckPage() {
       const data = (await res.json()) as PpStatus & { ok?: boolean };
       setPpStatus({
         connected: Boolean(data.connected),
+        hosted: data.hosted,
         error: data.error,
         allowWrites: data.allowWrites,
       });
@@ -129,6 +151,68 @@ export default function SlideDeckPage() {
   useEffect(() => {
     void refreshPublishPreflight();
   }, [refreshPublishPreflight]);
+
+  const refreshAgentJobs = useCallback(async () => {
+    try {
+      const res = await fetch("/api/slide-deck/agent/jobs");
+      const data = (await res.json()) as {
+        ok?: boolean;
+        jobs?: typeof agentJobs;
+      };
+      if (data.ok && data.jobs) setAgentJobs(data.jobs);
+    } catch {
+      /* optional when auth/agent not configured */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isHosted) return;
+    void refreshAgentJobs();
+    const id = window.setInterval(() => void refreshAgentJobs(), 8000);
+    return () => window.clearInterval(id);
+  }, [isHosted, refreshAgentJobs]);
+
+  async function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result;
+        if (typeof result !== "string") {
+          reject(new Error("Could not read file."));
+          return;
+        }
+        resolve(result.split(",")[1] ?? "");
+      };
+      reader.onerror = () => reject(new Error("Could not read file."));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function queueAgentJob() {
+    if (!commitPlan || !planId.trim()) return;
+    setAgentQueueBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/slide-deck/agent/jobs", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          planId: planId.trim(),
+          serviceTypeId: serviceTypeId.trim() || undefined,
+          commitPlan,
+          librarySelections:
+            Object.keys(librarySelections).length > 0 ? librarySelections : undefined,
+        }),
+      });
+      const payload = (await res.json()) as { ok: boolean; error?: string; job?: { id: string } };
+      if (!payload.ok) throw new Error(payload.error ?? "Failed to queue job.");
+      await refreshAgentJobs();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to queue Mac agent job.");
+    } finally {
+      setAgentQueueBusy(false);
+    }
+  }
 
   async function loadMockCommit() {
     setLoading(true);
@@ -284,23 +368,38 @@ export default function SlideDeckPage() {
       setError("Connect Google above (or on the hub), then try publish again.");
       return;
     }
+    if (isHosted && !proplaylistFile) {
+      setError("On the hosted site, upload a .proplaylist file first (see Option C below).");
+      return;
+    }
 
     const targetName = commitPlan?.playlistName ?? livePlaylistHint?.playlistName ?? "this service";
-    const liveNote = livePlaylistHint
-      ? `\n\nWill export "${livePlaylistHint.playlistName}" (${livePlaylistHint.itemCount} items) from ProPresenter, then upload to Drive.`
-      : applyResult
-        ? `\n\nWill export "${applyResult.playlistName}" from ProPresenter (File → Export → Playlist), then upload.`
-        : "\n\nNo live playlist detected — publish needs an existing or applied ProPresenter playlist on this Mac.";
+    const liveNote = isHosted
+      ? `\n\nWill upload "${proplaylistFile?.name}" to Drive (no ProPresenter export on server).`
+      : livePlaylistHint
+        ? `\n\nWill export "${livePlaylistHint.playlistName}" (${livePlaylistHint.itemCount} items) from ProPresenter, then upload to Drive.`
+        : applyResult
+          ? `\n\nWill export "${applyResult.playlistName}" from ProPresenter (File → Export → Playlist), then upload.`
+          : "\n\nNo live playlist detected — publish needs an existing or applied ProPresenter playlist on this Mac.";
 
     const ok = window.confirm(
       `Publish "${targetName}" to Google Drive?${liveNote}\n\n` +
-        `Keep ProPresenter open and frontmost during publish. Uploads a transport .zip plus the .proplaylist to Playlists/{service}/.`,
+        (isHosted
+          ? "Uploads a transport .zip plus the .proplaylist to Playlists/{service}/."
+          : "Keep ProPresenter open and frontmost during publish. Uploads a transport .zip plus the .proplaylist to Playlists/{service}/."),
     );
     if (!ok) return;
 
     setPublishLoading(true);
     setError(null);
     try {
+      let proplaylistBase64: string | undefined;
+      let proplaylistFileName: string | undefined;
+      if (proplaylistFile) {
+        proplaylistBase64 = await fileToBase64(proplaylistFile);
+        proplaylistFileName = proplaylistFile.name;
+      }
+
       const res = await fetch("/api/slide-deck/publish", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -309,6 +408,8 @@ export default function SlideDeckPage() {
           serviceTypeId: serviceTypeId.trim() || undefined,
           confirm: true,
           applyResult: applyResult ?? undefined,
+          proplaylistBase64,
+          proplaylistFileName,
         }),
       });
       const payload = (await res.json()) as {
@@ -362,10 +463,27 @@ export default function SlideDeckPage() {
       </nav>
 
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
-        <strong>Preview first.</strong> Build commit preview, optionally apply on this Mac’s ProPresenter,
+        <strong>Preview first.</strong> Build commit preview, then apply on the prep Mac (agent or CLI),
         then <strong>Publish to Drive</strong> for the church rig. See{" "}
-        <code className="font-mono text-xs">docs/PROPRESENTER-PUBLISH.md</code>.
+        <code className="font-mono text-xs">docs/PROPRESENTER-PUBLISH.md</code> and{" "}
+        <code className="font-mono text-xs">docs/HOSTING-GRAPEVINE.md</code>.
       </div>
+
+      {isHosted ? (
+        <SlideDeckHostedPanel
+          planId={planId}
+          serviceTypeId={serviceTypeId}
+          manifest={manifest}
+          commitPlan={commitPlan}
+          librarySelections={librarySelections}
+          agentJobs={agentJobs}
+          agentQueueBusy={agentQueueBusy}
+          onQueueAgent={() => void queueAgentJob()}
+          onRefreshJobs={() => void refreshAgentJobs()}
+          proplaylistFile={proplaylistFile}
+          onProplaylistFileChange={setProplaylistFile}
+        />
+      ) : null}
 
       <GoogleConnectionCard compact hint="Required to publish handoff packages to Drive." />
 
@@ -377,17 +495,31 @@ export default function SlideDeckPage() {
               className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                 ppStatus.connected
                   ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
-                  : "bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+                  : ppStatus.hosted
+                    ? "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-200"
+                    : "bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
               }`}
             >
-              {ppStatus.connected ? "Connected" : "Not connected"}
+              {ppStatus.connected
+                ? "Connected"
+                : ppStatus.hosted
+                  ? "Local Mac only"
+                  : "Not connected"}
             </span>
           ) : (
             <span className="text-xs text-zinc-500">Checking…</span>
           )}
         </div>
         {ppStatus && !ppStatus.connected && ppStatus.error ? (
-          <p className="text-xs text-zinc-500 dark:text-zinc-400">{ppStatus.error}</p>
+          <p
+            className={`text-xs ${
+              ppStatus.hosted
+                ? "rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sky-950 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100"
+                : "text-zinc-500 dark:text-zinc-400"
+            }`}
+          >
+            {ppStatus.error}
+          </p>
         ) : null}
       </section>
 
@@ -432,12 +564,17 @@ export default function SlideDeckPage() {
           ) : null}
           <button
             type="button"
-            disabled={publishLoading || !googleConnected || !planId.trim()}
+            disabled={publishDisabled}
             onClick={() => void publishToDrive()}
             className="h-11 rounded-xl border border-sky-700 px-4 text-sm font-medium text-sky-800 disabled:opacity-50 dark:border-sky-500 dark:text-sky-200"
           >
             {publishLoading ? "Publishing to Drive…" : "Publish to Drive"}
           </button>
+          {isHosted && !canPublishOnHosted ? (
+            <p className="text-xs text-sky-800 dark:text-sky-200">
+              Upload a .proplaylist in the hosted panel to enable Drive publish.
+            </p>
+          ) : null}
         </section>
       ) : null}
 
@@ -495,7 +632,11 @@ export default function SlideDeckPage() {
               <button
                 type="button"
                 disabled={
-                  applyLoading || Boolean(applyResult) || unresolvedLibraryRows.length > 0
+                  isHosted ||
+                  applyLoading ||
+                  Boolean(applyResult) ||
+                  unresolvedLibraryRows.length > 0 ||
+                  !canLocalApply
                 }
                 onClick={() => void applyToProPresenter()}
                 className="h-11 rounded-xl bg-emerald-700 px-4 text-sm font-medium text-white disabled:opacity-50 dark:bg-emerald-600"
@@ -504,11 +645,13 @@ export default function SlideDeckPage() {
                   ? "Applying to ProPresenter…"
                   : applyResult
                     ? "Applied"
-                    : "Apply to ProPresenter"}
+                    : isHosted
+                      ? "Apply (Mac only)"
+                      : "Apply to ProPresenter"}
               </button>
               <button
                 type="button"
-                disabled={publishLoading || !googleConnected}
+                disabled={publishDisabled}
                 onClick={() => void publishToDrive()}
                 className="h-11 rounded-xl bg-sky-700 px-4 text-sm font-medium text-white disabled:opacity-50 dark:bg-sky-600"
               >
@@ -526,7 +669,12 @@ export default function SlideDeckPage() {
                 ← Change plan
               </button>
             </div>
-            {ppStatus && !ppStatus.allowWrites ? (
+            {isHosted ? (
+              <p className="text-xs text-sky-800 dark:text-sky-200">
+                Apply and ProPresenter export are disabled on the hosted site — use the Mac agent or
+                CLI above.
+              </p>
+            ) : ppStatus && !ppStatus.allowWrites ? (
               <p className="text-xs text-amber-700 dark:text-amber-300">
                 Set <code className="font-mono">PP_ALLOW_WRITES=true</code> in .env.local and restart
                 the dev server to enable live apply.

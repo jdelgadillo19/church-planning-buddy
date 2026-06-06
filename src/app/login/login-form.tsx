@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { GOOGLE_SCOPES } from "@/lib/google/scopes";
 
 type Props = {
   redirectTo?: string;
@@ -22,6 +23,11 @@ export function LoginForm({ redirectTo }: Props) {
       provider: "google",
       options: {
         redirectTo: `${origin}/auth/callback?next=${encodeURIComponent(next)}`,
+        scopes: GOOGLE_SCOPES.join(" "),
+        queryParams: {
+          access_type: "offline",
+          prompt: "consent",
+        },
       },
     });
     if (error) {
@@ -58,6 +64,9 @@ export function LoginForm({ redirectTo }: Props) {
       >
         Continue with Google
       </button>
+      <p className="text-xs text-zinc-500">
+        Signs you in and connects Drive, Docs, Sheets, and Calendar in one step.
+      </p>
       <div className="relative text-center text-xs text-zinc-500">
         <span className="bg-zinc-50 px-2 dark:bg-black">or</span>
       </div>

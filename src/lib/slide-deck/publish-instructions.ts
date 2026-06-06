@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { drive_v3 } from "googleapis";
+import type { drive_v3 } from "@/lib/google/api-types";
 import type { UploadedDriveFile } from "@/lib/google/drive-upload";
 import { upsertJsonInFolder, upsertFileInFolder } from "@/lib/google/drive-upload";
 import {

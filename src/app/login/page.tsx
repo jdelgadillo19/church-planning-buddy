@@ -41,7 +41,9 @@ export default async function LoginPage({ searchParams }: PageProps) {
   const errorMessage =
     params.error === "not_invited"
       ? "Your account is not on an organization allowlist yet. Contact your admin."
-      : null;
+      : params.error === "auth"
+        ? "Sign-in failed or expired. Try again with Google, or request a new email link."
+        : null;
 
   return (
     <div className="mx-auto flex min-h-[70vh] max-w-md flex-col justify-center px-6 py-16">

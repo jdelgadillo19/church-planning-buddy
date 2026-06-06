@@ -14,7 +14,7 @@ import {
   defaultRosterMapPath,
   loadRosterPositionMapFromDisk,
   saveRosterPositionMap,
-} from "../src/lib/pco/roster-position-map";
+} from "../src/lib/pco/roster-position-map-io";
 import { syncMapWithCatalog } from "../src/lib/pco/roster-position-sync";
 import {
   collectPositionNamesFromCatalog,

@@ -1,10 +1,10 @@
 import {
   loadRosterPositionMapFromDisk,
-  ROSTER_ALIAS_PLACEHOLDER,
   saveRosterPositionMap,
-} from "./roster-position-map";
+} from "./roster-position-map-io";
+import { ROSTER_ALIAS_PLACEHOLDER } from "./roster-position-map-core";
 
-export { defaultRosterMapPath } from "./roster-position-map";
+export { defaultRosterMapPath } from "./roster-position-map-io";
 
 export function detectNewPcoPositions(
   pcoNames: string[],

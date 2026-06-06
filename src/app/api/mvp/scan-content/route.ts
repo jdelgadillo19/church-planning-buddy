@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { extractPlainPreview, loadSourceGoogleDoc } from "@/lib/docs/scan-import";
-import { getAuthedClients } from "@/lib/google/auth";
-import { exportDocPlainText } from "@/lib/google/drive-files";
+import { exportDriveFilePlainTextForTokens } from "@/lib/google/drive-fetch";
 import { googleConnected, loadTokensForCurrentSession } from "@/app/api/auth/google/_session";
 
 export async function POST(req: Request) {
@@ -17,10 +16,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Google Drive not connected." }, { status: 401 });
     }
 
-    const { drive, docs } = getAuthedClients(tokens!);
-
     try {
-      const source = await loadSourceGoogleDoc(docs, drive, fileId);
+      const source = await loadSourceGoogleDoc(tokens!, fileId);
       const text = extractPlainPreview(source, 50_000);
       if (!text.trim()) {
         return NextResponse.json({
@@ -30,7 +27,7 @@ export async function POST(req: Request) {
       }
       return NextResponse.json({ ok: true, text, importMode: "styled" });
     } catch {
-      const text = await exportDocPlainText(drive, fileId);
+      const text = await exportDriveFilePlainTextForTokens(tokens!, fileId);
       if (!text.trim()) {
         return NextResponse.json({
           ok: false,

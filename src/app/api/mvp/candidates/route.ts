@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { buildAuthHeader } from "@/lib/pco/client";
 import { resolveScanDriveUrl } from "@/lib/pco/attachment-open";
-import { getAuthedClients } from "@/lib/google/auth";
 import { resolveScanCandidatesFromPcoUrl } from "@/lib/google/drive-files";
 import type { ScanTier } from "@/lib/pco/scans";
 import { isGoogleDriveUrl } from "@/lib/google/drive-url";
@@ -56,8 +55,7 @@ export async function POST(req: Request) {
     const scanTier: ScanTier =
       body.scanTier === "yellow" || body.scanTier === "red" ? body.scanTier : "green";
 
-    const { drive } = getAuthedClients(tokens!);
-    const result = await resolveScanCandidatesFromPcoUrl(drive, scanUrl, scanTier);
+    const result = await resolveScanCandidatesFromPcoUrl(tokens!, scanUrl, scanTier);
 
     return NextResponse.json({
       ok: true,

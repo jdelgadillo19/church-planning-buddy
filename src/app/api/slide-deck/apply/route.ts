@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { guardProPresenterOnHosted } from "@/lib/propresenter/hosted-guard";
 import { loadProPresenterConfig } from "@/lib/propresenter/config";
 import { PlaylistConflictError } from "@/lib/propresenter/playlist-write";
 import { applyCommitPlan } from "@/lib/slide-deck/apply-commit";
@@ -8,6 +9,9 @@ import { resolveApplyContextFromClientPlan } from "@/lib/slide-deck/resolve-appl
 import { ProPresenterApiError } from "@/lib/propresenter/client";
 
 export async function POST(req: Request) {
+  const hostedBlock = guardProPresenterOnHosted();
+  if (hostedBlock) return hostedBlock;
+
   try {
     const body = (await req.json()) as {
       planId?: string;

@@ -1,4 +1,6 @@
-import type { docs_v1 } from "googleapis";
+import type { GoogleTokens } from "@/app/api/auth/google/_session";
+import type { docs_v1 } from "@/lib/google/api-types";
+import { fetchGoogleDocumentForTokens } from "@/lib/google/docs-fetch";
 import {
   GRG_PLACEHOLDER_DATE,
   GRG_PLACEHOLDER_SCANS_BEGIN,
@@ -111,12 +113,10 @@ function auditRosterPlaceholderSlots(doc: docs_v1.Schema$Document): Array<"band"
 }
 
 export async function validateGrgTemplate(
-  docs: docs_v1.Docs,
+  tokens: GoogleTokens,
   documentId: string,
 ): Promise<GrgTemplateValidationResult> {
-  const doc = await docs.documents.get({ documentId });
-  const body = doc.data;
-  if (!body) throw new Error("Could not read template document.");
+  const body = await fetchGoogleDocumentForTokens(tokens, documentId);
 
   const issues: GrgTemplateValidationIssue[] = [];
 

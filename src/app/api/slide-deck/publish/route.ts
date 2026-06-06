@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { googleConnected, loadTokensForCurrentSession } from "@/app/api/auth/google/_session";
 import { getAuthedClients } from "@/lib/google/auth";
+import { nativeExportFileName } from "@/lib/propresenter/playlist-native-export";
+import {
+  hasHostedProplaylistUpload,
+  isProPresenterUnavailableOnHosted,
+  ppHostedUnavailableResponse,
+} from "@/lib/propresenter/hosted";
 import { loadSlideDeckBundle } from "@/lib/slide-deck/load-bundle";
 import { publishSlideDeckPackage, type PublishNewFilePayload } from "@/lib/slide-deck/publish";
 import type { ApplyCommitResult } from "@/lib/slide-deck/apply-commit";
@@ -22,8 +28,18 @@ export async function POST(req: Request) {
       publishedBy?: string;
       applyResult?: ApplyCommitResult;
       nativeExportPath?: string;
+      proplaylistBase64?: string;
+      proplaylistFileName?: string;
       newFiles?: Array<{ name: string; contentBase64: string; mimeType?: string }>;
     };
+
+    if (
+      isProPresenterUnavailableOnHosted() &&
+      !hasHostedProplaylistUpload(body) &&
+      !body.nativeExportPath?.trim()
+    ) {
+      return ppHostedUnavailableResponse();
+    }
 
     if (body.confirm !== true) {
       return NextResponse.json(
@@ -52,12 +68,35 @@ export async function POST(req: Request) {
       });
     }
 
+    let uploadedProplaylist: { bytes: Buffer; fileName: string } | undefined;
+    if (body.proplaylistBase64?.trim()) {
+      const fileName =
+        body.proplaylistFileName?.trim() ||
+        nativeExportFileName(bundle.commitPlan.playlistName);
+      uploadedProplaylist = {
+        bytes: Buffer.from(body.proplaylistBase64.trim(), "base64"),
+        fileName,
+      };
+    } else {
+      for (const file of body.newFiles ?? []) {
+        const name = file.name?.trim() ?? "";
+        if (name.toLowerCase().endsWith(".proplaylist") && file.contentBase64?.trim()) {
+          uploadedProplaylist = {
+            bytes: Buffer.from(file.contentBase64.trim(), "base64"),
+            fileName: name,
+          };
+          break;
+        }
+      }
+    }
+
     const { drive } = getAuthedClients(tokens!);
     const result = await publishSlideDeckPackage({
       drive,
       bundle,
       publishedBy: body.publishedBy?.trim() || undefined,
       nativeExportPath: body.nativeExportPath?.trim() || undefined,
+      uploadedProplaylist,
       newFilePayloads,
     });
 

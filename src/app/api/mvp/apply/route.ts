@@ -10,8 +10,9 @@ import {
   removeScanStyleExemplars,
 } from "@/lib/docs/scan-style-template";
 import { resolveGrgOutputTitle, resolveGrgTemplateRef } from "@/lib/config/grg";
+import { createFetchDocsClient } from "@/lib/google/docs-fetch";
 import { getAuthedClients } from "@/lib/google/auth";
-import { recreateOutputFromTemplate } from "@/lib/google/drive-files";
+import { recreateOutputFromTemplateFetch } from "@/lib/google/drive-fetch";
 import { resolveGrgOutputFolderId } from "@/lib/google/grg-drive-folders";
 import { resolveTemplateDoc } from "@/lib/google/grg-resolve";
 import type { PlanRosterRow } from "@/lib/pco/plan-team";
@@ -58,14 +59,15 @@ export async function POST(req: Request) {
     });
     const outputTitle = resolveGrgOutputTitle({ grgDocTitle: body.grgDocTitle });
 
-    const { drive, docs } = getAuthedClients(tokens!);
-    const template = await resolveTemplateDoc(drive, templateRef);
+    const { drive } = getAuthedClients(tokens!);
+    const docs = createFetchDocsClient(tokens!);
+    const template = await resolveTemplateDoc(tokens!, drive, templateRef);
 
     const hasScans = (body.songs ?? []).some((s) => !s.skipped && s.selectedFileId);
     const skipIntro = Boolean(body.skipIntro);
     const skipScans = !hasScans || Boolean(body.skipScans);
 
-    const templateValidation = await validateGrgTemplate(docs, template.id);
+    const templateValidation = await validateGrgTemplate(tokens!, template.id);
     if (
       isTemplateValidationBlocking(templateValidation, {
         skipIntro,
@@ -84,8 +86,8 @@ export async function POST(req: Request) {
     }
 
     const outputFolderId = await resolveGrgOutputFolderId(drive);
-    const output = await recreateOutputFromTemplate(
-      drive,
+    const output = await recreateOutputFromTemplateFetch(
+      tokens!,
       template.id,
       outputTitle,
       outputFolderId,
@@ -138,6 +140,7 @@ export async function POST(req: Request) {
       }
       try {
         const imported = await importScanSection(
+          tokens!,
           docs,
           drive,
           output.id,
