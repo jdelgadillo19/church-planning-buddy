@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "grapevine-rig-v*"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -25,58 +26,42 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install dependencies
+      - name: Install root dependencies
         run: npm ci
 
       - name: Build worker bundles
         run: npm run rig:prepare
 
-      - name: Package worker sidecars (pkg)
-        run: |
-          BIN=apps/grapevine-rig/src-tauri/bin
-          npx @yao-pkg/pkg apps/grapevine-rig-worker/dist/worker.mjs \
-            --targets node20-macos-arm64 \
-            --output "$BIN/grapevine-rig-worker"
-          npx @yao-pkg/pkg apps/grapevine-rig-worker/dist/scan.mjs \
-            --targets node20-macos-arm64 \
-            --output "$BIN/grapevine-rig-scan"
-          # Tauri externalBin expects a -$TARGET_TRIPLE suffix
-          mv "$BIN/grapevine-rig-worker" "$BIN/grapevine-rig-worker-aarch64-apple-darwin"
-          mv "$BIN/grapevine-rig-scan" "$BIN/grapevine-rig-scan-aarch64-apple-darwin"
-          chmod +x "$BIN/grapevine-rig-worker-aarch64-apple-darwin"
-          chmod +x "$BIN/grapevine-rig-scan-aarch64-apple-darwin"
+      - name: Install rig app dependencies
+        working-directory: apps/grapevine-rig
+        run: npm ci
 
-      - name: Verify Tauri bundle inputs
-        run: |
-          ls -la apps/grapevine-rig/src-tauri/bin/
-          ls -la apps/grapevine-rig/src-tauri/resources/
-          test -f apps/grapevine-rig/src-tauri/resources/worker.mjs
-          test -f apps/grapevine-rig/src-tauri/resources/scan.mjs
-          test -x apps/grapevine-rig/src-tauri/bin/grapevine-rig-worker-aarch64-apple-darwin
-          test -x apps/grapevine-rig/src-tauri/bin/grapevine-rig-scan-aarch64-apple-darwin
-
-      - name: Generate Cargo lockfile
-        working-directory: apps/grapevine-rig/src-tauri
-        run: cargo generate-lockfile
+      - name: Tauri info (config check)
+        working-directory: apps/grapevine-rig
+        run: npx tauri info
 
       - name: Build Tauri .dmg
         working-directory: apps/grapevine-rig
         env:
           CI: true
-        run: |
-          set -euxo pipefail
-          npm ci
-          npm run build
+        run: npx tauri build
 
       - name: Collect release assets
         run: |
           mkdir -p release-assets
           DMG=$(find apps/grapevine-rig/src-tauri/target/release/bundle/dmg -name '*.dmg' | head -1)
+          if [ -z "$DMG" ]; then
+            echo "No .dmg found under src-tauri/target/release/bundle/dmg"
+            find apps/grapevine-rig/src-tauri/target -name '*.dmg' || true
+            exit 1
+          fi
           VERSION="${GITHUB_REF_NAME#grapevine-rig-v}"
           cp "$DMG" "release-assets/Grapevine-Rig-${VERSION}-macos.dmg"
+          ls -lh release-assets/
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.ref_name }}
           files: release-assets/*
           generate_release_notes: true

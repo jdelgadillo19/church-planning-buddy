@@ -32,7 +32,6 @@
       "icons/128x128@2x.png",
       "icons/icon.icns"
     ],
-    "externalBin": ["bin/grapevine-rig-worker", "bin/grapevine-rig-scan"],
     "resources": ["resources/worker.mjs", "resources/scan.mjs"]
   }
 }

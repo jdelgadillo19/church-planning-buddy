@@ -1,4 +1,7 @@
-import { invoke } from "@tauri-apps/api/core";
+const invoke = window.__TAURI__?.core?.invoke;
+if (!invoke) {
+  throw new Error("Grapevine Rig must run inside the Tauri app.");
+}
 
 const API_BASE_DEFAULT = "https://grapevineprep.com";
 const POLL_MS = 5000;
