@@ -18,6 +18,9 @@ jobs:
         with:
           node-version: "20"
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/grapevine-rig/package-lock.json
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -52,14 +55,18 @@ jobs:
           test -x apps/grapevine-rig/src-tauri/bin/grapevine-rig-worker-aarch64-apple-darwin
           test -x apps/grapevine-rig/src-tauri/bin/grapevine-rig-scan-aarch64-apple-darwin
 
+      - name: Generate Cargo lockfile
+        working-directory: apps/grapevine-rig/src-tauri
+        run: cargo generate-lockfile
+
       - name: Build Tauri .dmg
         working-directory: apps/grapevine-rig
         env:
           CI: true
         run: |
+          set -euxo pipefail
           npm ci
-          npm run tauri build 2>&1 | tee /tmp/tauri-build.log
-          test -d src-tauri/target/release/bundle/dmg
+          npm run build
 
       - name: Collect release assets
         run: |

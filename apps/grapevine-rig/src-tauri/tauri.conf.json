@@ -19,8 +19,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' https://grapevineprep.com https://*.grapevineprep.com; style-src 'self' 'unsafe-inline'",
-      "capabilities": ["default"]
+      "csp": "default-src 'self'; connect-src 'self' https://grapevineprep.com https://*.grapevineprep.com; style-src 'self' 'unsafe-inline'"
     }
   },
   "plugins": {},
