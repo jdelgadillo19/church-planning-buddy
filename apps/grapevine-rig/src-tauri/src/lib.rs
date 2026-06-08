@@ -97,7 +97,7 @@ fn system_node_path() -> Option<&'static str> {
 
 async fn run_sidecar_or_node(
     app: &tauri::AppHandle,
-    sidecar_name: &str,
+    _sidecar_name: &str,
     node_script: &str,
     extra_env: Vec<(String, String)>,
 ) -> Result<String, String> {
@@ -113,11 +113,7 @@ async fn run_sidecar_or_node(
 
     let script = resolve_worker_script(app, node_script)?;
 
-    let (mut rx, _child) = if let Ok(cmd) = app.shell().sidecar(sidecar_name) {
-        cmd.envs(env.clone())
-            .spawn()
-            .map_err(|e| format!("Failed to start bundled worker ({sidecar_name}): {e}"))?
-    } else if let Some(node) = system_node_path() {
+    let (mut rx, _child) = if let Some(node) = system_node_path() {
         app.shell()
             .command(node)
             .arg(&script)
@@ -134,7 +130,7 @@ async fn run_sidecar_or_node(
             .spawn()
             .map_err(|e| {
                 format!(
-                    "Failed to start worker. Install Node.js or use a newer Grapevine Rig build. ({e})"
+                    "Failed to start worker via login shell. Install Node.js (nvm or Homebrew) and try again. ({e})"
                 )
             })?
     };
