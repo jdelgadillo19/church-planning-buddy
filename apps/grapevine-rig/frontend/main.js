@@ -186,7 +186,13 @@ async function applyBuild() {
     renderBuild();
     void pollBuilds();
   } catch (e) {
-    actionStatus.textContent = e instanceof Error ? e.message : "Apply failed";
+    const msg =
+      typeof e === "string"
+        ? e
+        : e instanceof Error
+          ? e.message
+          : "Apply failed";
+    actionStatus.textContent = msg || "Apply failed";
   } finally {
     busy = false;
     applyBtn.disabled = false;
@@ -206,7 +212,13 @@ async function scanNow() {
     const output = await invoke("run_scan");
     actionStatus.textContent = output || "Index uploaded.";
   } catch (e) {
-    actionStatus.textContent = e instanceof Error ? e.message : "Scan failed";
+    const msg =
+      typeof e === "string"
+        ? e
+        : e instanceof Error
+          ? e.message
+          : "Scan failed";
+    actionStatus.textContent = msg || "Scan failed";
   } finally {
     busy = false;
     scanBtn.disabled = false;

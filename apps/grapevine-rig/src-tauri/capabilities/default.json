@@ -9,8 +9,18 @@
       "identifier": "shell:allow-spawn",
       "allow": [
         {
-          "name": "node-worker",
-          "cmd": "node",
+          "name": "zsh-login",
+          "cmd": "/bin/zsh",
+          "args": ["-l", "-c", { "validator": ".+" }]
+        },
+        {
+          "name": "system-node",
+          "cmd": "/usr/local/bin/node",
+          "args": true
+        },
+        {
+          "name": "homebrew-node",
+          "cmd": "/opt/homebrew/bin/node",
           "args": true
         }
       ]

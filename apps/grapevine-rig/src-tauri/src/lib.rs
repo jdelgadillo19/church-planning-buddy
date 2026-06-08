@@ -1,5 +1,6 @@
 use keyring::Entry;
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use tauri::Manager;
 use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_shell::ShellExt;
@@ -64,7 +65,7 @@ fn get_hostname() -> Result<String, String> {
         .map_err(|e| e.to_string())
 }
 
-fn resolve_worker_script(app: &tauri::AppHandle, node_script: &str) -> Result<std::path::PathBuf, String> {
+fn resolve_worker_script(app: &tauri::AppHandle, node_script: &str) -> Result<PathBuf, String> {
     if let Ok(p) = app.path().resolve(node_script, tauri::path::BaseDirectory::Resource) {
         if p.exists() {
             return Ok(p);
@@ -79,6 +80,19 @@ fn resolve_worker_script(app: &tauri::AppHandle, node_script: &str) -> Result<st
         }
     }
     Err(format!("Worker script not found: {node_script}"))
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn system_node_path() -> Option<&'static str> {
+    for candidate in ["/usr/local/bin/node", "/opt/homebrew/bin/node", "/usr/bin/node"] {
+        if Path::new(candidate).exists() {
+            return Some(candidate);
+        }
+    }
+    None
 }
 
 async fn run_sidecar_or_node(
@@ -97,18 +111,32 @@ async fn run_sidecar_or_node(
     ];
     env.extend(extra_env);
 
+    let script = resolve_worker_script(app, node_script)?;
+
     let (mut rx, _child) = if let Ok(cmd) = app.shell().sidecar(sidecar_name) {
         cmd.envs(env.clone())
             .spawn()
-            .map_err(|e| e.to_string())?
-    } else {
-        let script = resolve_worker_script(app, node_script)?;
+            .map_err(|e| format!("Failed to start bundled worker ({sidecar_name}): {e}"))?
+    } else if let Some(node) = system_node_path() {
         app.shell()
-            .command("node")
-            .arg(script)
+            .command(node)
+            .arg(&script)
+            .envs(env.clone())
+            .spawn()
+            .map_err(|e| format!("Failed to start node worker ({node}): {e}"))?
+    } else {
+        let script_arg = shell_quote(&script.to_string_lossy());
+        let zsh_cmd = format!("exec node {script_arg}");
+        app.shell()
+            .command("/bin/zsh")
+            .args(["-l", "-c", &zsh_cmd])
             .envs(env)
             .spawn()
-            .map_err(|e| e.to_string())?
+            .map_err(|e| {
+                format!(
+                    "Failed to start worker. Install Node.js or use a newer Grapevine Rig build. ({e})"
+                )
+            })?
     };
 
     let mut stdout = String::new();
@@ -120,11 +148,12 @@ async fn run_sidecar_or_node(
             CommandEvent::Stderr(line) => stderr.push_str(&String::from_utf8_lossy(&line)),
             CommandEvent::Terminated(payload) => {
                 if payload.code.unwrap_or(1) != 0 {
-                    let msg = if stderr.trim().is_empty() {
-                        stdout.trim().to_string()
-                    } else {
-                        stderr.trim().to_string()
-                    };
+                    let mut msg = stderr.trim().to_string();
+                    if msg.is_empty() {
+                        msg = stdout.trim().to_string();
+                    } else if !stdout.trim().is_empty() {
+                        msg = format!("{msg}\n{}", stdout.trim());
+                    }
                     return Err(if msg.is_empty() {
                         format!("Worker exited with code {:?}", payload.code)
                     } else {
@@ -133,6 +162,7 @@ async fn run_sidecar_or_node(
                 }
                 break;
             }
+            CommandEvent::Error(err) => return Err(err),
             _ => {}
         }
     }
