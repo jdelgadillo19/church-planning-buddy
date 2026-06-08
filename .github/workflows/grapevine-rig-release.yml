@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build-macos-dmg:
-    runs-on: macos-14
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -43,11 +43,22 @@ jobs:
           chmod +x "$BIN/grapevine-rig-worker-aarch64-apple-darwin"
           chmod +x "$BIN/grapevine-rig-scan-aarch64-apple-darwin"
 
+      - name: Verify Tauri bundle inputs
+        run: |
+          ls -la apps/grapevine-rig/src-tauri/bin/
+          ls -la apps/grapevine-rig/src-tauri/resources/
+          test -f apps/grapevine-rig/src-tauri/resources/worker.mjs
+          test -f apps/grapevine-rig/src-tauri/resources/scan.mjs
+          test -x apps/grapevine-rig/src-tauri/bin/grapevine-rig-worker-aarch64-apple-darwin
+          test -x apps/grapevine-rig/src-tauri/bin/grapevine-rig-scan-aarch64-apple-darwin
+
       - name: Build Tauri .dmg
         working-directory: apps/grapevine-rig
+        env:
+          CI: true
         run: |
           npm install
-          npm run tauri build
+          npx tauri build --verbose 2>&1
 
       - name: Collect release assets
         run: |
