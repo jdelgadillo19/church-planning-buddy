@@ -5,9 +5,12 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const outDir = path.join(root, "apps/grapevine-rig-worker/dist");
 
+const esmRequireBanner =
+  'import { createRequire } from "node:module";const require=createRequire(import.meta.url);';
+
 function bundle(entry, outfile) {
   execSync(
-    `npx esbuild "${entry}" --bundle --platform=node --target=node20 --format=esm --outfile="${outfile}" --alias:@="${path.join(root, "src")}"`,
+    `npx esbuild "${entry}" --bundle --platform=node --target=node20 --format=esm --banner:js=${JSON.stringify(esmRequireBanner)} --outfile="${outfile}" --alias:@="${path.join(root, "src")}"`,
     { stdio: "inherit", cwd: root },
   );
 }

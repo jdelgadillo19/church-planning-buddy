@@ -73,7 +73,7 @@ npm run rig:prepare
 cd apps/grapevine-rig && npm install && npm run tauri dev
 ```
 
-Requires Node 20+, Rust, and Xcode command-line tools. Apply uses bundled worker sidecars in release builds; dev falls back to `node` + `apps/grapevine-rig-worker/dist/*.mjs`.
+Requires Node 20+, Rust, and Xcode command-line tools. Apply uses bundled worker scripts in release builds (`worker.mjs` via login-shell Node); dev falls back to `node` + `apps/grapevine-rig-worker/dist/*.mjs`.
 
 ## Windows (later)
 
