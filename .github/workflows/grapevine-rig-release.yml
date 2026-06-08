@@ -57,8 +57,9 @@ jobs:
         env:
           CI: true
         run: |
-          npm install
-          npx tauri build --verbose 2>&1
+          npm ci
+          npm run tauri build 2>&1 | tee /tmp/tauri-build.log
+          test -d src-tauri/target/release/bundle/dmg
 
       - name: Collect release assets
         run: |

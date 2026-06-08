@@ -4,8 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.grapevineprep.rig",
   "build": {
-    "frontendDist": "../",
-    "beforeBuildCommand": "cd ../.. && npm run rig:prepare"
+    "frontendDist": "../"
   },
   "app": {
     "withGlobalTauri": true,
