@@ -161,7 +161,11 @@ async function pair() {
     showMain();
     startPolling();
   } catch (e) {
-    pairError.textContent = e instanceof Error ? e.message : "Pairing failed";
+    const msg = e instanceof Error ? e.message : "Pairing failed";
+    pairError.textContent =
+      msg === "Load failed" || msg === "Failed to fetch"
+        ? "Could not reach grapevineprep.com (network or blocked request). Check your connection and try again."
+        : msg;
     pairError.classList.remove("hidden");
   } finally {
     pairBtn.disabled = false;

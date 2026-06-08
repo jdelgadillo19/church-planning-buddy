@@ -4,6 +4,11 @@ import {
   isMachineBearerApiPath,
   isMachineBearerAuthorized,
 } from "@/lib/auth/machine-bearer";
+import {
+  applyRigCors,
+  isRigCorsApiPath,
+  rigCorsPreflightResponse,
+} from "@/lib/http/rig-cors";
 import { isRigMachineBypassRequest } from "@/lib/pp-platform/rig-auth";
 import { isGrapevineAuthEnabled } from "@/lib/supabase/config";
 
@@ -44,12 +49,25 @@ async function refreshSupabaseSession(request: NextRequest) {
   return response;
 }
 
+function corsNext(request: NextRequest): NextResponse {
+  return applyRigCors(
+    NextResponse.next({
+      request: { headers: request.headers },
+    }),
+  );
+}
+
 export async function middleware(request: NextRequest) {
-  if (!isGrapevineAuthEnabled()) {
-    return NextResponse.next();
+  const { pathname } = request.nextUrl;
+
+  if (isRigCorsApiPath(pathname) && request.method === "OPTIONS") {
+    return rigCorsPreflightResponse();
   }
 
-  const { pathname } = request.nextUrl;
+  if (!isGrapevineAuthEnabled()) {
+    if (isRigCorsApiPath(pathname)) return corsNext(request);
+    return NextResponse.next();
+  }
 
   // Rig index upload + Mac agent poll (bearer token, no browser session).
   if (isMachineBearerApiPath(pathname) && isMachineBearerAuthorized(request)) {
@@ -58,7 +76,7 @@ export async function middleware(request: NextRequest) {
 
   // Grapevine Rig app (pairing code exchange + rig-authenticated APIs).
   if (isRigMachineBypassRequest(request, pathname)) {
-    return NextResponse.next();
+    return corsNext(request);
   }
 
   if (pathname === "/" && request.nextUrl.searchParams.has("code")) {

@@ -1,5 +1,15 @@
 import { NextResponse } from "next/server";
+import { RIG_CORS_HEADERS } from "@/lib/http/rig-cors";
 import { pairRigWithCode } from "@/lib/pp-platform/rig-pairing";
+
+function json(data: unknown, status = 200) {
+  return NextResponse.json(data, { status, headers: RIG_CORS_HEADERS });
+}
+
+/** CORS preflight for Grapevine Rig pairing fetch. */
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: RIG_CORS_HEADERS });
+}
 
 /** POST — Grapevine Rig exchanges pairing code for rig credentials. */
 export async function POST(req: Request) {
@@ -12,7 +22,7 @@ export async function POST(req: Request) {
     };
 
     if (!body.code?.trim()) {
-      return NextResponse.json({ ok: false, error: "code is required." }, { status: 400 });
+      return json({ ok: false, error: "code is required." }, 400);
     }
 
     const { rig, rigSecret } = await pairRigWithCode({
@@ -22,7 +32,7 @@ export async function POST(req: Request) {
       publicKey: body.publicKey,
     });
 
-    return NextResponse.json({
+    return json({
       ok: true,
       rigId: rig.id,
       orgId: rig.org_id,
@@ -32,6 +42,6 @@ export async function POST(req: Request) {
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Pairing failed.";
-    return NextResponse.json({ ok: false, error: message }, { status: 400 });
+    return json({ ok: false, error: message }, 400);
   }
 }
