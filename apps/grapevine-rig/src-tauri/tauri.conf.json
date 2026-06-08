@@ -32,6 +32,8 @@
       "icons/128x128@2x.png",
       "icons/icon.icns"
     ],
-    "resources": ["resources/worker.mjs", "resources/scan.mjs"]
+    "resources": {
+      "resources/": "./"
+    }
   }
 }
