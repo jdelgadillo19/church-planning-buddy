@@ -8,6 +8,8 @@
 
 **Companion spec:** [PROPRESENTER-MVP.md](./PROPRESENTER-MVP.md) covers **PCO + GRG → new presentation** (generation). This document covers **replacing unsafe whole-bundle Drive sync** with staged change sets.
 
+**Platform integration (2026-06-07):** Phase 0–1 of [planning/SLIDE-DECK-PLATFORM-PRD-ADDENDUM.md](./planning/SLIDE-DECK-PLATFORM-PRD-ADDENDUM.md) implements bundle scanner + cloud snapshot upload before full SYNC Phase 2 change sets. Epics: [planning/SLIDE-DECK-PLATFORM-EPICS.md](./planning/SLIDE-DECK-PLATFORM-EPICS.md).
+
 ---
 
 ## Goal (one sentence)

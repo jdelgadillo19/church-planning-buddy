@@ -49,3 +49,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Grapevine Rig build artifacts (CI/local prepare regenerates)
+apps/grapevine-rig-worker/dist/
+apps/grapevine-rig/src-tauri/resources/*.mjs

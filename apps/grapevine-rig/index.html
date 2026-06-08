@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Grapevine Rig</title>
+    <link rel="stylesheet" href="src/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="header">
+        <h1>Grapevine Rig</h1>
+        <span id="status-badge" class="badge badge-idle">Not paired</span>
+      </header>
+
+      <section id="pair-screen" class="panel hidden">
+        <p class="lede">
+          Enter the 8-character code from grapevineprep.com (org settings → Add presentation rig).
+        </p>
+        <label class="field">
+          <span>Pairing code</span>
+          <input id="pair-code" type="text" maxlength="8" autocomplete="off" placeholder="ABCD1234" />
+        </label>
+        <label class="field">
+          <span>Display name</span>
+          <input id="pair-name" type="text" placeholder="Sanctuary Mac" />
+        </label>
+        <button id="pair-btn" type="button" class="btn primary">Pair this Mac</button>
+        <p id="pair-error" class="error hidden"></p>
+      </section>
+
+      <section id="main-screen" class="panel hidden">
+        <p id="rig-label" class="rig-label"></p>
+
+        <div id="build-card" class="build-card hidden">
+          <p class="build-title">Build ready</p>
+          <p id="build-summary" class="build-summary"></p>
+          <button id="apply-btn" type="button" class="btn primary">Apply Slide Deck</button>
+        </div>
+        <p id="no-build" class="muted">No pending builds. Waiting for planner to send a deck…</p>
+
+        <details class="details">
+          <summary>What changed?</summary>
+          <pre id="change-detail" class="mono"></pre>
+        </details>
+
+        <div class="actions">
+          <button id="scan-btn" type="button" class="btn">Scan now</button>
+          <button id="settings-btn" type="button" class="btn ghost">Unpair</button>
+        </div>
+        <p id="action-status" class="action-status"></p>
+      </section>
+    </div>
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>

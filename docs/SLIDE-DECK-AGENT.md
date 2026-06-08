@@ -1,6 +1,8 @@
 # Slide Deck Mac agent
 
-Hosted Grapevine Prep queues slide-deck jobs; this agent runs on the **operator Mac** where ProPresenter is installed.
+> **Deprecated as primary operator path** (2026-06-07). Use **Grapevine Rig** (Phase 1) and **Send to presentation rig** on the web. See [SLIDE-DECK-DEPRECATION.md](./SLIDE-DECK-DEPRECATION.md) and [planning/SLIDE-DECK-PLATFORM-PRD-ADDENDUM.md](./planning/SLIDE-DECK-PLATFORM-PRD-ADDENDUM.md).
+
+Hosted Grapevine Prep queues slide-deck jobs; this agent runs on the **operator Mac** where ProPresenter is installed. **Debug / engineering only** until the rig client ships.
 
 ## Prerequisites
 

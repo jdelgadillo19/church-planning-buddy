@@ -72,15 +72,29 @@ export default function SlideDeckPage() {
     itemCount: number;
   } | null>(null);
   const [proplaylistFile, setProplaylistFile] = useState<File | null>(null);
-  const [agentJobs, setAgentJobs] = useState<
+  const [platformIndex, setPlatformIndex] = useState<{
+    rigName: string;
+    snapshotAt: string;
+    libraryItemCount: number;
+    stale: boolean;
+    hasLibraryIndex: boolean;
+  } | null>(null);
+  const [orgId, setOrgId] = useState<string | null>(null);
+  const [orgRole, setOrgRole] = useState<string | null>(null);
+  const [rigs, setRigs] = useState<
+    Array<{ id: string; displayName: string; lastSeenAt: string | null }>
+  >([]);
+  const [builds, setBuilds] = useState<
     Array<{
       id: string;
       status: string;
       error_message?: string | null;
+      change_summary?: string | null;
+      created_at?: string;
       result?: { publish?: { driveFolderUrl?: string } } | null;
     }>
   >([]);
-  const [agentQueueBusy, setAgentQueueBusy] = useState(false);
+  const [queueBusy, setQueueBusy] = useState(false);
 
   const isHosted = Boolean(ppStatus?.hosted);
   const canPublishOnHosted = Boolean(proplaylistFile);
@@ -152,25 +166,50 @@ export default function SlideDeckPage() {
     void refreshPublishPreflight();
   }, [refreshPublishPreflight]);
 
-  const refreshAgentJobs = useCallback(async () => {
+  const refreshPlatformContext = useCallback(async () => {
     try {
-      const res = await fetch("/api/slide-deck/agent/jobs");
+      const res = await fetch("/api/pp/context");
       const data = (await res.json()) as {
         ok?: boolean;
-        jobs?: typeof agentJobs;
+        org?: { orgId: string; role: string } | null;
+        index?: typeof platformIndex;
+        rigs?: typeof rigs;
       };
-      if (data.ok && data.jobs) setAgentJobs(data.jobs);
+      if (!data.ok) return;
+      if (data.org?.orgId) setOrgId(data.org.orgId);
+      if (data.org?.role) setOrgRole(data.org.role);
+      setRigs(data.rigs ?? []);
+      setPlatformIndex(data.index ?? null);
     } catch {
-      /* optional when auth/agent not configured */
+      /* optional when auth not configured */
     }
   }, []);
 
+  const refreshBuilds = useCallback(async () => {
+    try {
+      const params = orgId ? `?orgId=${encodeURIComponent(orgId)}` : "";
+      const res = await fetch(`/api/pp/builds${params}`);
+      const data = (await res.json()) as {
+        ok?: boolean;
+        builds?: typeof builds;
+      };
+      if (data.ok && data.builds) setBuilds(data.builds);
+    } catch {
+      /* optional */
+    }
+  }, [orgId]);
+
   useEffect(() => {
     if (!isHosted) return;
-    void refreshAgentJobs();
-    const id = window.setInterval(() => void refreshAgentJobs(), 8000);
+    void refreshPlatformContext();
+  }, [isHosted, refreshPlatformContext]);
+
+  useEffect(() => {
+    if (!isHosted || !orgId) return;
+    void refreshBuilds();
+    const id = window.setInterval(() => void refreshBuilds(), 8000);
     return () => window.clearInterval(id);
-  }, [isHosted, refreshAgentJobs]);
+  }, [isHosted, orgId, refreshBuilds]);
 
   async function fileToBase64(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -188,29 +227,31 @@ export default function SlideDeckPage() {
     });
   }
 
-  async function queueAgentJob() {
+  async function queueBuild() {
     if (!commitPlan || !planId.trim()) return;
-    setAgentQueueBusy(true);
+    setQueueBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/slide-deck/agent/jobs", {
+      const res = await fetch("/api/pp/builds", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          orgId: orgId ?? undefined,
           planId: planId.trim(),
           serviceTypeId: serviceTypeId.trim() || undefined,
           commitPlan,
           librarySelections:
             Object.keys(librarySelections).length > 0 ? librarySelections : undefined,
+          changeSummary: commitPlan.playlistName,
         }),
       });
-      const payload = (await res.json()) as { ok: boolean; error?: string; job?: { id: string } };
-      if (!payload.ok) throw new Error(payload.error ?? "Failed to queue job.");
-      await refreshAgentJobs();
+      const payload = (await res.json()) as { ok: boolean; error?: string; build?: { id: string } };
+      if (!payload.ok) throw new Error(payload.error ?? "Failed to queue build.");
+      await refreshBuilds();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to queue Mac agent job.");
+      setError(e instanceof Error ? e.message : "Failed to queue build.");
     } finally {
-      setAgentQueueBusy(false);
+      setQueueBusy(false);
     }
   }
 
@@ -463,7 +504,7 @@ export default function SlideDeckPage() {
       </nav>
 
       <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
-        <strong>Preview first.</strong> Build commit preview, then apply on the prep Mac (agent or CLI),
+        <strong>Preview first.</strong> Build commit preview, then <strong>Send to presentation rig</strong>,
         then <strong>Publish to Drive</strong> for the church rig. See{" "}
         <code className="font-mono text-xs">docs/PROPRESENTER-PUBLISH.md</code> and{" "}
         <code className="font-mono text-xs">docs/HOSTING-GRAPEVINE.md</code>.
@@ -476,10 +517,15 @@ export default function SlideDeckPage() {
           manifest={manifest}
           commitPlan={commitPlan}
           librarySelections={librarySelections}
-          agentJobs={agentJobs}
-          agentQueueBusy={agentQueueBusy}
-          onQueueAgent={() => void queueAgentJob()}
-          onRefreshJobs={() => void refreshAgentJobs()}
+          indexMeta={platformIndex}
+          builds={builds}
+          rigs={rigs}
+          orgId={orgId}
+          isAdmin={orgRole === "admin"}
+          queueBusy={queueBusy}
+          onQueueBuild={() => void queueBuild()}
+          onRefreshBuilds={() => void refreshBuilds()}
+          onRigsChange={() => void refreshPlatformContext()}
           proplaylistFile={proplaylistFile}
           onProplaylistFileChange={setProplaylistFile}
         />

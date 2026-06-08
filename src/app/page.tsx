@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { GoogleConnectionCard } from "@/components/google-connection-card";
 import { SignOutButton } from "@/components/sign-out-button";
 import { TOOLS } from "@/lib/tools/registry";
@@ -23,7 +24,17 @@ export default async function HomePage() {
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-6 py-10">
         <header className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight">Grapevine Prep</h1>
+            <div className="flex items-center gap-3">
+              <Image
+                src="/brand/grapevine-icon.svg"
+                alt=""
+                width={44}
+                height={44}
+                className="size-11 rounded-xl shadow-sm"
+                aria-hidden="true"
+              />
+              <h1 className="text-2xl font-semibold tracking-tight">Grapevine Prep</h1>
+            </div>
             {signedIn ? <SignOutButton /> : null}
           </div>
           <p className="text-sm text-zinc-600 dark:text-zinc-400">

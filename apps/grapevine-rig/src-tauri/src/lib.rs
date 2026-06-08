@@ -1,0 +1,177 @@
+use keyring::Entry;
+use serde::{Deserialize, Serialize};
+use std::process::Stdio;
+use tauri::Manager;
+use tauri_plugin_shell::process::CommandEvent;
+use tauri_plugin_shell::ShellExt;
+
+const SERVICE: &str = "com.grapevineprep.rig";
+const ACCOUNT: &str = "rig-credentials";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RigCredentials {
+    pub rig_id: String,
+    pub rig_secret: String,
+    pub display_name: String,
+    pub api_base_url: String,
+}
+
+fn creds_entry() -> Result<Entry, String> {
+    Entry::new(SERVICE, ACCOUNT).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn save_credentials(
+    rig_id: String,
+    rig_secret: String,
+    display_name: String,
+    api_base_url: String,
+) -> Result<(), String> {
+    let creds = RigCredentials {
+        rig_id,
+        rig_secret,
+        display_name,
+        api_base_url,
+    };
+    let json = serde_json::to_string(&creds).map_err(|e| e.to_string())?;
+    creds_entry()?.set_password(&json).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn load_credentials() -> Result<Option<RigCredentials>, String> {
+    match creds_entry()?.get_password() {
+        Ok(json) => {
+            let creds: RigCredentials = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+            Ok(Some(creds))
+        }
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
+fn clear_credentials() -> Result<(), String> {
+    match creds_entry()?.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
+fn get_hostname() -> Result<String, String> {
+    hostname::get()
+        .map(|h| h.to_string_lossy().into_owned())
+        .map_err(|e| e.to_string())
+}
+
+fn resolve_worker_script(app: &tauri::AppHandle, node_script: &str) -> Result<std::path::PathBuf, String> {
+    if let Ok(p) = app.path().resolve(node_script, tauri::path::BaseDirectory::Resource) {
+        if p.exists() {
+            return Ok(p);
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        let dev = cwd
+            .join("../../grapevine-rig-worker/dist")
+            .join(node_script);
+        if dev.exists() {
+            return Ok(dev);
+        }
+    }
+    Err(format!("Worker script not found: {node_script}"))
+}
+
+async fn run_sidecar_or_node(
+    app: &tauri::AppHandle,
+    sidecar_name: &str,
+    node_script: &str,
+    extra_env: Vec<(String, String)>,
+) -> Result<String, String> {
+    let creds = load_credentials()?.ok_or("Not paired.")?;
+
+    let mut env: Vec<(String, String)> = vec![
+        ("RIG_ID".to_string(), creds.rig_id),
+        ("RIG_SECRET".to_string(), creds.rig_secret),
+        ("GRAPEVINE_PREP_URL".to_string(), creds.api_base_url),
+        ("PP_ALLOW_WRITES".to_string(), "true".to_string()),
+    ];
+    env.extend(extra_env);
+
+    let (mut rx, _child) = if let Ok(cmd) = app.shell().sidecar(sidecar_name) {
+        cmd.envs(env.clone())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| e.to_string())?
+    } else {
+        let script = resolve_worker_script(app, node_script)?;
+        app.shell()
+            .command("node")
+            .arg(script)
+            .envs(env)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| e.to_string())?
+    };
+
+    let mut stdout = String::new();
+    let mut stderr = String::new();
+
+    while let Some(event) = rx.recv().await {
+        match event {
+            CommandEvent::Stdout(line) => stdout.push_str(&String::from_utf8_lossy(&line)),
+            CommandEvent::Stderr(line) => stderr.push_str(&String::from_utf8_lossy(&line)),
+            CommandEvent::Terminated(payload) => {
+                if payload.code.unwrap_or(1) != 0 {
+                    let msg = if stderr.trim().is_empty() {
+                        stdout.trim().to_string()
+                    } else {
+                        stderr.trim().to_string()
+                    };
+                    return Err(if msg.is_empty() {
+                        format!("Worker exited with code {:?}", payload.code)
+                    } else {
+                        msg
+                    });
+                }
+                break;
+            }
+            _ => {}
+        }
+    }
+
+    Ok(if stdout.trim().is_empty() {
+        "Done.".to_string()
+    } else {
+        stdout.lines().last().unwrap_or("Done.").to_string()
+    })
+}
+
+#[tauri::command]
+async fn run_apply(app: tauri::AppHandle, build_id: String) -> Result<String, String> {
+    let env = vec![("BUILD_ID".to_string(), build_id)];
+    run_sidecar_or_node(&app, "grapevine-rig-worker", "worker.mjs", env).await
+}
+
+#[tauri::command]
+async fn run_scan(app: tauri::AppHandle) -> Result<String, String> {
+    run_sidecar_or_node(&app, "grapevine-rig-scan", "scan.mjs", vec![]).await
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_shell::init())
+        .invoke_handler(tauri::generate_handler![
+            save_credentials,
+            load_credentials,
+            clear_credentials,
+            get_hostname,
+            run_apply,
+            run_scan,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running Grapevine Rig");
+}

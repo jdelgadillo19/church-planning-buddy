@@ -1,5 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  isMachineBearerApiPath,
+  isMachineBearerAuthorized,
+} from "@/lib/auth/machine-bearer";
+import { isRigMachineBypassRequest } from "@/lib/pp-platform/rig-auth";
 import { isGrapevineAuthEnabled } from "@/lib/supabase/config";
 
 const PUBLIC_PREFIXES = ["/login", "/auth/"];
@@ -45,6 +50,16 @@ export async function middleware(request: NextRequest) {
   }
 
   const { pathname } = request.nextUrl;
+
+  // Rig index upload + Mac agent poll (bearer token, no browser session).
+  if (isMachineBearerApiPath(pathname) && isMachineBearerAuthorized(request)) {
+    return NextResponse.next();
+  }
+
+  // Grapevine Rig app (pairing code exchange + rig-authenticated APIs).
+  if (isRigMachineBypassRequest(request, pathname)) {
+    return NextResponse.next();
+  }
 
   if (pathname === "/" && request.nextUrl.searchParams.has("code")) {
     const callback = new URL("/auth/callback", request.url);

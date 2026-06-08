@@ -1,0 +1,63 @@
+name: Grapevine Rig Release
+
+on:
+  push:
+    tags:
+      - "grapevine-rig-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos-dmg:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build worker bundles
+        run: npm run rig:prepare
+
+      - name: Package worker sidecars (pkg)
+        run: |
+          BIN=apps/grapevine-rig/src-tauri/bin
+          npx @yao-pkg/pkg apps/grapevine-rig-worker/dist/worker.mjs \
+            --targets node20-macos-arm64 \
+            --output "$BIN/grapevine-rig-worker"
+          npx @yao-pkg/pkg apps/grapevine-rig-worker/dist/scan.mjs \
+            --targets node20-macos-arm64 \
+            --output "$BIN/grapevine-rig-scan"
+          # Tauri externalBin expects a -$TARGET_TRIPLE suffix
+          mv "$BIN/grapevine-rig-worker" "$BIN/grapevine-rig-worker-aarch64-apple-darwin"
+          mv "$BIN/grapevine-rig-scan" "$BIN/grapevine-rig-scan-aarch64-apple-darwin"
+          chmod +x "$BIN/grapevine-rig-worker-aarch64-apple-darwin"
+          chmod +x "$BIN/grapevine-rig-scan-aarch64-apple-darwin"
+
+      - name: Build Tauri .dmg
+        working-directory: apps/grapevine-rig
+        run: |
+          npm install
+          npm run tauri build
+
+      - name: Collect release assets
+        run: |
+          mkdir -p release-assets
+          DMG=$(find apps/grapevine-rig/src-tauri/target/release/bundle/dmg -name '*.dmg' | head -1)
+          VERSION="${GITHUB_REF_NAME#grapevine-rig-v}"
+          cp "$DMG" "release-assets/Grapevine-Rig-${VERSION}-macos.dmg"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          generate_release_notes: true

@@ -1,0 +1,186 @@
+:root {
+  color-scheme: light dark;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --bg: #0f172a;
+  --panel: #1e293b;
+  --text: #f8fafc;
+  --muted: #94a3b8;
+  --accent: #38bdf8;
+  --accent-dark: #0284c7;
+  --danger: #f87171;
+  --ok: #4ade80;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+#app {
+  padding: 1.25rem;
+  max-width: 28rem;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.header h1 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.badge {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.badge-idle {
+  background: #334155;
+  color: var(--muted);
+}
+
+.badge-ready {
+  background: #14532d;
+  color: var(--ok);
+}
+
+.badge-busy {
+  background: #1e3a5f;
+  color: var(--accent);
+}
+
+.panel {
+  background: var(--panel);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.lede,
+.muted {
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.field input {
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.5rem;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.btn {
+  border: 1px solid #475569;
+  background: #334155;
+  color: var(--text);
+  border-radius: 0.5rem;
+  padding: 0.6rem 0.9rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn.primary {
+  background: var(--accent-dark);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.btn.ghost {
+  background: transparent;
+}
+
+.rig-label {
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.build-card {
+  border: 1px solid #334155;
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  background: #0f172a;
+}
+
+.build-title {
+  margin: 0 0 0.25rem;
+  font-weight: 600;
+}
+
+.build-summary {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.details summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  white-space: pre-wrap;
+  margin: 0.5rem 0 0;
+  color: var(--muted);
+}
+
+.error {
+  color: var(--danger);
+  font-size: 0.8rem;
+  margin: 0;
+}
+
+.action-status {
+  font-size: 0.8rem;
+  color: var(--muted);
+  min-height: 1.2rem;
+  margin: 0;
+}

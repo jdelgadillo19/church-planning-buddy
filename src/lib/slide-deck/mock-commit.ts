@@ -62,6 +62,13 @@ export type BuildMockCommitInput = {
   templateItems: PpPlaylistItemRef[];
   libraryIndex: PpLibraryItemRef[];
   propresenterConnected: boolean;
+  /** True when library/template data came from cloud index snapshot. */
+  useCloudIndex?: boolean;
+  indexMeta?: {
+    rigName: string;
+    snapshotAt: string;
+    stale: boolean;
+  };
   playlistConflict?: MockCommitPlan["playlistConflict"];
 };
 
@@ -228,15 +235,36 @@ export function buildMockCommitPlan(input: BuildMockCommitInput): MockCommitPlan
   const songs = input.manifest.elements.filter((e) => e.playlistIntent === "include");
   const warnings: string[] = [];
 
-  if (!input.propresenterConnected) {
-    warnings.push("ProPresenter not connected — library matches and template items unavailable.");
+  if (input.useCloudIndex && input.indexMeta) {
+    const when = new Date(input.indexMeta.snapshotAt).toLocaleString();
+    if (input.indexMeta.stale) {
+      warnings.push(
+        `Library index from ${input.indexMeta.rigName} is over 7 days old (${when}) — ask operator to sync Grapevine Rig.`,
+      );
+    } else if (input.libraryIndex.length > 0) {
+      warnings.push(
+        `Using library index from ${input.indexMeta.rigName} (updated ${when}).`,
+      );
+    } else {
+      warnings.push(
+        `Index from ${input.indexMeta.rigName} has no library entries — run index upload on the presentation Mac.`,
+      );
+    }
+  } else if (!input.propresenterConnected) {
+    warnings.push(
+      "No ProPresenter connection or cloud index — library matches and template items unavailable.",
+    );
   }
   if (input.manifest.template.sourceFound === false) {
     warnings.push(
       `Template playlist "${input.manifest.template.sourcePlaylistName}" was not found.`,
     );
   }
-  if (input.templateItems.length === 0 && input.propresenterConnected) {
+  if (
+    input.templateItems.length === 0 &&
+    (input.propresenterConnected || input.useCloudIndex) &&
+    input.manifest.template.sourceFound !== false
+  ) {
     warnings.push("Could not read template playlist items.");
   }
 

@@ -10,6 +10,8 @@ The **GRG MVP** remains documented in [`PRODUCT.md`](../PRODUCT.md) (shipped). T
 
 **Related (separate track):** [PROPRESENTER-SYNC.md](./PROPRESENTER-SYNC.md) — staged change-set sync to **replace unsafe whole-bundle Drive sync** (not generation from PCO/GRG). Build sequencing: finish this doc’s PR1 first, then sync Phase 1 per [planning/PROPRESENTER-SYNC-SEQUENCING.md](./planning/PROPRESENTER-SYNC-SEQUENCING.md).
 
+**Hosted platform (2026-06-07):** [planning/SLIDE-DECK-PLATFORM-PRD-ADDENDUM.md](./planning/SLIDE-DECK-PLATFORM-PRD-ADDENDUM.md) — org-scoped index, web preview without local PP, Grapevine Rig client for apply. Party: [party/output/party-2026-06-07-slide-deck-platform.md](./party/output/party-2026-06-07-slide-deck-platform.md).
+
 ---
 
 ## Goal (one sentence)

@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Grapevine</title>
+  <desc id="desc">A rounded-square Grapevine app icon with a vine forming a subtle G and connected grape nodes.</desc>
+  <defs>
+    <linearGradient id="tile" x1="160" y1="52" x2="856" y2="972" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#123f35"/>
+      <stop offset=".5" stop-color="#0f2f2d"/>
+      <stop offset="1" stop-color="#211d3d"/>
+    </linearGradient>
+    <radialGradient id="tileLight" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(300 180) rotate(50) scale(760 620)">
+      <stop offset="0" stop-color="#4ac29f" stop-opacity=".46"/>
+      <stop offset=".42" stop-color="#4ac29f" stop-opacity=".13"/>
+      <stop offset="1" stop-color="#4ac29f" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="grape" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(412 308) rotate(58) scale(430)">
+      <stop offset="0" stop-color="#ddc6ff"/>
+      <stop offset=".4" stop-color="#8f5cff"/>
+      <stop offset="1" stop-color="#473187"/>
+    </radialGradient>
+    <linearGradient id="leaf" x1="510" y1="210" x2="742" y2="408" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9be29e"/>
+      <stop offset=".55" stop-color="#34b979"/>
+      <stop offset="1" stop-color="#0d765c"/>
+    </linearGradient>
+    <linearGradient id="vine" x1="306" y1="720" x2="770" y2="230" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f1c766"/>
+      <stop offset=".48" stop-color="#57d19a"/>
+      <stop offset="1" stop-color="#d8c1ff"/>
+    </linearGradient>
+    <filter id="ambient" x="-12%" y="-12%" width="124%" height="124%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="28" stdDeviation="30" flood-color="#05080a" flood-opacity=".32"/>
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#ffffff" flood-opacity=".16"/>
+    </filter>
+    <filter id="lift" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#06070b" flood-opacity=".34"/>
+    </filter>
+    <clipPath id="squircle">
+      <path d="M512 32c152 0 258 18 336 96s96 184 96 336v96c0 152-18 258-96 336s-184 96-336 96h-96c-152 0-258-18-336-96S-16 712-16 560v-96c0-152 18-258 96-336S264 32 416 32h96Z"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#squircle)">
+    <path fill="url(#tile)" d="M0 0h1024v1024H0z"/>
+    <path fill="url(#tileLight)" d="M0 0h1024v1024H0z"/>
+    <path fill="#fff" opacity=".08" d="M128 48h768c44 0 80 36 80 80v84c-88 34-194 53-318 58-245 10-430-42-610-144 0-43 36-78 80-78Z"/>
+    <path fill="#03080a" opacity=".2" d="M0 724c142 52 306 68 492 48 212-23 389-91 532-203v455H0V724Z"/>
+  </g>
+  <g filter="url(#ambient)">
+    <path fill="none" stroke="url(#vine)" stroke-linecap="round" stroke-linejoin="round" stroke-width="58" d="M704 288c-112-70-291-48-376 59-74 93-59 241 36 320 101 85 264 70 347-31 54-66 41-158-33-199-65-36-152-16-189 43"/>
+    <path fill="none" stroke="#fff7d9" stroke-linecap="round" stroke-width="12" opacity=".44" d="M694 292c-107-61-265-34-343 64-63 80-56 204 17 280"/>
+  </g>
+  <g filter="url(#lift)">
+    <path fill="url(#leaf)" d="M626 247c86-57 171-48 255 26-30 97-99 151-206 163-29-50-45-113-49-189Z"/>
+    <path fill="#eaffd6" opacity=".45" d="M667 279c53-24 105-24 157 0-42 22-89 55-142 101-8-30-13-64-15-101Z"/>
+    <path fill="none" stroke="#f0ffe2" stroke-linecap="round" stroke-width="16" opacity=".58" d="M669 377c38-45 91-78 159-99"/>
+  </g>
+  <g filter="url(#lift)">
+    <circle cx="393" cy="332" r="72" fill="url(#grape)"/>
+    <circle cx="511" cy="312" r="72" fill="url(#grape)"/>
+    <circle cx="455" cy="424" r="76" fill="url(#grape)"/>
+    <circle cx="577" cy="432" r="72" fill="url(#grape)"/>
+    <circle cx="397" cy="543" r="72" fill="url(#grape)"/>
+    <circle cx="520" cy="555" r="76" fill="url(#grape)"/>
+    <circle cx="462" cy="671" r="72" fill="url(#grape)"/>
+    <circle cx="392" cy="332" r="26" fill="#f3e9ff" opacity=".38"/>
+    <circle cx="508" cy="312" r="25" fill="#f3e9ff" opacity=".34"/>
+    <circle cx="452" cy="424" r="26" fill="#f3e9ff" opacity=".32"/>
+    <circle cx="574" cy="432" r="24" fill="#f3e9ff" opacity=".3"/>
+    <circle cx="395" cy="543" r="24" fill="#f3e9ff" opacity=".3"/>
+    <circle cx="517" cy="555" r="26" fill="#f3e9ff" opacity=".28"/>
+    <circle cx="460" cy="671" r="24" fill="#f3e9ff" opacity=".28"/>
+  </g>
+  <path fill="none" stroke="#fff" stroke-width="3" opacity=".13" d="M512 32c152 0 258 18 336 96s96 184 96 336v96c0 152-18 258-96 336s-184 96-336 96h-96c-152 0-258-18-336-96S-16 712-16 560v-96c0-152 18-258 96-336S264 32 416 32h96Z"/>
+</svg>

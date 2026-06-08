@@ -150,35 +150,28 @@ You should **not** need a separate “Connect Google” step after signing in wi
 
 ## Slide Deck + ProPresenter (hosted vs prep Mac)
 
-Grapevine Prep on Cloudflare **cannot** reach ProPresenter on your Mac (`127.0.0.1:64509`) or run AppleScript export. GRG and Drive workflows work from the browser; Slide Deck apply/export does not.
+Grapevine Prep on Cloudflare **cannot** reach ProPresenter on your Mac (`127.0.0.1:64509`) or run AppleScript export. GRG and Drive workflows work from the browser; Slide Deck **apply** runs on the **presentation rig** via a local client.
 
-| Step | On grapevineprep.com | On prep Mac |
-|------|----------------------|-------------|
-| PCO plan + commit preview | Yes (library match degraded without PP) | Full preview with PP |
-| Apply to ProPresenter | No — use agent or CLI | `npm run slide-deck:apply` |
-| Export `.proplaylist` | No — upload file or use agent | ProPresenter or CLI publish |
-| Publish to Drive | Yes if you **upload** a `.proplaylist` (Connect Google) | `npm run slide-deck:publish` or agent |
+**Platform direction (2026-06-07):** [SLIDE-DECK-PLATFORM-PRD-ADDENDUM.md](./planning/SLIDE-DECK-PLATFORM-PRD-ADDENDUM.md) — web builds plans from PCO + org index; **Grapevine Rig** Mac app applies (no terminal).
 
-### Mac agent (recommended)
+| Step | On grapevineprep.com | On presentation rig Mac |
+|------|----------------------|-------------------------|
+| PCO plan + commit preview | Yes (uses org index when rig has synced) | Full preview with live PP |
+| Queue build | **Send to presentation rig** | — |
+| Apply to ProPresenter | No | Grapevine Rig app (Phase 1) or debug CLI |
+| Publish to Drive | Upload `.proplaylist` emergency path | Rig app after apply |
+| Index sync | Reads latest `pp_index_snapshots` | `npm run pp:bundle-scan` / Rig app |
 
-1. Apply Supabase migration `supabase/migrations/20260607120000_slide_deck_jobs.sql`.
-2. Set the same secret in both places:
-   - Worker: `SLIDE_DECK_AGENT_TOKEN` (via `npm run env:cf` / wrangler secret)
-   - Prep Mac `.env.local`: `SLIDE_DECK_AGENT_TOKEN=...`
-3. On the Mac: `PP_ALLOW_WRITES=true`, ProPresenter running, Google connected for the operator account.
-4. Run: `GRAPEVINE_PREP_URL=https://grapevineprep.com npm run slide-deck:agent`
-5. On the site: build preview → **Send to Mac agent**.
+### Migrations
 
-### CLI fallback
+1. `20260607120000_slide_deck_jobs.sql` — interim agent (deprecated)
+2. `20260608120000_slide_deck_platform.sql` — org rigs, index snapshots, `slide_deck_builds`
 
-```bash
-npm run slide-deck:apply -- <planId> [--service-type-id=<id>]
-npm run slide-deck:publish -- <planId>
-```
+### Debug / engineering only (deprecated for operators)
 
-Download manifest JSON from the hosted Slide Deck page (Option B) for reference.
+See [SLIDE-DECK-DEPRECATION.md](./SLIDE-DECK-DEPRECATION.md) — `npm run slide-deck:agent`, CLI apply/publish, shared `SLIDE_DECK_AGENT_TOKEN`.
 
-See `docs/PROPRESENTER-PUBLISH.md` and `docs/SLIDE-DECK-AGENT.md`.
+See `docs/PROPRESENTER-PUBLISH.md`, `docs/planning/SLIDE-DECK-PHASE-0-SPEC.md`, `docs/planning/SLIDE-DECK-PHASE-1-SPEC.md`.
 
 ---
 

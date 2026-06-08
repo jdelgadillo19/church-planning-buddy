@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1140 300" role="img" aria-labelledby="title desc">
+  <title id="title">Grapevine wordmark</title>
+  <desc id="desc">The Grapevine app icon next to a clean wordmark.</desc>
+  <defs>
+    <linearGradient id="tile" x1="36" y1="12" x2="252" y2="288" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#123f35"/>
+      <stop offset=".5" stop-color="#0f2f2d"/>
+      <stop offset="1" stop-color="#211d3d"/>
+    </linearGradient>
+    <linearGradient id="word" x1="330" y1="54" x2="1010" y2="244" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#143f35"/>
+      <stop offset=".6" stop-color="#202342"/>
+      <stop offset="1" stop-color="#5b3aa1"/>
+    </linearGradient>
+    <linearGradient id="vine" x1="78" y1="212" x2="220" y2="70" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f1c766"/>
+      <stop offset=".48" stop-color="#57d19a"/>
+      <stop offset="1" stop-color="#d8c1ff"/>
+    </linearGradient>
+    <radialGradient id="grape" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(106 90) rotate(58) scale(126)">
+      <stop offset="0" stop-color="#ddc6ff"/>
+      <stop offset=".4" stop-color="#8f5cff"/>
+      <stop offset="1" stop-color="#473187"/>
+    </radialGradient>
+  </defs>
+  <g>
+    <path fill="url(#tile)" d="M150 10c43 0 73 5 95 27s27 52 27 95v18c0 43-5 73-27 95s-52 27-95 27h-18c-43 0-73-5-95-27S10 193 10 150v-18c0-43 5-73 27-95s52-27 95-27h18Z"/>
+    <path fill="none" stroke="url(#vine)" stroke-linecap="round" stroke-linejoin="round" stroke-width="18" d="M197 82c-33-21-86-14-111 17-22 27-18 71 11 94 30 25 77 21 101-9 16-20 12-47-10-59-19-11-45-5-56 13"/>
+    <path fill="#34b979" d="M174 70c25-16 50-13 74 8-9 28-29 44-60 48-8-15-13-33-14-56Z"/>
+    <circle cx="104" cy="94" r="22" fill="url(#grape)"/>
+    <circle cx="139" cy="88" r="22" fill="url(#grape)"/>
+    <circle cx="122" cy="121" r="23" fill="url(#grape)"/>
+    <circle cx="158" cy="124" r="21" fill="url(#grape)"/>
+    <circle cx="104" cy="156" r="21" fill="url(#grape)"/>
+    <circle cx="140" cy="160" r="22" fill="url(#grape)"/>
+    <circle cx="123" cy="194" r="21" fill="url(#grape)"/>
+  </g>
+  <text x="332" y="185" fill="url(#word)" font-family="Geist, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="112" font-weight="720" letter-spacing="0">Grapevine</text>
+  <text x="339" y="232" fill="#596963" font-family="Geist, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="32" font-weight="520" letter-spacing="4">PREP</text>
+</svg>

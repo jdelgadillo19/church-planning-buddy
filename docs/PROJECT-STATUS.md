@@ -1,6 +1,6 @@
 # Church Planning Buddy — project status
 
-**Last updated:** 2026-06-03  
+**Last updated:** 2026-06-08  
 **Repo:** https://github.com/jdelgadillo19/church-planning-buddy  
 **Latest commit (at update):** `e75d4c3` — song scan retrieval (yellow fallback, manual Drive picker)
 
@@ -10,6 +10,9 @@ Use this file as the **session handoff** doc.
 |-----|---------|
 | [`PRODUCT.md`](../PRODUCT.md) | **GRG MVP** spec (shipped) |
 | [`PROPRESENTER-MVP.md`](./PROPRESENTER-MVP.md) | **Active** next epic — PCO + GRG → ProPresenter |
+| [`planning/SLIDE-DECK-PLATFORM-PRD-ADDENDUM.md`](./planning/SLIDE-DECK-PLATFORM-PRD-ADDENDUM.md) | **Active** hosted platform — org index + Grapevine Rig client |
+| [`party/output/party-2026-06-07-slide-deck-platform.md`](./party/output/party-2026-06-07-slide-deck-platform.md) | Party: platform redesign decisions |
+| [`SLIDE-DECK-DEPRECATION.md`](./SLIDE-DECK-DEPRECATION.md) | Interim npm agent / CLI deprecated for operators |
 | [`PROPRESENTER-SYNC.md`](./PROPRESENTER-SYNC.md) | Staged sync replacement (Phase 1–2 planned; after PR1) |
 | [`PROPRESENTER-SYNC-ARCHITECTURE.md`](./PROPRESENTER-SYNC-ARCHITECTURE.md) | Sync system architecture |
 | [`STARTUP-PROMPT.md`](./STARTUP-PROMPT.md) | Copy-paste block for next Cursor session |
