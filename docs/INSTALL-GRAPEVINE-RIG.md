@@ -12,10 +12,10 @@ Grapevine Rig is the presentation-Mac app that applies slide decks to ProPresent
 ## 1. Download
 
 1. Open the project **GitHub Releases** page.
-2. Find the latest release tagged `grapevine-rig-v*` (e.g. `grapevine-rig-v0.1.0`).
+2. Find the latest release tagged `grapevine-rig-v*` (use **v0.1.7+** for Intel and Apple Silicon Macs).
 3. Download **`Grapevine-Rig-*-macos.dmg`**.
 
-Releases are built by the `grapevine-rig-release` workflow when a matching tag is pushed.
+Releases are built by the `grapevine-rig-release` workflow when a matching tag is pushed. Builds from **v0.1.7** onward are **universal** (Intel + Apple Silicon). Older releases (e.g. v0.1.6) are Apple Silicon only and show a **prohibited** icon on Intel Macs.
 
 ## 2. Install
 
@@ -54,6 +54,7 @@ Build statuses on the website: **Pending** → **Claimed** → **Applying** → 
 
 | Issue | What to try |
 |-------|-------------|
+| App icon shows **prohibited** (circle with line) in Finder | You likely have an **Intel Mac** and downloaded **v0.1.6 or earlier** (Apple Silicon only). Use **v0.1.7+** universal build from Releases. |
 | Pairing code invalid | Generate a new code; codes expire in 15 minutes and are single-use |
 | Apply fails | Confirm ProPresenter is running, Network on, `PP_ALLOW_WRITES` not needed in app (set automatically) |
 | Preview songs not found | Run **Scan now** in Grapevine Rig |

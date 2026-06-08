@@ -25,6 +25,8 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Install root dependencies
         run: npm ci
@@ -53,7 +55,7 @@ jobs:
           CI: true
         run: |
           set -o pipefail
-          npx tauri build --verbose 2>&1 | tee ../../tauri-build.log
+          npx tauri build --target universal-apple-darwin --verbose 2>&1 | tee ../../tauri-build.log
 
       - name: Upload build log on failure
         if: failure() && steps.tauri_build.outcome == 'failure'
@@ -65,9 +67,9 @@ jobs:
       - name: Collect release assets
         run: |
           mkdir -p release-assets
-          DMG=$(find apps/grapevine-rig/src-tauri/target/release/bundle/dmg -name '*.dmg' | head -1)
+          DMG=$(find apps/grapevine-rig/src-tauri/target/universal-apple-darwin/release/bundle/dmg -name '*.dmg' | head -1)
           if [ -z "$DMG" ]; then
-            echo "No .dmg found under src-tauri/target/release/bundle/dmg"
+            echo "No .dmg found under universal-apple-darwin release bundle/dmg"
             find apps/grapevine-rig/src-tauri/target -name '*.dmg' || true
             exit 1
           fi
