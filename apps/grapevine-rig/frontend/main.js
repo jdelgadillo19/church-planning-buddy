@@ -76,17 +76,13 @@ function showMain() {
 }
 
 async function loadPpSettings() {
-  ppSettingsStatus.textContent = "";
   try {
     const saved = await invoke("load_pp_settings");
     if (saved) {
       ppHost.value = saved.ppHost || "127.0.0.1";
       ppPort.value = String(saved.ppPort || "");
       ppTransport.value = saved.ppTransport || "tcp";
-      ppSettingsStatus.textContent = `Saved: ${saved.ppHost}:${saved.ppPort} (${saved.ppTransport})`;
-    } else {
-      ppSettingsStatus.textContent =
-        "Enter your TCP/IP Port ID from ProPresenter Network settings, then Save.";
+      ppSettingsStatus.textContent = `Using ${saved.ppHost}:${saved.ppPort} (${saved.ppTransport}). Apply or Scan saves any edits.`;
     }
   } catch (e) {
     ppSettingsStatus.textContent =
@@ -94,26 +90,46 @@ async function loadPpSettings() {
   }
 }
 
-async function savePpSettings() {
-  const port = Number.parseInt(ppPort.value, 10);
-  if (!Number.isFinite(port) || port < 1 || port > 65535) {
-    ppSettingsStatus.textContent = "Enter the TCP/IP Port ID from ProPresenter (1–65535).";
-    return;
+function readPpSettingsFromForm() {
+  const rawPort = ppPort.value.trim();
+  const port = Number.parseInt(rawPort, 10);
+  if (!rawPort || !Number.isFinite(port) || port < 1 || port > 65535) {
+    return null;
   }
-  ppSaveBtn.disabled = true;
+  return {
+    ppHost: ppHost.value.trim() || "127.0.0.1",
+    ppPort: port,
+    ppTransport: ppTransport.value || "tcp",
+  };
+}
+
+function ppSettingsRequiredMessage() {
+  return "Enter the TCP/IP Port ID from ProPresenter → Settings → Network (Enable Network ON). Example: 64509. Transport: TCP.";
+}
+
+async function ensurePpSettings() {
+  const settings = readPpSettingsFromForm();
+  if (!settings) {
+    ppSettingsStatus.textContent = ppSettingsRequiredMessage();
+    return null;
+  }
   try {
-    await invoke("save_pp_settings", {
-      ppHost: ppHost.value.trim() || "127.0.0.1",
-      ppPort: port,
-      ppTransport: ppTransport.value,
-    });
-    ppSettingsStatus.textContent = `Saved: ${ppHost.value || "127.0.0.1"}:${port} (${ppTransport.value})`;
+    await invoke("save_pp_settings", settings);
+    ppSettingsStatus.textContent = `Using ${settings.ppHost}:${settings.ppPort} (${settings.ppTransport}).`;
+    return settings;
   } catch (e) {
     ppSettingsStatus.textContent =
       e instanceof Error ? e.message : "Could not save ProPresenter settings.";
-  } finally {
-    ppSaveBtn.disabled = false;
+    return null;
   }
+}
+
+async function savePpSettings() {
+  const settings = await ensurePpSettings();
+  if (!settings) {
+    return;
+  }
+  ppSettingsStatus.textContent = `Saved ${settings.ppHost}:${settings.ppPort} (${settings.ppTransport}).`;
 }
 
 function renderBuild() {
@@ -221,13 +237,21 @@ async function pair() {
 
 async function applyBuild() {
   if (!pendingBuild || busy) return;
+  const ppSettings = await ensurePpSettings();
+  if (!ppSettings) {
+    actionStatus.textContent = ppSettingsRequiredMessage();
+    return;
+  }
   busy = true;
   applyBtn.disabled = true;
   scanBtn.disabled = true;
   setBadge("busy", "Applying");
   actionStatus.textContent = "Applying to ProPresenter…";
   try {
-    const output = await invoke("run_apply", { buildId: pendingBuild.id });
+    const output = await invoke("run_apply", {
+      buildId: pendingBuild.id,
+      ppSettings,
+    });
     actionStatus.textContent = output || "Apply completed.";
     pendingBuild = null;
     renderBuild();
@@ -250,13 +274,18 @@ async function applyBuild() {
 
 async function scanNow() {
   if (busy) return;
+  const ppSettings = await ensurePpSettings();
+  if (!ppSettings) {
+    actionStatus.textContent = ppSettingsRequiredMessage();
+    return;
+  }
   busy = true;
   scanBtn.disabled = true;
   applyBtn.disabled = true;
   setBadge("busy", "Scanning");
   actionStatus.textContent = "Scanning ProPresenter library…";
   try {
-    const output = await invoke("run_scan");
+    const output = await invoke("run_scan", { ppSettings });
     actionStatus.textContent = output || "Index uploaded.";
   } catch (e) {
     const msg =

@@ -59,7 +59,14 @@
           </label>
           <label class="field">
             <span>TCP/IP Port ID</span>
-            <input id="pp-port" type="number" min="1" max="65535" placeholder="64509" />
+            <input
+              id="pp-port"
+              type="text"
+              inputmode="numeric"
+              pattern="[0-9]*"
+              autocomplete="off"
+              placeholder="64509"
+            />
           </label>
           <label class="field">
             <span>Transport</span>
@@ -69,8 +76,10 @@
               <option value="http">HTTP only</option>
             </select>
           </label>
-          <button id="pp-save-btn" type="button" class="btn">Save ProPresenter settings</button>
-          <p id="pp-settings-status" class="hint"></p>
+          <button id="pp-save-btn" type="button" class="btn">Save settings</button>
+          <p id="pp-settings-status" class="hint">
+            Port is saved automatically when you Apply or Scan.
+          </p>
         </details>
 
         <div class="actions">

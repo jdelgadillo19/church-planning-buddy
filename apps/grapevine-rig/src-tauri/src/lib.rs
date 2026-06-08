@@ -8,6 +8,7 @@ use tauri_plugin_shell::ShellExt;
 const SERVICE: &str = "com.grapevineprep.rig";
 const ACCOUNT: &str = "rig-credentials";
 const PP_ACCOUNT: &str = "pp-settings";
+const PP_NOT_CONFIGURED_MSG: &str = "ProPresenter port is required. In ProPresenter → Settings → Network, turn Enable Network ON, enter the TCP/IP Port ID in Grapevine Rig, then Save or Apply again.";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -16,6 +17,12 @@ pub struct RigCredentials {
     pub rig_secret: String,
     pub display_name: String,
     pub api_base_url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pp_host: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pp_port: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pp_transport: Option<String>,
 }
 
 fn creds_entry() -> Result<Entry, String> {
@@ -49,10 +56,61 @@ fn pp_settings_env(settings: &PpSettings) -> Vec<(String, String)> {
     ]
 }
 
+fn write_credentials(creds: &RigCredentials) -> Result<(), String> {
+    let json = serde_json::to_string(creds).map_err(|e| e.to_string())?;
+    creds_entry()?.set_password(&json).map_err(|e| e.to_string())
+}
+
+fn pp_from_creds(creds: &RigCredentials) -> Option<PpSettings> {
+    creds.pp_port.map(|port| PpSettings {
+        pp_host: creds
+            .pp_host
+            .clone()
+            .unwrap_or_else(|| "127.0.0.1".to_string()),
+        pp_port: port,
+        pp_transport: creds
+            .pp_transport
+            .clone()
+            .unwrap_or_else(|| "tcp".to_string()),
+    })
+}
+
+fn build_pp_settings(pp_host: String, pp_port: u16, pp_transport: String) -> Result<PpSettings, String> {
+    if pp_port == 0 {
+        return Err("ProPresenter port is required.".to_string());
+    }
+    Ok(PpSettings {
+        pp_host: if pp_host.trim().is_empty() {
+            "127.0.0.1".to_string()
+        } else {
+            pp_host.trim().to_string()
+        },
+        pp_port,
+        pp_transport: parse_pp_transport(&pp_transport)?,
+    })
+}
+
+fn persist_pp_settings(settings: &PpSettings) -> Result<(), String> {
+    let mut creds = load_credentials()?.ok_or("Not paired.")?;
+    creds.pp_host = Some(settings.pp_host.clone());
+    creds.pp_port = Some(settings.pp_port);
+    creds.pp_transport = Some(settings.pp_transport.clone());
+    write_credentials(&creds)
+}
+
 fn load_pp_settings_internal() -> Result<Option<PpSettings>, String> {
+    if let Some(creds) = load_credentials()? {
+        if let Some(pp) = pp_from_creds(&creds) {
+            return Ok(Some(pp));
+        }
+    }
+
+    // Migrate legacy separate keychain entry (v0.1.12).
     match pp_settings_entry()?.get_password() {
         Ok(json) => {
             let settings: PpSettings = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+            let _ = persist_pp_settings(&settings);
+            let _ = pp_settings_entry()?.delete_credential();
             Ok(Some(settings))
         }
         Err(keyring::Error::NoEntry) => Ok(None),
@@ -62,22 +120,8 @@ fn load_pp_settings_internal() -> Result<Option<PpSettings>, String> {
 
 #[tauri::command]
 fn save_pp_settings(pp_host: String, pp_port: u16, pp_transport: String) -> Result<(), String> {
-    if pp_port == 0 {
-        return Err("ProPresenter port is required.".to_string());
-    }
-    let settings = PpSettings {
-        pp_host: if pp_host.trim().is_empty() {
-            "127.0.0.1".to_string()
-        } else {
-            pp_host.trim().to_string()
-        },
-        pp_port,
-        pp_transport: parse_pp_transport(&pp_transport)?,
-    };
-    let json = serde_json::to_string(&settings).map_err(|e| e.to_string())?;
-    pp_settings_entry()?
-        .set_password(&json)
-        .map_err(|e| e.to_string())
+    let settings = build_pp_settings(pp_host, pp_port, pp_transport)?;
+    persist_pp_settings(&settings)
 }
 
 #[tauri::command]
@@ -97,9 +141,11 @@ fn save_credentials(
         rig_secret,
         display_name,
         api_base_url,
+        pp_host: None,
+        pp_port: None,
+        pp_transport: None,
     };
-    let json = serde_json::to_string(&creds).map_err(|e| e.to_string())?;
-    creds_entry()?.set_password(&json).map_err(|e| e.to_string())
+    write_credentials(&creds)
 }
 
 #[tauri::command]
@@ -203,6 +249,7 @@ async fn run_node_worker(
     app: &tauri::AppHandle,
     node_script: &str,
     extra_env: Vec<(String, String)>,
+    inline_pp: Option<PpSettings>,
 ) -> Result<String, String> {
     let creds = load_credentials()?.ok_or("Not paired.")?;
 
@@ -212,9 +259,12 @@ async fn run_node_worker(
         ("GRAPEVINE_PREP_URL".to_string(), creds.api_base_url),
         ("PP_ALLOW_WRITES".to_string(), "true".to_string()),
     ];
-    let pp = load_pp_settings_internal()?.ok_or(
-        "ProPresenter is not configured. In ProPresenter → Settings → Network, turn Enable Network ON and note the TCP/IP Port ID. Enter that port in Grapevine Rig → ProPresenter settings, then try again.",
-    )?;
+    let pp = if let Some(settings) = inline_pp {
+        persist_pp_settings(&settings)?;
+        settings
+    } else {
+        load_pp_settings_internal()?.ok_or(PP_NOT_CONFIGURED_MSG.to_string())?
+    };
     env.extend(pp_settings_env(&pp));
     env.extend(extra_env);
 
@@ -257,14 +307,18 @@ async fn run_node_worker(
 }
 
 #[tauri::command]
-async fn run_apply(app: tauri::AppHandle, build_id: String) -> Result<String, String> {
+async fn run_apply(
+    app: tauri::AppHandle,
+    build_id: String,
+    pp_settings: Option<PpSettings>,
+) -> Result<String, String> {
     let env = vec![("BUILD_ID".to_string(), build_id)];
-    run_node_worker(&app, "worker.mjs", env).await
+    run_node_worker(&app, "worker.mjs", env, pp_settings).await
 }
 
 #[tauri::command]
-async fn run_scan(app: tauri::AppHandle) -> Result<String, String> {
-    run_node_worker(&app, "scan.mjs", vec![]).await
+async fn run_scan(app: tauri::AppHandle, pp_settings: Option<PpSettings>) -> Result<String, String> {
+    run_node_worker(&app, "scan.mjs", vec![], pp_settings).await
 }
 
 #[tauri::command]
