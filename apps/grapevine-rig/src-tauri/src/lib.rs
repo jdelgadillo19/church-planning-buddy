@@ -7,6 +7,7 @@ use tauri_plugin_shell::ShellExt;
 
 const SERVICE: &str = "com.grapevineprep.rig";
 const ACCOUNT: &str = "rig-credentials";
+const PP_ACCOUNT: &str = "pp-settings";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -19,6 +20,69 @@ pub struct RigCredentials {
 
 fn creds_entry() -> Result<Entry, String> {
     Entry::new(SERVICE, ACCOUNT).map_err(|e| e.to_string())
+}
+
+fn pp_settings_entry() -> Result<Entry, String> {
+    Entry::new(SERVICE, PP_ACCOUNT).map_err(|e| e.to_string())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PpSettings {
+    pub pp_host: String,
+    pub pp_port: u16,
+    pub pp_transport: String,
+}
+
+fn parse_pp_transport(raw: &str) -> Result<String, String> {
+    match raw.trim().to_lowercase().as_str() {
+        "tcp" | "http" | "auto" => Ok(raw.trim().to_lowercase()),
+        other => Err(format!("Invalid PP transport: {other} (use tcp, http, or auto)")),
+    }
+}
+
+fn pp_settings_env(settings: &PpSettings) -> Vec<(String, String)> {
+    vec![
+        ("PP_HOST".to_string(), settings.pp_host.clone()),
+        ("PP_PORT".to_string(), settings.pp_port.to_string()),
+        ("PP_TRANSPORT".to_string(), settings.pp_transport.clone()),
+    ]
+}
+
+fn load_pp_settings_internal() -> Result<Option<PpSettings>, String> {
+    match pp_settings_entry()?.get_password() {
+        Ok(json) => {
+            let settings: PpSettings = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+            Ok(Some(settings))
+        }
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
+fn save_pp_settings(pp_host: String, pp_port: u16, pp_transport: String) -> Result<(), String> {
+    if pp_port == 0 {
+        return Err("ProPresenter port is required.".to_string());
+    }
+    let settings = PpSettings {
+        pp_host: if pp_host.trim().is_empty() {
+            "127.0.0.1".to_string()
+        } else {
+            pp_host.trim().to_string()
+        },
+        pp_port,
+        pp_transport: parse_pp_transport(&pp_transport)?,
+    };
+    let json = serde_json::to_string(&settings).map_err(|e| e.to_string())?;
+    pp_settings_entry()?
+        .set_password(&json)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn load_pp_settings() -> Result<Option<PpSettings>, String> {
+    load_pp_settings_internal()
 }
 
 #[tauri::command]
@@ -148,6 +212,10 @@ async fn run_node_worker(
         ("GRAPEVINE_PREP_URL".to_string(), creds.api_base_url),
         ("PP_ALLOW_WRITES".to_string(), "true".to_string()),
     ];
+    let pp = load_pp_settings_internal()?.ok_or(
+        "ProPresenter is not configured. In ProPresenter → Settings → Network, turn Enable Network ON and note the TCP/IP Port ID. Enter that port in Grapevine Rig → ProPresenter settings, then try again.",
+    )?;
+    env.extend(pp_settings_env(&pp));
     env.extend(extra_env);
 
     let script = resolve_worker_script(app, node_script)?;
@@ -212,6 +280,8 @@ pub fn run() {
             save_credentials,
             load_credentials,
             clear_credentials,
+            save_pp_settings,
+            load_pp_settings,
             get_hostname,
             app_version,
             run_apply,

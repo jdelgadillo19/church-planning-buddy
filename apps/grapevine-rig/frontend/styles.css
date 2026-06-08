@@ -170,6 +170,23 @@ body {
   color: var(--muted);
 }
 
+.hint {
+  margin: 0.5rem 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.pp-settings .field select {
+  width: 100%;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.45rem;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: var(--text);
+  font: inherit;
+}
+
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.7rem;

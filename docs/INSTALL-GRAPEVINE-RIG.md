@@ -37,8 +37,14 @@ Credentials are stored in the **macOS Keychain** (service `com.grapevineprep.rig
 ## 4. ProPresenter setup
 
 1. Open ProPresenter on this Mac.
-2. Enable **Network** (default API port is auto-detected; contact support if yours differs).
-3. In Grapevine Rig, click **Scan now** to upload the library index (replaces `npm run pp:index-upload`).
+2. **ProPresenter → Settings → Network** → turn **Enable Network** ON.
+3. Note the **TCP/IP Port ID** (example: `64509` — yours may differ; it is often **not** `50001`).
+4. In **Grapevine Rig**, expand **ProPresenter settings**, enter that port, set transport to **TCP** (recommended for ProPresenter 21+), and click **Save ProPresenter settings**.
+5. Click **Scan now** to upload the library index (replaces `npm run pp:index-upload`).
+
+If Apply or Scan cannot reach ProPresenter, confirm ProPresenter is running, Network is ON, and the saved port matches the TCP/IP Port ID. Toggle Network off and on if the port refuses connections.
+
+**Dev checkout:** from the repo root, `npm run pp:diagnose` tests ports using `.env.local` (`PP_PORT`, `PP_TRANSPORT=tcp`).
 
 ## 5. Weekly workflow
 
@@ -56,7 +62,7 @@ Build statuses on the website: **Pending** → **Claimed** → **Applying** → 
 |-------|-------------|
 | App icon shows **prohibited** (circle with line) in Finder | You likely have an **Intel Mac** and downloaded **v0.1.6 or earlier** (Apple Silicon only). Use **v0.1.7+** universal build from Releases. |
 | Pairing code invalid | Generate a new code; codes expire in 15 minutes and are single-use |
-| Apply fails | Confirm ProPresenter is running, Network on, `PP_ALLOW_WRITES` not needed in app (set automatically) |
+| Apply fails | Confirm ProPresenter is running, Network on, port saved in **ProPresenter settings** (TCP transport for PP 21+). Dev: `npm run pp:diagnose` |
 | Preview songs not found | Run **Scan now** in Grapevine Rig |
 | Gatekeeper blocks app | Right-click → Open, or use a signed release when Apple ID secrets are configured in CI |
 | Old bootstrap rig | You may have a rig from `pp:index-upload`; pairing creates a new rig row — revoke the old one in admin if duplicate |

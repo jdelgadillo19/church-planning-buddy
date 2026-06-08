@@ -29,9 +29,16 @@ export type PpRequestResult<T = PpJson> = {
 
 function connectionHint(config: ProPresenterConfig, detail?: string): string {
   const extra = detail ? ` (${detail})` : "";
+  const base = `Cannot reach ProPresenter at ${proPresenterBaseUrl(config)}${extra}.`;
+  if (process.env.RIG_ID?.trim()) {
+    return (
+      `${base} Open ProPresenter on this Mac with Settings → Network → Enable Network ON. ` +
+      `In Grapevine Rig, set ProPresenter port to the TCP/IP Port ID shown there ` +
+      `(transport: TCP for ProPresenter 21+). Toggle Network off/on if the port still refuses connections.`
+    );
+  }
   return (
-    `Cannot reach ProPresenter at ${proPresenterBaseUrl(config)}${extra}. ` +
-    "ProPresenter → Settings → Network: **Enable Network** ON, use the Port shown there as PP_PORT. " +
+    `${base} ProPresenter → Settings → Network: **Enable Network** ON, use the Port shown there as PP_PORT. ` +
     "Run `npm run pp:diagnose` while ProPresenter is open. Toggle Network off/on if needed."
   );
 }

@@ -24,6 +24,11 @@ const applyBtn = $("apply-btn");
 const scanBtn = $("scan-btn");
 const settingsBtn = $("settings-btn");
 const actionStatus = $("action-status");
+const ppHost = $("pp-host");
+const ppPort = $("pp-port");
+const ppTransport = $("pp-transport");
+const ppSaveBtn = $("pp-save-btn");
+const ppSettingsStatus = $("pp-settings-status");
 
 let creds = null;
 let pendingBuild = null;
@@ -67,6 +72,48 @@ function showMain() {
   mainScreen.classList.remove("hidden");
   rigLabel.textContent = `${creds.displayName} · ${creds.rigId.slice(0, 8)}…`;
   setBadge("ready", "Paired");
+  void loadPpSettings();
+}
+
+async function loadPpSettings() {
+  ppSettingsStatus.textContent = "";
+  try {
+    const saved = await invoke("load_pp_settings");
+    if (saved) {
+      ppHost.value = saved.ppHost || "127.0.0.1";
+      ppPort.value = String(saved.ppPort || "");
+      ppTransport.value = saved.ppTransport || "tcp";
+      ppSettingsStatus.textContent = `Saved: ${saved.ppHost}:${saved.ppPort} (${saved.ppTransport})`;
+    } else {
+      ppSettingsStatus.textContent =
+        "Enter your TCP/IP Port ID from ProPresenter Network settings, then Save.";
+    }
+  } catch (e) {
+    ppSettingsStatus.textContent =
+      e instanceof Error ? e.message : "Could not load ProPresenter settings.";
+  }
+}
+
+async function savePpSettings() {
+  const port = Number.parseInt(ppPort.value, 10);
+  if (!Number.isFinite(port) || port < 1 || port > 65535) {
+    ppSettingsStatus.textContent = "Enter the TCP/IP Port ID from ProPresenter (1–65535).";
+    return;
+  }
+  ppSaveBtn.disabled = true;
+  try {
+    await invoke("save_pp_settings", {
+      ppHost: ppHost.value.trim() || "127.0.0.1",
+      ppPort: port,
+      ppTransport: ppTransport.value,
+    });
+    ppSettingsStatus.textContent = `Saved: ${ppHost.value || "127.0.0.1"}:${port} (${ppTransport.value})`;
+  } catch (e) {
+    ppSettingsStatus.textContent =
+      e instanceof Error ? e.message : "Could not save ProPresenter settings.";
+  } finally {
+    ppSaveBtn.disabled = false;
+  }
 }
 
 function renderBuild() {
@@ -240,6 +287,7 @@ pairBtn.addEventListener("click", () => void pair());
 applyBtn.addEventListener("click", () => void applyBuild());
 scanBtn.addEventListener("click", () => void scanNow());
 settingsBtn.addEventListener("click", () => void unpair());
+ppSaveBtn.addEventListener("click", () => void savePpSettings());
 
 async function init() {
   try {
