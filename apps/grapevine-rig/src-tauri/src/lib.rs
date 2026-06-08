@@ -1,6 +1,5 @@
 use keyring::Entry;
 use serde::{Deserialize, Serialize};
-use std::process::Stdio;
 use tauri::Manager;
 use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_shell::ShellExt;
@@ -100,8 +99,6 @@ async fn run_sidecar_or_node(
 
     let (mut rx, _child) = if let Ok(cmd) = app.shell().sidecar(sidecar_name) {
         cmd.envs(env.clone())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| e.to_string())?
     } else {
@@ -110,8 +107,6 @@ async fn run_sidecar_or_node(
             .command("node")
             .arg(script)
             .envs(env)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| e.to_string())?
     };
