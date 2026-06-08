@@ -243,6 +243,13 @@ settingsBtn.addEventListener("click", () => void unpair());
 
 async function init() {
   try {
+    const version = await invoke("app_version");
+    const versionEl = document.getElementById("app-version");
+    if (versionEl && version) versionEl.textContent = `v${version}`;
+  } catch {
+    /* optional */
+  }
+  try {
     const stored = await invoke("load_credentials");
     if (stored) {
       creds = stored;

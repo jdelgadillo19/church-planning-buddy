@@ -95,9 +95,48 @@ fn system_node_path() -> Option<&'static str> {
     None
 }
 
-async fn run_sidecar_or_node(
+fn spawn_node_worker(
     app: &tauri::AppHandle,
-    _sidecar_name: &str,
+    script: &Path,
+    env: Vec<(String, String)>,
+) -> Result<
+    (
+        tauri::async_runtime::Receiver<CommandEvent>,
+        tauri_plugin_shell::process::CommandChild,
+    ),
+    String,
+> {
+    let script_arg = shell_quote(&script.to_string_lossy());
+    let zsh_cmd = format!("exec node {script_arg}");
+
+    // Prefer login shell so nvm/Homebrew paths from .zprofile are available (GUI apps have a minimal PATH).
+    match app
+        .shell()
+        .command("/bin/zsh")
+        .args(["-l", "-c", &zsh_cmd])
+        .envs(env.clone())
+        .spawn()
+    {
+        Ok(pair) => return Ok(pair),
+        Err(zsh_err) => {
+            if let Some(node) = system_node_path() {
+                return app
+                    .shell()
+                    .command(node)
+                    .arg(script)
+                    .envs(env)
+                    .spawn()
+                    .map_err(|e| format!("Failed to start node worker ({node}): {e}"));
+            }
+            Err(format!(
+                "Failed to start worker via login shell. Install Node.js (nvm or Homebrew) and try again. ({zsh_err})"
+            ))
+        }
+    }
+}
+
+async fn run_node_worker(
+    app: &tauri::AppHandle,
     node_script: &str,
     extra_env: Vec<(String, String)>,
 ) -> Result<String, String> {
@@ -112,28 +151,7 @@ async fn run_sidecar_or_node(
     env.extend(extra_env);
 
     let script = resolve_worker_script(app, node_script)?;
-
-    let (mut rx, _child) = if let Some(node) = system_node_path() {
-        app.shell()
-            .command(node)
-            .arg(&script)
-            .envs(env.clone())
-            .spawn()
-            .map_err(|e| format!("Failed to start node worker ({node}): {e}"))?
-    } else {
-        let script_arg = shell_quote(&script.to_string_lossy());
-        let zsh_cmd = format!("exec node {script_arg}");
-        app.shell()
-            .command("/bin/zsh")
-            .args(["-l", "-c", &zsh_cmd])
-            .envs(env)
-            .spawn()
-            .map_err(|e| {
-                format!(
-                    "Failed to start worker via login shell. Install Node.js (nvm or Homebrew) and try again. ({e})"
-                )
-            })?
-    };
+    let (mut rx, _child) = spawn_node_worker(app, &script, env)?;
 
     let mut stdout = String::new();
     let mut stderr = String::new();
@@ -173,12 +191,17 @@ async fn run_sidecar_or_node(
 #[tauri::command]
 async fn run_apply(app: tauri::AppHandle, build_id: String) -> Result<String, String> {
     let env = vec![("BUILD_ID".to_string(), build_id)];
-    run_sidecar_or_node(&app, "grapevine-rig-worker", "worker.mjs", env).await
+    run_node_worker(&app, "worker.mjs", env).await
 }
 
 #[tauri::command]
 async fn run_scan(app: tauri::AppHandle) -> Result<String, String> {
-    run_sidecar_or_node(&app, "grapevine-rig-scan", "scan.mjs", vec![]).await
+    run_node_worker(&app, "scan.mjs", vec![]).await
+}
+
+#[tauri::command]
+fn app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -190,6 +213,7 @@ pub fn run() {
             load_credentials,
             clear_credentials,
             get_hostname,
+            app_version,
             run_apply,
             run_scan,
         ])
