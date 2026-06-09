@@ -1,7 +1,7 @@
 import type { GoogleTokens } from "@/app/api/auth/google/_session";
 import { getAuthedClients } from "@/lib/google/auth";
 import { applyCommitPlan } from "@/lib/slide-deck/apply-commit";
-import { loadSlideDeckBundle } from "@/lib/slide-deck/load-bundle";
+import { buildPublishBundleFromCommit } from "@/lib/slide-deck/load-bundle";
 import { publishSlideDeckPackage } from "@/lib/slide-deck/publish";
 import { resolveApplyContextFromClientPlan } from "@/lib/slide-deck/resolve-apply-context";
 import type { SlideDeckBuildRow } from "@/lib/pp-platform/types";
@@ -40,11 +40,11 @@ export async function runSlideDeckBuild(input: RunSlideDeckBuildInput) {
       );
     }
 
-    const bundle = await loadSlideDeckBundle({
-      planId: build.plan_id,
-      serviceTypeId: build.service_type_id ?? undefined,
+    const bundle = buildPublishBundleFromCommit(
+      build.commit_plan,
       applyResult,
-    });
+      build.service_type_id ? Number(build.service_type_id) : undefined,
+    );
 
     const { drive } = getAuthedClients(tokens);
     publishResult = await publishSlideDeckPackage({

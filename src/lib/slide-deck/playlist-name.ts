@@ -11,3 +11,14 @@ export function buildPlaylistNameFromPlanDate(
   if (!datePart) return p;
   return `${p} ${datePart}`;
 }
+
+/** Recover PCO-style date from playlist title (`SUN 2026.06.14` → `2026-06-14`). */
+export function parseServiceDateFromPlaylistName(playlistName: string): string {
+  const dotted = playlistName.match(/(\d{4})\.(\d{2})\.(\d{2})/);
+  if (dotted) return `${dotted[1]}-${dotted[2]}-${dotted[3]}`;
+
+  const iso = playlistName.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+
+  return playlistName.trim();
+}

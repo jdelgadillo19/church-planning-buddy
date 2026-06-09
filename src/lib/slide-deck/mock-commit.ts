@@ -36,6 +36,9 @@ export type MockCommitPlan = {
   writesBlocked: true;
   planId: number;
   playlistName: string;
+  /** PCO plan date for Drive folder naming (rig publish without PCO reload). */
+  serviceDate?: string;
+  serviceDateFormatted?: string;
   templateSource: string;
   templateItemCount: number;
   operations: MockCommitOperation[];
@@ -321,6 +324,8 @@ export function buildMockCommitPlan(input: BuildMockCommitInput): MockCommitPlan
     writesBlocked: true,
     planId: input.manifest.planId,
     playlistName: input.manifest.playlistName,
+    serviceDate: input.manifest.serviceDate,
+    serviceDateFormatted: input.manifest.serviceDateFormatted,
     templateSource: input.manifest.template.sourcePlaylistName,
     templateItemCount: input.templateItems.length,
     operations: buildOperations(input.manifest, playlistPreview),

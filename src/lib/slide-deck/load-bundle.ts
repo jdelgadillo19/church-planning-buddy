@@ -1,6 +1,8 @@
+import { formatPlanDateLikeSample } from "@/lib/pco/format-date";
 import { loadPlanServiceOrder } from "@/lib/pco/plan-service-order";
 import { buildSlideDeckManifest } from "./manifest";
 import { buildMockCommitPlan, type MockCommitPlan } from "./mock-commit";
+import { parseServiceDateFromPlaylistName } from "./playlist-name";
 import type { SlideDeckManifest } from "./types";
 import { ppPing, ProPresenterApiError } from "@/lib/propresenter/client";
 import { loadProPresenterConfig } from "@/lib/propresenter/config";
@@ -28,6 +30,42 @@ export type LoadSlideDeckBundleInput = {
   serviceTypeId?: string;
   applyResult?: ApplyCommitResult;
 };
+
+/** Publish handoff bundle without Planning Center — uses stored commit plan + live apply result. */
+export function buildPublishBundleFromCommit(
+  commitPlan: MockCommitPlan,
+  applyResult: ApplyCommitResult,
+  serviceTypeId?: number,
+): SlideDeckBundle {
+  const serviceDate =
+    commitPlan.serviceDate?.trim() ||
+    parseServiceDateFromPlaylistName(commitPlan.playlistName);
+
+  const manifest: SlideDeckManifest = {
+    dryRun: true,
+    planId: commitPlan.planId,
+    serviceTypeId: serviceTypeId ?? 0,
+    serviceDate,
+    serviceDateFormatted:
+      commitPlan.serviceDateFormatted?.trim() ||
+      formatPlanDateLikeSample(serviceDate),
+    playlistName: commitPlan.playlistName,
+    template: {
+      sourcePlaylistName: commitPlan.templateSource,
+      targetPlaylistName: commitPlan.playlistName,
+      plannedAction: "duplicate_and_rename",
+      sourceFound: true,
+    },
+    elements: [],
+    summary: {
+      totalPcoItems: 0,
+      playlistSongCount: applyResult.itemCount,
+      skippedCount: 0,
+    },
+  };
+
+  return { manifest, commitPlan, applyResult };
+}
 
 /** Build manifest + mock commit plan (same inputs as mock-commit API). */
 export async function loadSlideDeckBundle(

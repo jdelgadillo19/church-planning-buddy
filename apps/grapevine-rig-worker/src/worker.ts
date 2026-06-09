@@ -78,10 +78,13 @@ async function main() {
       body: JSON.stringify({ status: "completed", result }),
     });
 
+    const publishNote = result.publish?.driveFolderUrl
+      ? ` Published to Drive: ${result.publish.driveFolderUrl}`
+      : "";
     console.log(
       JSON.stringify({
         ok: true,
-        message: `Apply completed for playlist "${result.apply.playlistName}".`,
+        message: `Apply completed for playlist "${result.apply.playlistName}".${publishNote}`,
         result,
       }),
     );
