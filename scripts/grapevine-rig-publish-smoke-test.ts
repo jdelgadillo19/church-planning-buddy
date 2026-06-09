@@ -14,7 +14,10 @@ import {
   loadProPresenterExportStagingDir,
   resolveExportAppleScriptPath,
 } from "../src/lib/propresenter/rig-export-paths";
-import { exportPlaylistNative } from "../src/lib/propresenter/playlist-native-export";
+import {
+  exportPlaylistNative,
+  formatProPresenterExportError,
+} from "../src/lib/propresenter/playlist-native-export";
 
 type Case = { name: string; run: () => Promise<string> };
 
@@ -112,6 +115,16 @@ const cases: Case[] = [
           }),
         "export script not found",
       ),
+  },
+  {
+    name: "assistive access error message",
+    run: async () => {
+      const msg = formatProPresenterExportError(
+        "Could not open File → Export → Playlist: osascript is not allowed assistive access. (-2700)",
+      );
+      assert.ok(msg.includes("Accessibility"));
+      return msg;
+    },
   },
   {
     name: "resolve bundled applescript path from env",

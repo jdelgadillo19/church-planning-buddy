@@ -42,6 +42,7 @@ export type SlideDeckBuildRow = {
   result: {
     apply?: unknown;
     publish?: { driveFolderUrl?: string };
+    publishWarning?: string;
   } | null;
   error_message: string | null;
   claimed_at: string | null;

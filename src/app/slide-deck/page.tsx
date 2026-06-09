@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GoogleConnectionCard } from "@/components/google-connection-card";
 import { PcoServicePlanPicker } from "@/components/pco-service-plan-picker";
+import {
+  LibraryMatchPicker,
+  unresolvedAmbiguousRows,
+} from "@/components/slide-deck-library-match";
 import { SlideDeckHostedPanel } from "@/components/slide-deck-hosted-panel";
 import { ToolShell } from "@/components/tool-shell";
 import { useGoogleConnection } from "@/hooks/use-google-connection";
@@ -133,15 +137,10 @@ export default function SlideDeckPage() {
     }
   }, [planId, serviceTypeId, commitPlan?.playlistName]);
 
-  const unresolvedLibraryRows = useMemo(() => {
-    if (!commitPlan) return [];
-    return commitPlan.playlistPreview.filter(
-      (row) =>
-        row.kind === "song_add" &&
-        row.libraryMatch?.status === "ambiguous" &&
-        !librarySelections[String(row.position)],
-    );
-  }, [commitPlan, librarySelections]);
+  const unresolvedLibraryRows = useMemo(
+    () => unresolvedAmbiguousRows(commitPlan, librarySelections),
+    [commitPlan, librarySelections],
+  );
 
   const refreshPpStatus = useCallback(async () => {
     try {
@@ -229,6 +228,12 @@ export default function SlideDeckPage() {
 
   async function queueBuild() {
     if (!commitPlan || !planId.trim()) return;
+    if (unresolvedLibraryRows.length > 0) {
+      setError(
+        `Select a ProPresenter library variant for: ${unresolvedLibraryRows.map((r) => r.pcoTitle ?? r.name).join(", ")}`,
+      );
+      return;
+    }
     setQueueBusy(true);
     setError(null);
     try {
@@ -526,6 +531,9 @@ export default function SlideDeckPage() {
           onQueueBuild={() => void queueBuild()}
           onRefreshBuilds={() => void refreshBuilds()}
           onRigsChange={() => void refreshPlatformContext()}
+          onSelectLibrary={(position, itemId) =>
+            setLibrarySelections((prev) => ({ ...prev, [String(position)]: itemId }))
+          }
           proplaylistFile={proplaylistFile}
           onProplaylistFileChange={setProplaylistFile}
         />
@@ -1026,7 +1034,7 @@ function PlaylistPreview({
                 <td className="px-4 py-2 text-xs text-zinc-600 dark:text-zinc-400">{row.source}</td>
                 <td className="px-4 py-2 text-xs">
                   {row.libraryMatch ? (
-                    <LibraryMatchCell
+                    <LibraryMatchPicker
                       match={row.libraryMatch}
                       selectedId={librarySelections[String(row.position)]}
                       onSelect={(itemId) => onSelectLibrary(row.position, itemId)}
@@ -1041,63 +1049,6 @@ function PlaylistPreview({
         </table>
       </div>
     </section>
-  );
-}
-
-function LibraryMatchCell({
-  match,
-  selectedId,
-  onSelect,
-}: {
-  match: NonNullable<MockCommitPlaylistRow["libraryMatch"]>;
-  selectedId?: string;
-  onSelect?: (itemId: string) => void;
-}) {
-  if (match.status === "ambiguous" && match.candidates?.length) {
-    const selected = match.candidates.find((c) => c.id === selectedId);
-    return (
-      <div className="flex flex-col gap-1" role="radiogroup" aria-label="Library variants">
-        <span className="text-amber-800 dark:text-amber-200">{match.note}</span>
-        {match.candidates.map((candidate) => {
-          const active = selectedId === candidate.id;
-          return (
-            <button
-              key={candidate.id}
-              type="button"
-              role="radio"
-              aria-checked={active}
-              onClick={() => onSelect?.(candidate.id)}
-              className={`rounded-lg border px-2 py-1.5 text-left text-xs ${
-                active
-                  ? "border-amber-600 bg-amber-100 font-medium text-amber-950 dark:border-amber-500 dark:bg-amber-950 dark:text-amber-100"
-                  : "border-zinc-200 bg-white text-zinc-800 hover:border-zinc-400 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
-              }`}
-            >
-              {candidate.name}
-              <span className="block text-zinc-500 dark:text-zinc-400">{candidate.libraryName}</span>
-            </button>
-          );
-        })}
-        {selected ? (
-          <span className="text-emerald-700 dark:text-emerald-300">Selected: {selected.name}</span>
-        ) : null}
-      </div>
-    );
-  }
-  if (match.status === "found") {
-    return (
-      <span className="text-emerald-700 dark:text-emerald-300">
-        Found{match.item ? `: ${match.item.name}` : ""}
-      </span>
-    );
-  }
-  if (match.status === "unchecked") {
-    return <span className="text-zinc-500">{match.note ?? "Not checked"}</span>;
-  }
-  return (
-    <span className="text-red-700 dark:text-red-300" title={match.note}>
-      Not found{match.note ? ` — ${match.note}` : ""}
-    </span>
   );
 }
 

@@ -74,6 +74,82 @@ fn rig_worker_export_env(app: &tauri::AppHandle) -> Result<Vec<(String, String)>
     Ok(env)
 }
 
+fn publish_skip_reason(detail: &str) -> String {
+    if detail.contains("assistive access") || detail.contains("-2700") {
+        "Drive publish was skipped; playlist is ready in ProPresenter.".to_string()
+    } else {
+        format!("Drive publish was skipped: {detail}")
+    }
+}
+
+fn native_export_file_name(playlist_name: &str) -> String {
+    let forbidden = ['/', '\\', '?', '%', '*', ':', '|', '"', '<', '>'];
+    let base: String = playlist_name
+        .chars()
+        .map(|c| if forbidden.contains(&c) { '-' } else { c })
+        .collect();
+    let base = base.trim();
+    if base.is_empty() {
+        "playlist.proplaylist".to_string()
+    } else {
+        format!("{base}.proplaylist")
+    }
+}
+
+async fn export_playlist_via_osascript(
+    app: &tauri::AppHandle,
+    playlist_name: &str,
+    output_path: &Path,
+) -> Result<(), String> {
+    let script = app
+        .path()
+        .resolve("export-playlist.applescript", tauri::path::BaseDirectory::Resource)
+        .map_err(|e| e.to_string())?;
+
+    if !script.exists() {
+        return Err(
+            "ProPresenter export script missing from app bundle. Reinstall Grapevine Rig."
+                .to_string(),
+        );
+    }
+
+    let playlist = playlist_name.to_string();
+    let output = output_path.to_string_lossy().to_string();
+    let script_arg = script.to_string_lossy().to_string();
+
+    let (mut rx, _child) = app
+        .shell()
+        .command("/usr/bin/osascript")
+        .args([script_arg.as_str(), playlist.as_str(), output.as_str()])
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    let mut stderr = String::new();
+    while let Some(event) = rx.recv().await {
+        match event {
+            CommandEvent::Stderr(line) => stderr.push_str(&String::from_utf8_lossy(&line)),
+            CommandEvent::Terminated(payload) => {
+                if payload.code.unwrap_or(1) != 0 {
+                    let detail = if stderr.trim().is_empty() {
+                        format!("exit {:?}", payload.code)
+                    } else {
+                        stderr.trim().to_string()
+                    };
+                    return Err(detail);
+                }
+                break;
+            }
+            CommandEvent::Error(err) => return Err(err),
+            _ => {}
+        }
+    }
+
+    if !output_path.exists() {
+        return Err("export finished but .proplaylist file was not created".to_string());
+    }
+    Ok(())
+}
+
 fn pp_settings_env(settings: &PpSettings) -> Vec<(String, String)> {
     vec![
         ("PP_HOST".to_string(), settings.pp_host.clone()),
@@ -333,7 +409,7 @@ fn format_worker_success(stdout: &str) -> String {
     "Done.".to_string()
 }
 
-async fn run_node_worker(
+async fn run_node_worker_stdout(
     app: &tauri::AppHandle,
     node_script: &str,
     extra_env: Vec<(String, String)>,
@@ -388,7 +464,18 @@ async fn run_node_worker(
         }
     }
 
-    Ok(format_worker_success(&stdout))
+    Ok(stdout.trim().to_string())
+}
+
+async fn run_node_worker(
+    app: &tauri::AppHandle,
+    node_script: &str,
+    extra_env: Vec<(String, String)>,
+    inline_pp: Option<PpSettings>,
+) -> Result<String, String> {
+    Ok(format_worker_success(
+        &run_node_worker_stdout(app, node_script, extra_env, inline_pp).await?,
+    ))
 }
 
 #[tauri::command]
@@ -397,8 +484,82 @@ async fn run_apply(
     build_id: String,
     pp_settings: Option<PpSettings>,
 ) -> Result<String, String> {
-    let env = vec![("BUILD_ID".to_string(), build_id)];
-    run_node_worker(&app, "worker.mjs", env, pp_settings).await
+    let apply_stdout = run_node_worker_stdout(
+        &app,
+        "worker.mjs",
+        vec![
+            ("BUILD_ID".to_string(), build_id.clone()),
+            ("APPLY_ONLY".to_string(), "true".to_string()),
+        ],
+        pp_settings.clone(),
+    )
+    .await?;
+
+    let apply_json: serde_json::Value = serde_json::from_str(apply_stdout.trim())
+        .map_err(|e| format!("Invalid apply worker output: {e}"))?;
+
+    let publish_after = apply_json
+        .get("publishAfterApply")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    if !publish_after {
+        return Ok(format_worker_success(&apply_stdout));
+    }
+
+    let playlist_name = apply_json
+        .get("playlistName")
+        .and_then(|v| v.as_str())
+        .ok_or("Apply worker did not return playlistName.")?;
+
+    let apply_result = apply_json
+        .get("applyResult")
+        .ok_or("Apply worker did not return applyResult.")?;
+
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let staging = data_dir.join("pp-exports");
+    fs::create_dir_all(&staging).map_err(|e| e.to_string())?;
+    let output_path = staging.join(native_export_file_name(playlist_name));
+
+    if let Err(export_err) =
+        export_playlist_via_osascript(&app, playlist_name, &output_path).await
+    {
+        let apply_result_json =
+            serde_json::to_string(apply_result).map_err(|e| e.to_string())?;
+        let skip_reason = publish_skip_reason(&export_err);
+        let skipped_stdout = run_node_worker_stdout(
+            &app,
+            "worker.mjs",
+            vec![
+                ("BUILD_ID".to_string(), build_id.clone()),
+                ("COMPLETE_APPLY_PUBLISH_SKIPPED".to_string(), "true".to_string()),
+                ("APPLY_RESULT_JSON".to_string(), apply_result_json),
+                ("PUBLISH_SKIP_REASON".to_string(), skip_reason),
+            ],
+            pp_settings.clone(),
+        )
+        .await?;
+        return Ok(format_worker_success(&skipped_stdout));
+    }
+
+    let apply_result_json =
+        serde_json::to_string(apply_result).map_err(|e| e.to_string())?;
+
+    run_node_worker(
+        &app,
+        "worker.mjs",
+        vec![
+            ("BUILD_ID".to_string(), build_id),
+            ("PUBLISH_ONLY".to_string(), "true".to_string()),
+            (
+                "PP_NATIVE_EXPORT_PATH".to_string(),
+                output_path.to_string_lossy().into_owned(),
+            ),
+            ("APPLY_RESULT_JSON".to_string(), apply_result_json),
+        ],
+        pp_settings,
+    )
+    .await
 }
 
 #[tauri::command]

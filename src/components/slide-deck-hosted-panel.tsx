@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  ambiguousSongRows,
+  SlideDeckLibraryDisambiguation,
+  unresolvedAmbiguousRows,
+} from "@/components/slide-deck-library-match";
 import { SlideDeckRigAdmin } from "@/components/slide-deck-rig-admin";
 import { buildStatusTone, formatBuildStatus } from "@/lib/slide-deck/build-status";
 import type { MockCommitPlan } from "@/lib/slide-deck/mock-commit";
@@ -12,7 +17,7 @@ type BuildJob = {
   error_message?: string | null;
   created_at?: string;
   change_summary?: string | null;
-  result?: { publish?: { driveFolderUrl?: string } } | null;
+  result?: { publish?: { driveFolderUrl?: string }; publishWarning?: string } | null;
 };
 
 type Rig = {
@@ -44,6 +49,7 @@ type Props = {
   onQueueBuild: () => void;
   onRefreshBuilds: () => void;
   onRigsChange: () => void;
+  onSelectLibrary: (position: number, itemId: string) => void;
   proplaylistFile: File | null;
   onProplaylistFileChange: (file: File | null) => void;
 };
@@ -73,10 +79,14 @@ export function SlideDeckHostedPanel({
   onQueueBuild,
   onRefreshBuilds,
   onRigsChange,
+  onSelectLibrary,
   proplaylistFile,
   onProplaylistFileChange,
 }: Props) {
   const rigNameById = new Map(rigs.map((r) => [r.id, r.displayName]));
+  const ambiguousRows = ambiguousSongRows(commitPlan);
+  const unresolvedRows = unresolvedAmbiguousRows(commitPlan, librarySelections);
+  const sendBlocked = !commitPlan || unresolvedRows.length > 0;
   function downloadBundle() {
     if (!manifest || !commitPlan) return;
     const blob = new Blob(
@@ -145,11 +155,22 @@ export function SlideDeckHostedPanel({
         </p>
       )}
 
+      <SlideDeckLibraryDisambiguation
+        rows={ambiguousRows}
+        librarySelections={librarySelections}
+        onSelectLibrary={onSelectLibrary}
+      />
+
       <div className="flex flex-col gap-2">
+        {unresolvedRows.length > 0 ? (
+          <p className="text-xs text-amber-900 dark:text-amber-100">
+            Choose a library variant for {unresolvedRows.length} song(s) above before sending.
+          </p>
+        ) : null}
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={queueBusy || !commitPlan}
+            disabled={queueBusy || sendBlocked}
             onClick={onQueueBuild}
             className="h-11 rounded-lg bg-sky-800 px-4 text-sm font-medium text-white disabled:opacity-50 dark:bg-sky-600"
           >
@@ -183,6 +204,9 @@ export function SlideDeckHostedPanel({
             ) : null}
             {latestBuild.change_summary ? ` — ${latestBuild.change_summary}` : null}
             {latestBuild.error_message ? ` — ${latestBuild.error_message}` : null}
+            {latestBuild.status === "completed" && latestBuild.result?.publishWarning ? (
+              <> — {latestBuild.result.publishWarning}</>
+            ) : null}
             {latestBuild.result?.publish?.driveFolderUrl ? (
               <>
                 {" "}

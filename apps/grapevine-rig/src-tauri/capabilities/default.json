@@ -27,6 +27,11 @@
           "name": "usr-node",
           "cmd": "/usr/bin/node",
           "args": true
+        },
+        {
+          "name": "osascript-export",
+          "cmd": "/usr/bin/osascript",
+          "args": true
         }
       ]
     }

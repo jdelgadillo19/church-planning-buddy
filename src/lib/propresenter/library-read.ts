@@ -105,18 +105,51 @@ function normalizeSearch(value: string): string {
     .trim();
 }
 
-/** Case-insensitive title match against song libraries (exact, then contains). */
+function sortCandidates(items: PpLibraryItemRef[]): PpLibraryItemRef[] {
+  return [...items].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function ambiguousMatch(
+  searchTerm: string,
+  candidates: PpLibraryItemRef[],
+): LibraryMatchResult {
+  const sorted = sortCandidates(candidates);
+  return {
+    status: "ambiguous",
+    searchTerm,
+    candidates: sorted,
+    note: `${sorted.length} library matches — select a variant.`,
+  };
+}
+
+/** Case-insensitive title match against song libraries (literal, normalized exact, then contains). */
 export function matchLibraryItem(
   searchTerm: string,
   index: PpLibraryItemRef[],
 ): LibraryMatchResult {
+  const raw = searchTerm.trim();
   const needle = normalizeSearch(searchTerm);
   if (!needle) {
     return { status: "not_found", searchTerm, note: "Empty search term." };
   }
 
-  const exact = index.find((item) => normalizeSearch(item.name) === needle);
-  if (exact) return { status: "found", searchTerm, item: exact };
+  const literalMatches = index.filter(
+    (item) => item.name.toLowerCase() === raw.toLowerCase(),
+  );
+  if (literalMatches.length === 1) {
+    return { status: "found", searchTerm, item: literalMatches[0] };
+  }
+  if (literalMatches.length > 1) {
+    return ambiguousMatch(searchTerm, literalMatches);
+  }
+
+  const normalizedExact = index.filter((item) => normalizeSearch(item.name) === needle);
+  if (normalizedExact.length === 1) {
+    return { status: "found", searchTerm, item: normalizedExact[0] };
+  }
+  if (normalizedExact.length > 1) {
+    return ambiguousMatch(searchTerm, normalizedExact);
+  }
 
   const contains = index.filter((item) => {
     const hay = normalizeSearch(item.name);
@@ -128,13 +161,7 @@ export function matchLibraryItem(
   }
 
   if (contains.length > 1) {
-    const candidates = [...contains].sort((a, b) => a.name.localeCompare(b.name));
-    return {
-      status: "ambiguous",
-      searchTerm,
-      candidates,
-      note: `${contains.length} library matches — select a variant.`,
-    };
+    return ambiguousMatch(searchTerm, contains);
   }
 
   return { status: "not_found", searchTerm, note: "No library item matched." };

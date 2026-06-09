@@ -10,6 +10,16 @@ import {
 
 const execFileAsync = promisify(execFile);
 
+const ASSISTIVE_ACCESS_HINT =
+  "macOS blocked UI automation. Open System Settings → Privacy & Security → Accessibility, enable Grapevine Rig, quit and reopen the app, then try Apply again.";
+
+export function formatProPresenterExportError(raw: string): string {
+  if (/assistive access|-2700/i.test(raw)) {
+    return ASSISTIVE_ACCESS_HINT;
+  }
+  return raw;
+}
+
 export type NativePlaylistExport = {
   bytes: Buffer;
   fileName: string;
@@ -172,8 +182,7 @@ export async function exportPlaylistNative(
     const msg = e instanceof Error ? e.message : String(e);
     if (/export script not found/i.test(msg)) throw e;
     throw new Error(
-      `ProPresenter export automation failed: ${msg}. ` +
-        "Keep ProPresenter open and frontmost, or export manually and pass nativeExportPath.",
+      formatProPresenterExportError(`ProPresenter export automation failed: ${msg}`),
     );
   }
 

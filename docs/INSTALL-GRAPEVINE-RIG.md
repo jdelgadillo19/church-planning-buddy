@@ -66,6 +66,7 @@ Build statuses on the website: **Pending** → **Claimed** → **Applying** → 
 | PCO auth error after apply | Fixed in **v0.2.1+** — publish uses stored commit plan, not local PCO tokens. |
 | Google CLIENT_ID error after apply | Fixed in **v0.2.2+** — OAuth credentials come from Grapevine Prep run-context. |
 | `mkdir '/.data'` during publish | Fixed in **v0.2.3+** — export staging uses app data folder; AppleScript bundled in app. |
+| Build shows Drive publish skipped | Apply still succeeds — playlist is in ProPresenter. Drive upload is optional; enable **Grapevine Rig** under **System Settings → Privacy & Security → Accessibility** if you want automatic Drive publish. |
 | Preview songs not found | Run **Scan now** in Grapevine Rig |
 | Gatekeeper blocks app | Right-click → Open, or use a signed release when Apple ID secrets are configured in CI |
 | Old bootstrap rig | You may have a rig from `pp:index-upload`; pairing creates a new rig row — revoke the old one in admin if duplicate |
