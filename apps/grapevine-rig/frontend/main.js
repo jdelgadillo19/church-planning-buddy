@@ -5,6 +5,7 @@ if (!invoke) {
 
 const API_BASE_DEFAULT = "https://grapevineprep.com";
 const POLL_MS = 5000;
+const PP_HOST = "127.0.0.1";
 
 const $ = (id) => document.getElementById(id);
 
@@ -24,7 +25,6 @@ const applyBtn = $("apply-btn");
 const scanBtn = $("scan-btn");
 const settingsBtn = $("settings-btn");
 const actionStatus = $("action-status");
-const ppHost = $("pp-host");
 const ppPort = $("pp-port");
 const ppTransport = $("pp-transport");
 const ppSaveBtn = $("pp-save-btn");
@@ -38,6 +38,16 @@ let busy = false;
 function setBadge(kind, text) {
   statusBadge.className = `badge badge-${kind}`;
   statusBadge.textContent = text;
+}
+
+function setActionStatus(text, tone = "idle") {
+  actionStatus.textContent = text;
+  actionStatus.className = `action-status action-status-${tone}`;
+}
+
+function setPpStatus(text, tone = "idle") {
+  ppSettingsStatus.textContent = text;
+  ppSettingsStatus.className = `hint pp-settings-status-${tone}`;
 }
 
 function rigAuth() {
@@ -79,14 +89,15 @@ async function loadPpSettings() {
   try {
     const saved = await invoke("load_pp_settings");
     if (saved) {
-      ppHost.value = saved.ppHost || "127.0.0.1";
       ppPort.value = String(saved.ppPort || "");
       ppTransport.value = saved.ppTransport || "tcp";
-      ppSettingsStatus.textContent = `Using ${saved.ppHost}:${saved.ppPort} (${saved.ppTransport}). Apply or Scan saves any edits.`;
+      setPpStatus(`Saved port ${saved.ppPort} (${saved.ppTransport}) on ${PP_HOST}.`, "ok");
     }
   } catch (e) {
-    ppSettingsStatus.textContent =
-      e instanceof Error ? e.message : "Could not load ProPresenter settings.";
+    setPpStatus(
+      e instanceof Error ? e.message : "Could not load ProPresenter settings.",
+      "error",
+    );
   }
 }
 
@@ -97,39 +108,47 @@ function readPpSettingsFromForm() {
     return null;
   }
   return {
-    ppHost: ppHost.value.trim() || "127.0.0.1",
+    ppHost: PP_HOST,
     ppPort: port,
     ppTransport: ppTransport.value || "tcp",
   };
 }
 
 function ppSettingsRequiredMessage() {
-  return "Enter the TCP/IP Port ID from ProPresenter → Settings → Network (Enable Network ON). Example: 64509. Transport: TCP.";
+  return "Enter your TCP/IP Port ID (64509 on this Mac). ProPresenter → Settings → Network → Enable Network ON.";
 }
 
-async function ensurePpSettings() {
+function getPpSettingsOrExplain() {
   const settings = readPpSettingsFromForm();
   if (!settings) {
-    ppSettingsStatus.textContent = ppSettingsRequiredMessage();
+    setPpStatus(ppSettingsRequiredMessage(), "error");
+    setActionStatus(ppSettingsRequiredMessage(), "error");
     return null;
   }
-  try {
-    await invoke("save_pp_settings", settings);
-    ppSettingsStatus.textContent = `Using ${settings.ppHost}:${settings.ppPort} (${settings.ppTransport}).`;
-    return settings;
-  } catch (e) {
-    ppSettingsStatus.textContent =
-      e instanceof Error ? e.message : "Could not save ProPresenter settings.";
-    return null;
-  }
+  return settings;
+}
+
+function setWorking(working) {
+  busy = working;
+  applyBtn.disabled = working;
+  scanBtn.disabled = working;
+  ppSaveBtn.disabled = working;
 }
 
 async function savePpSettings() {
-  const settings = await ensurePpSettings();
-  if (!settings) {
-    return;
+  const settings = getPpSettingsOrExplain();
+  if (!settings) return;
+
+  setPpStatus("Saving…", "busy");
+  try {
+    await invoke("save_pp_settings", settings);
+    setPpStatus(`Saved port ${settings.ppPort} (${settings.ppTransport}) on ${PP_HOST}.`, "ok");
+  } catch (e) {
+    setPpStatus(
+      e instanceof Error ? e.message : "Could not save ProPresenter settings.",
+      "error",
+    );
   }
-  ppSettingsStatus.textContent = `Saved ${settings.ppHost}:${settings.ppPort} (${settings.ppTransport}).`;
 }
 
 function renderBuild() {
@@ -148,7 +167,7 @@ function renderBuild() {
       null,
       2,
     );
-    setBadge("ready", "Build ready");
+    if (!busy) setBadge("ready", "Build ready");
   } else {
     buildCard.classList.add("hidden");
     noBuild.classList.remove("hidden");
@@ -174,7 +193,7 @@ async function pollBuilds() {
     }
     renderBuild();
   } catch (e) {
-    actionStatus.textContent = e instanceof Error ? e.message : "Poll failed";
+    setActionStatus(e instanceof Error ? e.message : "Poll failed", "error");
   }
 }
 
@@ -194,6 +213,7 @@ async function pair() {
     return;
   }
   pairBtn.disabled = true;
+  pairBtn.textContent = "Pairing…";
   try {
     const hostname = await invoke("get_hostname");
     const res = await fetch(`${API_BASE_DEFAULT}/api/pp/rigs/pair`, {
@@ -232,27 +252,34 @@ async function pair() {
     pairError.classList.remove("hidden");
   } finally {
     pairBtn.disabled = false;
+    pairBtn.textContent = "Pair this Mac";
   }
 }
 
 async function applyBuild() {
-  if (!pendingBuild || busy) return;
-  const ppSettings = await ensurePpSettings();
-  if (!ppSettings) {
-    actionStatus.textContent = ppSettingsRequiredMessage();
+  if (busy) {
+    setActionStatus("Still working on the previous action…", "busy");
     return;
   }
-  busy = true;
-  applyBtn.disabled = true;
-  scanBtn.disabled = true;
+  if (!pendingBuild) {
+    setActionStatus("No build ready yet. Waiting for planner to send a deck…", "error");
+    return;
+  }
+
+  const ppSettings = getPpSettingsOrExplain();
+  if (!ppSettings) return;
+
+  setWorking(true);
   setBadge("busy", "Applying");
-  actionStatus.textContent = "Applying to ProPresenter…";
+  applyBtn.textContent = "Applying…";
+  setActionStatus(`Applying to ProPresenter on ${PP_HOST}:${ppSettings.ppPort}…`, "busy");
+
   try {
     const output = await invoke("run_apply", {
       buildId: pendingBuild.id,
       ppSettings,
     });
-    actionStatus.textContent = output || "Apply completed.";
+    setActionStatus(output || "Apply completed.", "ok");
     pendingBuild = null;
     renderBuild();
     void pollBuilds();
@@ -263,30 +290,32 @@ async function applyBuild() {
         : e instanceof Error
           ? e.message
           : "Apply failed";
-    actionStatus.textContent = msg || "Apply failed";
+    setActionStatus(msg || "Apply failed", "error");
   } finally {
-    busy = false;
-    applyBtn.disabled = false;
-    scanBtn.disabled = false;
-    setBadge("ready", "Paired");
+    setWorking(false);
+    applyBtn.textContent = "Apply Slide Deck";
+    if (pendingBuild) setBadge("ready", "Build ready");
+    else setBadge("ready", "Paired");
   }
 }
 
 async function scanNow() {
-  if (busy) return;
-  const ppSettings = await ensurePpSettings();
-  if (!ppSettings) {
-    actionStatus.textContent = ppSettingsRequiredMessage();
+  if (busy) {
+    setActionStatus("Still working on the previous action…", "busy");
     return;
   }
-  busy = true;
-  scanBtn.disabled = true;
-  applyBtn.disabled = true;
+
+  const ppSettings = getPpSettingsOrExplain();
+  if (!ppSettings) return;
+
+  setWorking(true);
   setBadge("busy", "Scanning");
-  actionStatus.textContent = "Scanning ProPresenter library…";
+  scanBtn.textContent = "Scanning…";
+  setActionStatus(`Scanning ProPresenter on ${PP_HOST}:${ppSettings.ppPort}…`, "busy");
+
   try {
     const output = await invoke("run_scan", { ppSettings });
-    actionStatus.textContent = output || "Index uploaded.";
+    setActionStatus(output || "Index uploaded.", "ok");
   } catch (e) {
     const msg =
       typeof e === "string"
@@ -294,12 +323,11 @@ async function scanNow() {
         : e instanceof Error
           ? e.message
           : "Scan failed";
-    actionStatus.textContent = msg || "Scan failed";
+    setActionStatus(msg || "Scan failed", "error");
   } finally {
-    busy = false;
-    scanBtn.disabled = false;
-    applyBtn.disabled = false;
-    setBadge("ready", "Paired");
+    setWorking(false);
+    scanBtn.textContent = "Scan now";
+    setBadge("ready", pendingBuild ? "Build ready" : "Paired");
   }
 }
 

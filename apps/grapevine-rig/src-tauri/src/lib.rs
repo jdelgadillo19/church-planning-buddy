@@ -1,5 +1,6 @@
 use keyring::Entry;
 use serde::{Deserialize, Serialize};
+use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::Manager;
 use tauri_plugin_shell::process::CommandEvent;
@@ -75,41 +76,47 @@ fn pp_from_creds(creds: &RigCredentials) -> Option<PpSettings> {
     })
 }
 
-fn build_pp_settings(pp_host: String, pp_port: u16, pp_transport: String) -> Result<PpSettings, String> {
-    if pp_port == 0 {
-        return Err("ProPresenter port is required.".to_string());
+fn normalize_pp_host(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed == "localhost" || trimmed.starts_with("127.0.0.") {
+        return "127.0.0.1".to_string();
     }
-    Ok(PpSettings {
-        pp_host: if pp_host.trim().is_empty() {
-            "127.0.0.1".to_string()
-        } else {
-            pp_host.trim().to_string()
-        },
-        pp_port,
-        pp_transport: parse_pp_transport(&pp_transport)?,
-    })
+    trimmed.to_string()
 }
 
-fn persist_pp_settings(settings: &PpSettings) -> Result<(), String> {
-    let mut creds = load_credentials()?.ok_or("Not paired.")?;
-    creds.pp_host = Some(settings.pp_host.clone());
-    creds.pp_port = Some(settings.pp_port);
-    creds.pp_transport = Some(settings.pp_transport.clone());
-    write_credentials(&creds)
+fn pp_settings_file(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.join("pp-settings.json"))
 }
 
-fn load_pp_settings_internal() -> Result<Option<PpSettings>, String> {
+fn write_pp_settings_file(app: &tauri::AppHandle, settings: &PpSettings) -> Result<(), String> {
+    let path = pp_settings_file(app)?;
+    let json = serde_json::to_string(settings).map_err(|e| e.to_string())?;
+    fs::write(path, json).map_err(|e| e.to_string())
+}
+
+fn read_pp_settings_file(app: &tauri::AppHandle) -> Result<Option<PpSettings>, String> {
+    let path = pp_settings_file(app)?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    let json = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    Ok(Some(serde_json::from_str(&json).map_err(|e| e.to_string())?))
+}
+
+fn migrate_pp_settings_from_keychain(app: &tauri::AppHandle) -> Result<Option<PpSettings>, String> {
     if let Some(creds) = load_credentials()? {
         if let Some(pp) = pp_from_creds(&creds) {
+            write_pp_settings_file(app, &pp)?;
             return Ok(Some(pp));
         }
     }
 
-    // Migrate legacy separate keychain entry (v0.1.12).
     match pp_settings_entry()?.get_password() {
         Ok(json) => {
             let settings: PpSettings = serde_json::from_str(&json).map_err(|e| e.to_string())?;
-            let _ = persist_pp_settings(&settings);
+            write_pp_settings_file(app, &settings)?;
             let _ = pp_settings_entry()?.delete_credential();
             Ok(Some(settings))
         }
@@ -118,15 +125,38 @@ fn load_pp_settings_internal() -> Result<Option<PpSettings>, String> {
     }
 }
 
-#[tauri::command]
-fn save_pp_settings(pp_host: String, pp_port: u16, pp_transport: String) -> Result<(), String> {
-    let settings = build_pp_settings(pp_host, pp_port, pp_transport)?;
-    persist_pp_settings(&settings)
+fn load_pp_settings_for_app(app: &tauri::AppHandle) -> Result<Option<PpSettings>, String> {
+    if let Some(settings) = read_pp_settings_file(app)? {
+        return Ok(Some(settings));
+    }
+    migrate_pp_settings_from_keychain(app)
+}
+
+fn build_pp_settings(pp_host: String, pp_port: u16, pp_transport: String) -> Result<PpSettings, String> {
+    if pp_port == 0 {
+        return Err("ProPresenter port is required.".to_string());
+    }
+    Ok(PpSettings {
+        pp_host: normalize_pp_host(&pp_host),
+        pp_port,
+        pp_transport: parse_pp_transport(&pp_transport)?,
+    })
 }
 
 #[tauri::command]
-fn load_pp_settings() -> Result<Option<PpSettings>, String> {
-    load_pp_settings_internal()
+fn save_pp_settings(
+    app: tauri::AppHandle,
+    pp_host: String,
+    pp_port: u16,
+    pp_transport: String,
+) -> Result<(), String> {
+    let settings = build_pp_settings(pp_host, pp_port, pp_transport)?;
+    write_pp_settings_file(&app, &settings)
+}
+
+#[tauri::command]
+fn load_pp_settings(app: tauri::AppHandle) -> Result<Option<PpSettings>, String> {
+    load_pp_settings_for_app(&app)
 }
 
 #[tauri::command]
@@ -260,10 +290,10 @@ async fn run_node_worker(
         ("PP_ALLOW_WRITES".to_string(), "true".to_string()),
     ];
     let pp = if let Some(settings) = inline_pp {
-        persist_pp_settings(&settings)?;
+        write_pp_settings_file(&app, &settings)?;
         settings
     } else {
-        load_pp_settings_internal()?.ok_or(PP_NOT_CONFIGURED_MSG.to_string())?
+        load_pp_settings_for_app(&app)?.ok_or(PP_NOT_CONFIGURED_MSG.to_string())?
     };
     env.extend(pp_settings_env(&pp));
     env.extend(extra_env);

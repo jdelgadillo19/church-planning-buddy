@@ -22,6 +22,11 @@
           "name": "homebrew-node",
           "cmd": "/opt/homebrew/bin/node",
           "args": true
+        },
+        {
+          "name": "usr-node",
+          "cmd": "/usr/bin/node",
+          "args": true
         }
       ]
     }

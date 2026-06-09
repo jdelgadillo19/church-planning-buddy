@@ -202,8 +202,47 @@ body {
 }
 
 .action-status {
-  font-size: 0.8rem;
+  font-size: 0.85rem;
+  min-height: 2.4rem;
+  margin: 0.75rem 0 0;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.45rem;
+  line-height: 1.35;
+}
+
+.action-status-idle {
   color: var(--muted);
-  min-height: 1.2rem;
-  margin: 0;
+  background: transparent;
+}
+
+.action-status-busy {
+  color: var(--accent);
+  background: #1e3a5f;
+}
+
+.action-status-ok {
+  color: var(--ok);
+  background: #14532d;
+}
+
+.action-status-error {
+  color: var(--danger);
+  background: #450a0a;
+}
+
+.pp-settings-status-ok {
+  color: var(--ok);
+}
+
+.pp-settings-status-busy {
+  color: var(--accent);
+}
+
+.pp-settings-status-error {
+  color: var(--danger);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
