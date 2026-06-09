@@ -275,6 +275,39 @@ fn spawn_node_worker(
     }
 }
 
+fn format_worker_success(stdout: &str) -> String {
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        return "Done.".to_string();
+    }
+
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) {
+        if let Some(message) = value.get("message").and_then(|m| m.as_str()) {
+            return message.to_string();
+        }
+        if let Some(snapshot) = value.get("snapshot") {
+            let at = snapshot
+                .get("snapshotAt")
+                .and_then(|v| v.as_str())
+                .unwrap_or("just now");
+            return format!("Index uploaded ({at}).");
+        }
+        if value.get("result").is_some() {
+            return "Apply completed.".to_string();
+        }
+    }
+
+    for line in trimmed.lines().rev() {
+        let line = line.trim();
+        if line.is_empty() || line == "}" || line == "{" || line == "]" || line == "[" {
+            continue;
+        }
+        return line.to_string();
+    }
+
+    "Done.".to_string()
+}
+
 async fn run_node_worker(
     app: &tauri::AppHandle,
     node_script: &str,
@@ -329,11 +362,7 @@ async fn run_node_worker(
         }
     }
 
-    Ok(if stdout.trim().is_empty() {
-        "Done.".to_string()
-    } else {
-        stdout.lines().last().unwrap_or("Done.").to_string()
-    })
+    Ok(format_worker_success(&stdout))
 }
 
 #[tauri::command]

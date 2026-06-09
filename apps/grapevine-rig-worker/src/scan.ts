@@ -73,7 +73,16 @@ async function main() {
   if (!res.ok || !data.ok) {
     throw new Error(data.error ?? `Scan upload failed (${res.status})`);
   }
-  console.log(JSON.stringify({ ok: true, snapshot: data.snapshot }, null, 2));
+  const libCount = scan.snapshot.libraryIndex?.length ?? 0;
+  const templateCount = scan.snapshot.templateItems?.length ?? 0;
+  const at = data.snapshot?.snapshotAt ?? new Date().toISOString();
+  console.log(
+    JSON.stringify({
+      ok: true,
+      message: `Index uploaded: ${libCount} library items, ${templateCount} template items.`,
+      snapshot: data.snapshot,
+    }),
+  );
 }
 
 main().catch((e) => {

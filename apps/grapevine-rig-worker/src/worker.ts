@@ -78,7 +78,13 @@ async function main() {
       body: JSON.stringify({ status: "completed", result }),
     });
 
-    console.log(JSON.stringify({ ok: true, result }, null, 2));
+    console.log(
+      JSON.stringify({
+        ok: true,
+        message: `Apply completed for playlist "${result.apply.playlistName}".`,
+        result,
+      }),
+    );
   } catch (e) {
     const message = e instanceof Error ? e.message : "Apply failed";
     await apiFetch(`/api/pp/rigs/${rigId}/builds/${buildId}`, {

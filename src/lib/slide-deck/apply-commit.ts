@@ -91,7 +91,13 @@ export function buildWriteItemsFromPreview(input: ApplyCommitInput): {
   }
 
   if (items.length === 0) {
-    throw new Error("No playlist items to write after resolving template and library matches.");
+    const detail =
+      warnings.length > 0
+        ? ` Details: ${warnings.join(" ")}`
+        : " Run Scan now on the rig, refresh the preview on grapevineprep.com, resolve any song/library warnings, then send a new build.";
+    throw new Error(
+      `No playlist items to write after resolving template and library matches.${detail}`,
+    );
   }
 
   return { items, warnings };
