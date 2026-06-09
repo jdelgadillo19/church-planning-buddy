@@ -33,6 +33,7 @@ const applyResult: ApplyCommitResult = {
 const commitPlan: MockCommitPlan = {
   dryRun: true,
   writesBlocked: true,
+  propresenterConnected: false,
   planId: 1,
   playlistName: "SUN 2026.06.14",
   serviceDate: "2026-06-14",
