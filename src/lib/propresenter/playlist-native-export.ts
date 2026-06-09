@@ -1,8 +1,12 @@
 import { execFile } from "node:child_process";
-import { mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { validateNativePlaylistExport } from "./playlist-export-format";
+import {
+  loadProPresenterExportStagingDir,
+  resolveExportAppleScriptPath,
+} from "./rig-export-paths";
 
 const execFileAsync = promisify(execFile);
 
@@ -16,20 +20,19 @@ function sanitizeFileBase(name: string): string {
   return name.replace(/[/\\?%*:|"<>]/g, "-").trim() || "playlist";
 }
 
-export function loadProPresenterExportStagingDir(
-  env: NodeJS.ProcessEnv = process.env,
-): string {
-  const raw = env.PP_EXPORT_STAGING_DIR?.trim();
-  if (raw) return path.resolve(raw);
-  return path.resolve(process.cwd(), ".data/pp-exports");
-}
+export { loadProPresenterExportStagingDir } from "./rig-export-paths";
 
 export function nativeExportFileName(playlistName: string): string {
   return `${sanitizeFileBase(playlistName)}.proplaylist`;
 }
 
 async function ensureStagingDir(dir: string): Promise<void> {
-  await mkdir(dir, { recursive: true });
+  try {
+    await mkdir(dir, { recursive: true });
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    throw new Error(`Could not create ProPresenter export folder (${dir}): ${detail}`);
+  }
 }
 
 async function clearStagingProplaylistFiles(dir: string): Promise<void> {
@@ -46,11 +49,19 @@ async function clearStagingProplaylistFiles(dir: string): Promise<void> {
   );
 }
 
-async function runExportAppleScript(playlistName: string, outputPosixPath: string): Promise<void> {
-  const scriptPath = path.resolve(
-    process.cwd(),
-    "scripts/propresenter/export-playlist.applescript",
-  );
+async function runExportAppleScript(
+  playlistName: string,
+  outputPosixPath: string,
+  env: NodeJS.ProcessEnv,
+): Promise<void> {
+  const scriptPath = resolveExportAppleScriptPath(env);
+  try {
+    await access(scriptPath);
+  } catch {
+    throw new Error(
+      `ProPresenter export script not found (${scriptPath}). Reinstall Grapevine Rig or set PP_EXPORT_APPLESCRIPT_PATH.`,
+    );
+  }
   const { stderr } = await execFileAsync("osascript", [scriptPath, playlistName, outputPosixPath], {
     timeout: 90_000,
   });
@@ -145,7 +156,8 @@ export async function exportPlaylistNative(
     );
   }
 
-  const stagingDir = loadProPresenterExportStagingDir(input.env);
+  const env = input.env ?? process.env;
+  const stagingDir = loadProPresenterExportStagingDir(env);
   await ensureStagingDir(stagingDir);
   await clearStagingProplaylistFiles(stagingDir);
 
@@ -155,9 +167,10 @@ export async function exportPlaylistNative(
   const pollMs = 500;
 
   try {
-    await runExportAppleScript(playlistName, outputPath);
+    await runExportAppleScript(playlistName, outputPath, env);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    if (/export script not found/i.test(msg)) throw e;
     throw new Error(
       `ProPresenter export automation failed: ${msg}. ` +
         "Keep ProPresenter open and frontmost, or export manually and pass nativeExportPath.",

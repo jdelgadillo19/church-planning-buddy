@@ -49,6 +49,31 @@ fn parse_pp_transport(raw: &str) -> Result<String, String> {
     }
 }
 
+fn rig_worker_export_env(app: &tauri::AppHandle) -> Result<Vec<(String, String)>, String> {
+    let mut env = Vec::new();
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let staging = data_dir.join("pp-exports");
+    fs::create_dir_all(&staging).map_err(|e| format!("Could not create export folder: {e}"))?;
+    env.push((
+        "PP_EXPORT_STAGING_DIR".to_string(),
+        staging.to_string_lossy().into_owned(),
+    ));
+
+    if let Ok(script) =
+        app.path()
+            .resolve("export-playlist.applescript", tauri::path::BaseDirectory::Resource)
+    {
+        if script.exists() {
+            env.push((
+                "PP_EXPORT_APPLESCRIPT_PATH".to_string(),
+                script.to_string_lossy().into_owned(),
+            ));
+        }
+    }
+
+    Ok(env)
+}
+
 fn pp_settings_env(settings: &PpSettings) -> Vec<(String, String)> {
     vec![
         ("PP_HOST".to_string(), settings.pp_host.clone()),
@@ -329,6 +354,7 @@ async fn run_node_worker(
         load_pp_settings_for_app(&app)?.ok_or(PP_NOT_CONFIGURED_MSG.to_string())?
     };
     env.extend(pp_settings_env(&pp));
+    env.extend(rig_worker_export_env(app)?);
     env.extend(extra_env);
 
     let script = resolve_worker_script(app, node_script)?;

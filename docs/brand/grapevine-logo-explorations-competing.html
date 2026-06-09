@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Grapevine — Competing Logo Explorations</title>
+  <style>
+    :root {
+      --grape-deep: #4a2d8c;
+      --grape-mid: #6b4bb3;
+      --lavender: #ede6f7;
+      --lavender-deep: #d9cef0;
+      --ink: #1e1630;
+      --muted: #6a6280;
+      --tile-radius: 22%;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: #f7f5fb;
+      line-height: 1.4;
+    }
+
+    header {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 40px 32px 12px;
+    }
+
+    header h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+    }
+
+    header p {
+      margin: 0;
+      max-width: 72ch;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .palette {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+      flex-wrap: wrap;
+    }
+
+    .swatch {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .swatch i {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      display: inline-block;
+    }
+
+    .grid {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 20px 32px 48px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+    }
+
+    .card {
+      background: #fff;
+      border: 1px solid #e7e2f0;
+      border-radius: 16px;
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .card-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .card-head h2 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 650;
+      letter-spacing: 0.01em;
+    }
+
+    .card-head span {
+      font-size: 11px;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .icon-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .app-tile {
+      width: 88px;
+      height: 88px;
+      border-radius: var(--tile-radius);
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+    }
+
+    .fav-test {
+      display: grid;
+      gap: 6px;
+      align-content: center;
+    }
+
+    .fav-test label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .fav-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .fav {
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+      display: grid;
+      place-items: center;
+    }
+
+    .lockup {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding-top: 4px;
+      border-top: 1px solid #f0ecf7;
+    }
+
+    .lockup-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+    }
+
+    .wordmark {
+      font-size: 22px;
+      font-weight: 620;
+      letter-spacing: -0.03em;
+      color: var(--ink);
+    }
+
+    .note {
+      margin: 0;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    svg { display: block; }
+
+    .bg-deep { background: var(--grape-deep); }
+    .bg-lavender { background: var(--lavender); }
+    .bg-white { background: #fff; border: 1px solid #e7e2f0; }
+
+    footer {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 0 32px 40px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Grapevine — Competing Logo Explorations</h1>
+    <p>
+      Twelve distinct double-loop lowercase <strong>g</strong> marks for church-service planning software.
+      Bi-chromatic purple system. Custom geometry only — not font-based. Designed to sit beside ProPresenter,
+      Planning Center, and Logos without clip-art whimsy.
+    </p>
+    <div class="palette">
+      <div class="swatch"><i style="background:#4a2d8c"></i> Deep grape #4A2D8C</div>
+      <div class="swatch"><i style="background:#6b4bb3"></i> Mid grape #6B4BB3</div>
+      <div class="swatch"><i style="background:#ede6f7"></i> Pale lavender #EDE6F7</div>
+      <div class="swatch"><i style="background:#1e1630"></i> Ink #1E1630</div>
+    </div>
+  </header>
+
+  <main class="grid" id="sheet"></main>
+
+  <footer>
+    Reference only — rejected prior sheets informed palette and loop structure, not form reproduction.
+    Export individual SVG paths from view-source or browser devtools for production refinement.
+  </footer>
+
+  <script>
+    const DEEP = "#4a2d8c";
+    const MID = "#6b4bb3";
+    const LAV = "#ede6f7";
+    const INK = "#1e1630";
+    const WHITE = "#ffffff";
+
+    /**
+     * Each mark is a custom path in a 100×100 viewBox.
+     * stroke-based marks use round caps/joins for SaaS clarity.
+     */
+    const concepts = [
+      {
+        num: "01",
+        title: "Monoline Core",
+        note: "Single continuous stroke. Upper loop reads as node; lower loop completes the g without ornament.",
+        bg: "bg-lavender",
+        favBg: "bg-lavender",
+        lockBg: "bg-lavender",
+        mark: (c, w) => `
+          <path d="M58 24c14 0 24 10 24 24s-10 24-24 24c-6 0-11-2-15-6" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M43 42v10c0 18-14 32-32 32" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+          <path d="M11 84c18 0 32-14 32-32" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+        `,
+      },
+      {
+        num: "02",
+        title: "Grape Bowl",
+        note: "Upper loop is slightly wider and lower — subtle grape silhouette without a cluster.",
+        bg: "bg-deep",
+        favBg: "bg-deep",
+        lockBg: "bg-deep",
+        markColor: WHITE,
+        mark: (c, w) => `
+          <ellipse cx="56" cy="34" rx="22" ry="20" fill="none" stroke="${c}" stroke-width="${w}"/>
+          <path d="M34 34v8c0 22-16 40-36 42" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+          <path d="M-2 84c20-2 36-20 36-42" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+        `,
+      },
+      {
+        num: "03",
+        title: "Junction Node",
+        note: "Connector terminates in a small node — planning graph / routing metaphor.",
+        bg: "bg-lavender",
+        favBg: "bg-lavender",
+        lockBg: "bg-lavender",
+        mark: (c, w) => `
+          <circle cx="58" cy="30" r="18" fill="none" stroke="${c}" stroke-width="${w}"/>
+          <line x1="40" y1="30" x2="40" y2="52" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+          <circle cx="40" cy="52" r="4.5" fill="${c}"/>
+          <path d="M40 56c0 16-12 28-28 30" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+          <path d="M12 86c16-2 28-14 28-30" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+        `,
+      },
+      {
+        num: "04",
+        title: "Slide Frame",
+        note: "Lower loop echoes a presentation slide corner — media-prep without a monitor cliché.",
+        bg: "bg-white",
+        favBg: "bg-deep",
+        lockBg: "bg-deep",
+        mark: (c, w) => `
+          <circle cx="57" cy="28" r="17" fill="none" stroke="${c}" stroke-width="${w}"/>
+          <path d="M40 28v14" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+          <path d="M40 42h-6v28h34" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M68 70c-10 8-22 12-34 12" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+        `,
+      },
+      {
+        num: "05",
+        title: "Enterprise Tile",
+        note: "Bold, balanced loops for app-icon legibility. High contrast SaaS lockup.",
+        bg: "bg-deep",
+        favBg: "bg-deep",
+        lockBg: "bg-deep",
+        markColor: WHITE,
+        mark: (c, w) => `
+          <path d="M62 22c16 0 28 12 28 28s-12 28-28 28c-8 0-15-3-20-9" fill="none" stroke="${c}" stroke-width="${w + 1}" stroke-linecap="round"/>
+          <path d="M42 41v6c0 20-14 36-32 38" fill="none" stroke="${c}" stroke-width="${w + 1}" stroke-linecap="round"/>
+          <path d="M10 85c18-2 32-18 32-38" fill="none" stroke="${c}" stroke-width="${w + 1}" stroke-linecap="round"/>
+        `,
+      },
+      {
+        num: "06",
+        title: "Soft Vine",
+        note: "Organic S-curve connector; still geometric. Reads as vine, not tendril clutter.",
+        bg: "bg-lavender",
+        favBg: "bg-lavender",
+        lockBg: "bg-lavender",
+        mark: (c, w) => `
+          <circle cx="58" cy="30" r="17" fill="none" stroke="${c}" stroke-width="${w}"/>
+          <path d="M41 30c-4 8-4 16 0 24" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+          <path d="M41 54c-14 4-24 16-26 30" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+          <path d="M15 84c2-14 12-26 26-30" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+        `,
+      },
+      {
+        num: "07",
+        title: "Reversed Field",
+        note: "Lavender mark on deep grape — sidebar / dark-mode native.",
+        bg: "bg-deep",
+        favBg: "bg-deep",
+        lockBg: "bg-deep",
+        markColor: LAV,
+        mark: (c, w) => `
+          <path d="M56 26a22 22 0 1 1 0 44" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+          <path d="M34 48v4c0 18-12 32-28 34" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+          <path d="M6 86c16-2 28-16 28-34" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+        `,
+      },
+      {
+        num: "08",
+        title: "Lavender Canvas",
+        note: "Purple mark on pale field — dashboard / marketing default.",
+        bg: "bg-lavender",
+        favBg: "bg-lavender",
+        lockBg: "bg-lavender",
+        mark: (c, w) => `
+          <path d="M60 24c13 0 23 10 23 23s-10 23-23 23c-7 0-13-3-17-8" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+          <path d="M43 40v12c0 17-13 31-29 33" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+          <path d="M14 85c16-2 29-16 29-33" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+        `,
+      },
+      {
+        num: "09",
+        title: "Squircle System",
+        note: "Standard macOS/iOS tile proportions. Loops compressed for 16px fav survival.",
+        bg: "bg-deep",
+        favBg: "bg-deep",
+        lockBg: "bg-deep",
+        markColor: WHITE,
+        mark: (c, w) => `
+          <circle cx="56" cy="32" r="15" fill="none" stroke="${c}" stroke-width="${w}"/>
+          <path d="M41 32v6c0 14-10 26-24 28" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+          <path d="M17 66c14-2 24-14 24-28" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+        `,
+      },
+      {
+        num: "10",
+        title: "Pure Geometry",
+        note: "No leaf, no stem bump. Trust through restraint.",
+        bg: "bg-lavender",
+        favBg: "bg-lavender",
+        lockBg: "bg-lavender",
+        mark: (c, w) => `
+          <rect x="38" y="14" width="36" height="32" rx="16" fill="none" stroke="${c}" stroke-width="${w}"/>
+          <path d="M38 30v10c0 18-14 32-32 34" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+          <path d="M6 74c18-2 32-16 32-34" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+        `,
+      },
+      {
+        num: "11",
+        title: "Whisper Leaf",
+        note: "Tiny lavender protrusion — grape hint at 1× scale, not amateur green.",
+        bg: "bg-deep",
+        favBg: "bg-deep",
+        lockBg: "bg-deep",
+        markColor: WHITE,
+        leaf: true,
+        mark: (c, w) => `
+          <circle cx="57" cy="30" r="17" fill="none" stroke="${c}" stroke-width="${w}"/>
+          <path d="M68 22c4-2 8-1 10 3" fill="none" stroke="${LAV}" stroke-width="3" stroke-linecap="round" opacity="0.85"/>
+          <path d="M40 30v10c0 18-14 32-32 34" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+          <path d="M8 74c18-2 32-16 32-34" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+        `,
+      },
+      {
+        num: "12",
+        title: "Final Candidate",
+        note: "Best balance: reads as g at 16px, node at 32px, serious at lockup scale.",
+        bg: "bg-deep",
+        favBg: "bg-deep",
+        lockBg: "bg-deep",
+        markColor: WHITE,
+        mark: (c, w) => `
+          <path d="M58 25c12 0 22 9 22 22s-10 22-22 22c-6 0-11-2-15-6" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+          <path d="M43 41v5" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+          <circle cx="43" cy="48" r="3.5" fill="${c}" opacity="0.9"/>
+          <path d="M43 52c0 15-11 27-26 29" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+          <path d="M17 81c15-2 26-14 26-29" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>
+        `,
+      },
+    ];
+
+    function svgMark(concept, size, stroke) {
+      const color = concept.markColor || DEEP;
+      const w = stroke;
+      return `<svg viewBox="0 0 100 100" width="${size}" height="${size}" aria-hidden="true">${concept.mark(color, w)}</svg>`;
+    }
+
+    function renderCard(concept) {
+      const appStroke = concept.num === "05" || concept.num === "12" ? 7 : 6.5;
+      const favStroke = 9;
+      const lockStroke = 5;
+
+      return `
+        <article class="card">
+          <div class="card-head">
+            <h2>${concept.num} ${concept.title}</h2>
+            <span>double-loop g</span>
+          </div>
+          <div class="icon-row">
+            <div class="app-tile ${concept.bg}">
+              ${svgMark(concept, 56, appStroke)}
+            </div>
+            <div class="fav-test">
+              <label>Favicon test</label>
+              <div class="fav-row">
+                <div class="fav ${concept.favBg}">
+                  ${svgMark(concept, 12, favStroke)}
+                </div>
+                <div class="fav ${concept.favBg}">
+                  ${svgMark(concept, 16, favStroke - 1)}
+                </div>
+                <div class="fav bg-white">
+                  ${svgMark({ ...concept, markColor: DEEP }, 16, favStroke - 1)}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="lockup">
+            <div class="lockup-icon ${concept.lockBg}">
+              ${svgMark(concept, 18, lockStroke)}
+            </div>
+            <span class="wordmark">grapevine</span>
+          </div>
+          <p class="note">${concept.note}</p>
+        </article>
+      `;
+    }
+
+    document.getElementById("sheet").innerHTML = concepts.map(renderCard).join("");
+  </script>
+</body>
+</html>

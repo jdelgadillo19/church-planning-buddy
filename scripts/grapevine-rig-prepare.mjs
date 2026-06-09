@@ -18,5 +18,8 @@ for (const file of ["worker.mjs", "scan.mjs"]) {
   fs.copyFileSync(path.join(dist, file), path.join(resources, file));
 }
 
-console.log("Prepared Grapevine Rig resources (worker.mjs, scan.mjs).");
+const applescript = path.join(root, "scripts/propresenter/export-playlist.applescript");
+fs.copyFileSync(applescript, path.join(resources, "export-playlist.applescript"));
+
+console.log("Prepared Grapevine Rig resources (worker.mjs, scan.mjs, export-playlist.applescript).");
 console.log("CI/pkg step should place sidecar binaries in src-tauri/bin/.");

@@ -38,6 +38,7 @@ jobs:
         run: |
           test -f apps/grapevine-rig/src-tauri/resources/worker.mjs
           test -f apps/grapevine-rig/src-tauri/resources/scan.mjs
+          test -f apps/grapevine-rig/src-tauri/resources/export-playlist.applescript
           test -f apps/grapevine-rig/frontend/index.html
 
       - name: Install rig app dependencies
