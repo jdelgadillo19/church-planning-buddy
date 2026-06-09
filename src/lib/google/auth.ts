@@ -9,10 +9,27 @@ import { GOOGLE_SCOPES } from "@/lib/google/scopes";
 export { GOOGLE_SCOPES };
 export type { OAuth2Client };
 
+export type GoogleOAuthConfig = {
+  clientId: string;
+  clientSecret: string;
+  redirectUri?: string;
+};
+
 function must(name: string) {
   const v = process.env[name]?.trim();
   if (!v) throw new Error(`Missing ${name} in .env.local`);
   return v;
+}
+
+/** Server / rig worker — OAuth app credentials (not user tokens). */
+export function loadGoogleOAuthConfigFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): GoogleOAuthConfig | null {
+  const clientId = env.GOOGLE_CLIENT_ID?.trim();
+  const clientSecret = env.GOOGLE_CLIENT_SECRET?.trim();
+  if (!clientId || !clientSecret) return null;
+  const redirectUri = env.GOOGLE_REDIRECT_URI?.trim();
+  return redirectUri ? { clientId, clientSecret, redirectUri } : { clientId, clientSecret };
 }
 
 /**
@@ -26,7 +43,14 @@ export function googleOAuthRedirectUri(origin: string): string {
   return `${origin.replace(/\/$/, "")}/api/auth/google/callback`;
 }
 
-export function getOAuthClient(redirectUri?: string): OAuth2Client {
+export function getOAuthClient(redirectUri?: string, oauth?: GoogleOAuthConfig): OAuth2Client {
+  if (oauth) {
+    return new OAuth2Client({
+      clientId: oauth.clientId,
+      clientSecret: oauth.clientSecret,
+      redirectUri: oauth.redirectUri ?? redirectUri,
+    });
+  }
   return new OAuth2Client({
     clientId: must("GOOGLE_CLIENT_ID"),
     clientSecret: must("GOOGLE_CLIENT_SECRET"),
@@ -34,8 +58,8 @@ export function getOAuthClient(redirectUri?: string): OAuth2Client {
   });
 }
 
-export function getAuthedClients(tokens: GoogleTokens) {
-  const auth = getOAuthClient();
+export function getAuthedClients(tokens: GoogleTokens, oauth?: GoogleOAuthConfig) {
+  const auth = getOAuthClient(undefined, oauth);
   auth.setCredentials(tokens);
   return {
     auth,

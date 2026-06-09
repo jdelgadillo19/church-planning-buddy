@@ -63,7 +63,8 @@ Build statuses on the website: **Pending** → **Claimed** → **Applying** → 
 | App icon shows **prohibited** (circle with line) in Finder | You likely have an **Intel Mac** and downloaded **v0.1.6 or earlier** (Apple Silicon only). Use **v0.1.7+** universal build from Releases. |
 | Pairing code invalid | Generate a new code; codes expire in 15 minutes and are single-use |
 | Apply fails | Confirm ProPresenter is running, Network on, port saved in **ProPresenter settings** (TCP transport for PP 21+). Dev: `npm run pp:diagnose` |
-| PCO auth error after apply | Fixed in **v0.2.1+** — publish uses stored commit plan, not local PCO tokens. Re-send build and apply with v0.2.1. |
+| PCO auth error after apply | Fixed in **v0.2.1+** — publish uses stored commit plan, not local PCO tokens. |
+| Google CLIENT_ID error after apply | Fixed in **v0.2.2+** — OAuth credentials come from Grapevine Prep run-context. Install v0.2.2 and send a new build. |
 | Preview songs not found | Run **Scan now** in Grapevine Rig |
 | Gatekeeper blocks app | Right-click → Open, or use a signed release when Apple ID secrets are configured in CI |
 | Old bootstrap rig | You may have a rig from `pp:index-upload`; pairing creates a new rig row — revoke the old one in admin if duplicate |

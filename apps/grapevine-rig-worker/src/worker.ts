@@ -65,12 +65,14 @@ async function main() {
   )) as {
     build: SlideDeckBuildRow;
     googleTokens: GoogleTokens | null;
+    googleOAuth: { clientId: string; clientSecret: string; redirectUri?: string } | null;
   };
 
   try {
     const result = await runSlideDeckBuild({
       build: ctx.build,
       googleTokens: ctx.googleTokens,
+      googleOAuth: ctx.googleOAuth,
     });
 
     await apiFetch(`/api/pp/rigs/${rigId}/builds/${buildId}`, {
