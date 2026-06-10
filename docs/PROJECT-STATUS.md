@@ -1,13 +1,14 @@
 # Church Planning Buddy — project status
 
-**Last updated:** 2026-06-08  
+**Last updated:** 2026-06-11  
 **Repo:** https://github.com/jdelgadillo19/church-planning-buddy  
-**Latest commit (at update):** `e75d4c3` — song scan retrieval (yellow fallback, manual Drive picker)
+**Latest commit (at update):** `227de7b` — submitted plans, apply hardening, Grapevine Rig v0.2.6
 
-Use this file as the **session handoff** doc.
+Use this file as the **GRG + long-range** handoff. For **slide deck / Grapevine Prep / rig**, start with **[`STARTUP-GUIDE.md`](./STARTUP-GUIDE.md)**.
 
 | Doc | Purpose |
 |-----|---------|
+| **[`STARTUP-GUIDE.md`](./STARTUP-GUIDE.md)** | **Start here** — hosted platform, rig, deploy, Sunday workflow |
 | [`PRODUCT.md`](../PRODUCT.md) | **GRG MVP** spec (shipped) |
 | [`PROPRESENTER-MVP.md`](./PROPRESENTER-MVP.md) | **Active** next epic — PCO + GRG → ProPresenter |
 | [`planning/SLIDE-DECK-PLATFORM-PRD-ADDENDUM.md`](./planning/SLIDE-DECK-PLATFORM-PRD-ADDENDUM.md) | **Active** hosted platform — org index + Grapevine Rig client |
@@ -19,6 +20,7 @@ Use this file as the **session handoff** doc.
 | [`GRG-TEMPLATE.md`](./GRG-TEMPLATE.md) | Placeholder contract & upload steps |
 | [`GRG-FORMAT-SPEC.md`](./GRG-FORMAT-SPEC.md) | Post-MVP format architecture |
 | [`planning/RENAME-TO-GRAPEVINE.md`](./planning/RENAME-TO-GRAPEVINE.md) | **Deferred** — product rename Church Planning Buddy → **Grapevine** |
+| [`planning/multi-user-ops-and-shared-drive.md`](./planning/multi-user-ops-and-shared-drive.md) | **Active** — multi-planner Drive layout + presentation rig ops |
 
 ---
 
@@ -86,6 +88,34 @@ Spec: [`PROPRESENTER-MVP.md`](./PROPRESENTER-MVP.md).
 
 ---
 
+## Current state — Slide deck platform (shipped 2026-06-10)
+
+| Area | Status |
+|------|--------|
+| **Hosted preview** | grapevineprep.com/slide-deck — PCO + org library index |
+| **Submit draft** | `slide_deck_submissions` + `/api/pp/submissions` |
+| **Send / merge** | Auto-merge or merge review → `implementation_plan` on build |
+| **Rig apply** | Always overwrite; fail-fast on missing library songs; failed build retry (v0.2.6+) |
+| **Grapevine Rig** | v0.2.6 tag; macOS universal + Windows CI |
+| **Migration** | `20260609140000_slide_deck_submissions.sql` |
+
+Spec: [`planning/SLIDE-DECK-PLATFORM-PRD-ADDENDUM.md`](./planning/SLIDE-DECK-PLATFORM-PRD-ADDENDUM.md). Operators: [`INSTALL-GRAPEVINE-RIG.md`](./INSTALL-GRAPEVINE-RIG.md), [`planning/new-song-entry-workflow.md`](./planning/new-song-entry-workflow.md).
+
+---
+
+## Current state — Multi-user ops (2026-06-11)
+
+| Area | Status |
+|------|--------|
+| **Second Grapevine user** | Onboarded via `org_members` + Google OAuth test user |
+| **GRG from second planner** | Blocked by personal-Gmail-owned output → `Drive delete failed (403)` |
+| **Shared drive layout** | Documented; migration to church Shared drive **pending** |
+| **Presentation rig in loop** | **Next ops gate** — pair + Scan now before slide deck Send is production-ready |
+
+See [`planning/multi-user-ops-and-shared-drive.md`](./planning/multi-user-ops-and-shared-drive.md).
+
+---
+
 ## Known issues & limitations
 
 | Item | Severity | Notes |
@@ -96,6 +126,8 @@ Spec: [`PROPRESENTER-MVP.md`](./PROPRESENTER-MVP.md).
 | **Manual picker depth** | Low | One level under PCO folder links |
 | **Image / PDF scans** | GRG skip | User skips song |
 | **PP filebase wipe** | **Ops / rig** | External bug; CPB must not trigger destructive library sync |
+| **GRG multi-planner Drive** | **Ops** | Output owned by first user's Gmail; Editors cannot API-delete — use Shared drive + Content managers |
+| **GRG delete uses permanent API DELETE** | Low / eng | Should trash (`trashed: true`) per doc comment; see multi-user ops doc |
 
 ---
 
@@ -150,8 +182,9 @@ Use **[`docs/STARTUP-PROMPT.md`](./STARTUP-PROMPT.md)** — copy the fenced bloc
 
 | File | Purpose |
 |------|---------|
-| [`PROJECT-STATUS.md`](./PROJECT-STATUS.md) | **This file** — progress & handoff |
-| [`STARTUP-PROMPT.md`](./STARTUP-PROMPT.md) | Next-session copy-paste |
+| [`PROJECT-STATUS.md`](./PROJECT-STATUS.md) | GRG + long-range progress |
+| [`STARTUP-GUIDE.md`](./STARTUP-GUIDE.md) | **Slide deck / rig / deploy** — start here |
+| [`STARTUP-PROMPT.md`](./STARTUP-PROMPT.md) | GRG-focused copy-paste for Cursor |
 | [`PROPRESENTER-MVP.md`](./PROPRESENTER-MVP.md) | Active ProPresenter spec |
 | [`PRODUCT.md`](../PRODUCT.md) | GRG MVP spec (shipped) |
 | [`party/output/party-2026-05-24.md`](./party/output/party-2026-05-24.md) | Party mode + questionnaire |

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { googleConnected, loadTokensForCurrentSession } from "@/app/api/auth/google/_session";
-import { getAuthedClients } from "@/lib/google/auth";
-import { exportGoogleDocPdf } from "@/lib/google/drive-files";
+import { exportGoogleDocPdfForTokens } from "@/lib/google/drive-fetch";
 import { buildAuthHeader, parsePositiveIntOrNull, pcoUploadFile } from "@/lib/pco/client";
 import {
   createGrgItemAttachment,
@@ -59,8 +58,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Google Drive not connected." }, { status: 401 });
     }
 
-    const { drive } = getAuthedClients(tokens!);
-    const pdfBuffer = await exportGoogleDocPdf(drive, grgDocId);
+    const pdfBuffer = await exportGoogleDocPdfForTokens(tokens!, grgDocId);
 
     const grgItem = await findGrgPlanItem(serviceTypeId, planId, auth);
     const existing = await listGrgItemPdfAttachments(serviceTypeId, planId, grgItem.id, auth);

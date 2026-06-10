@@ -71,6 +71,20 @@ insert into public.org_members (org_id, user_id, role)
 
 Repeat `org_members` for each invited user.
 
+### 4b. Multi-planner Google Drive (Shared drive)
+
+Grapevine uses **per-user** Google tokens. Org membership does not grant Drive access.
+
+When multiple `@saddleback.de` (or other) accounts run **GRG Apply**, output docs must not be owned by a single personal Gmail. Use one church **Shared drive** with:
+
+- `Get Ready Guide/Template/` — template doc (read/copy)
+- `Get Ready Guide/Output/` — dated outputs (create/delete each run)
+- `Song Scans/` — scan library (read)
+
+Grant every planner **Content manager** on that Shared drive. See [`planning/multi-user-ops-and-shared-drive.md`](./planning/multi-user-ops-and-shared-drive.md).
+
+Slide deck preview uses the **org ProPresenter index** from the **presentation rig** (not Drive). Pair Grapevine Rig before planners rely on web preview — [`INSTALL-GRAPEVINE-RIG.md`](./INSTALL-GRAPEVINE-RIG.md).
+
 ### 5. Environment variables (`.env.local`)
 
 ```bash
@@ -141,6 +155,8 @@ You should **not** need a separate “Connect Google” step after signing in wi
 | Google button does nothing / provider error | Google not enabled in Supabase | Step 2 above |
 | Redirect URI mismatch | Missing callback URL in Google Cloud | Add both Supabase + grapevineprep URIs (step 1) |
 | `not_invited` after login | No `org_members` row | Step 4 |
+| Google `access_denied` / verification | OAuth app in Testing; email not a test user | Google Cloud → OAuth consent screen → Test users |
+| `Drive delete failed (403)` on GRG Apply | Output owned by another Google account; Editor ≠ delete | Shared drive + Content managers (step 4b); owner trashes stale output |
 | Magic link opens localhost | Wrong Site URL | Step 3 |
 | Connected briefly, then “Not connected” | Missing `SUPABASE_SERVICE_ROLE_KEY` on Worker | Step 5 + `npm run env:cf` |
 | Connect Google → login loop | Session expired during OAuth | Sign in with Google first; reconnect only when already signed in |

@@ -31,7 +31,7 @@ Any authorized church user builds a **Sunday slide deck plan** in the browser fr
 |-------|---------------|
 | **Generation MVP** ([PROPRESENTER-MVP.md](../PROPRESENTER-MVP.md)) | Reuses `manifest`, `commit_plan`, `applyCommitPlan`, `publishSlideDeckPackage` |
 | **Sync MVP** ([PROPRESENTER-SYNC.md](../PROPRESENTER-SYNC.md)) | Phase 0–1 uses bundle scanner + snapshots; Phase 2 adds change sets |
-| **Hosted GRG** | Same org auth, Google OAuth, Supabase tenancy |
+| **Hosted GRG** | Same org auth, Google OAuth, Supabase tenancy; **Shared drive** for multi-planner output — [`multi-user-ops-and-shared-drive.md`](./multi-user-ops-and-shared-drive.md) |
 | **Interim agent** | Debug only — see [SLIDE-DECK-DEPRECATION.md](../SLIDE-DECK-DEPRECATION.md) |
 
 ---

@@ -16,6 +16,7 @@ import {
 import { PcoServicePlanPicker } from "@/components/pco-service-plan-picker";
 import type { PcoScanAttachmentVariant } from "@/lib/pco/plan-bundle";
 import { ToolShell } from "@/components/tool-shell";
+import type { ScanStyleSpec } from "@/lib/docs/scan-style-template";
 import { useGoogleConnection } from "@/hooks/use-google-connection";
 import { usePcoServicePlanSelection } from "@/hooks/use-pco-service-plan-selection";
 
@@ -329,6 +330,9 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [applyResult, setApplyResult] = useState<string | null>(null);
+  const [applyProgress, setApplyProgress] = useState<string | null>(null);
+  const [scanStyleSpec, setScanStyleSpec] = useState<ScanStyleSpec | null>(null);
+  const [columnsRetryBusy, setColumnsRetryBusy] = useState(false);
   const [pcoUploadBusy, setPcoUploadBusy] = useState(false);
   const [pcoUploadResult, setPcoUploadResult] = useState<string | null>(null);
   const [bulkResolving, setBulkResolving] = useState(false);
@@ -874,6 +878,57 @@ export default function Home() {
     }
   }
 
+  function buildApplyPayload(skipIntro?: boolean) {
+    return {
+      confirmed: true,
+      grgDocTitle: grgTitle.trim(),
+      dateFormatted: bundle!.dateFormatted,
+      songList: songListForApply(),
+      roster: rosterForApply(),
+      rosterSelections,
+      skipIntro: Boolean(skipIntro),
+      songs: songFlows.map((f) => ({
+        itemId: f.song.itemId,
+        title: f.song.title,
+        skipped: f.skipped,
+        selectedFileId: f.selectedFileId || undefined,
+      })),
+    };
+  }
+
+  async function retryColumnLayout() {
+    if (!grgDoc?.id || !scanStyleSpec) {
+      setError("Re-run Approve to capture scan styles before retrying column layout.");
+      return;
+    }
+    setColumnsRetryBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/mvp/apply-columns", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ grgDocId: grgDoc.id, scanStyleSpec }),
+      });
+      const payload = (await res.json()) as { ok: true } | { ok: false; error: string };
+      if (!res.ok || !payload.ok) {
+        throw new Error(payload.ok ? "Failed" : payload.error);
+      }
+      setApplyResult((prev) => {
+        const base =
+          prev ??
+          `Output doc "${grgDoc.name}" — column layout updated.`;
+        const withoutColumnWarning = base
+          .split("\nWarnings:\n")[0]
+          .replace(/\nColumn layout:[^\n]*/g, "");
+        return `${withoutColumnWarning}\nWarnings:\nColumn layout: applied successfully on retry.`;
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Column layout retry failed.");
+    } finally {
+      setColumnsRetryBusy(false);
+    }
+  }
+
   async function applyChanges(options?: { skipIntro?: boolean }) {
     if (!bundle) return;
     if (!guestAssignmentsComplete) {
@@ -887,29 +942,30 @@ export default function Home() {
     setBusy(true);
     setError(null);
     setApplyResult(null);
+    setApplyProgress(null);
     setTemplateValidation(null);
     try {
-      const res = await fetch("/api/mvp/apply", {
+      const applyBody = buildApplyPayload(options?.skipIntro);
+      setApplyProgress("Creating output doc from template…");
+
+      const initRes = await fetch("/api/mvp/apply-init", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          confirmed: true,
-          grgDocTitle: grgTitle.trim(),
-          dateFormatted: bundle.dateFormatted,
-          songList: songListForApply(),
-          roster: rosterForApply(),
-          rosterSelections,
-          skipIntro: Boolean(options?.skipIntro),
-          songs: songFlows.map((f) => ({
-            itemId: f.song.itemId,
-            title: f.song.title,
-            skipped: f.skipped,
-            selectedFileId: f.selectedFileId || undefined,
-          })),
-        }),
+        body: JSON.stringify(applyBody),
       });
-      const payload = (await res.json()) as
-        | { ok: true; grg: { id: string; name: string; webViewLink?: string }; errors?: string[] }
+      const initPayload = (await initRes.json()) as
+        | {
+            ok: true;
+            grg: { id: string; name: string; webViewLink?: string };
+            scanStyleSpec: ScanStyleSpec;
+            songsToImport: Array<{
+              itemId: string;
+              title: string;
+              skipped: boolean;
+              selectedFileId?: string;
+            }>;
+            errors?: string[];
+          }
         | {
             ok: false;
             error: string;
@@ -919,23 +975,81 @@ export default function Home() {
               canApplyScans: boolean;
             };
           };
-      if (!res.ok || !payload.ok) {
-        if (!payload.ok && payload.templateValidation) {
-          setTemplateValidation(payload.templateValidation);
+      if (!initRes.ok || !initPayload.ok) {
+        if (!initPayload.ok && initPayload.templateValidation) {
+          setTemplateValidation(initPayload.templateValidation);
         }
-        throw new Error(payload.ok ? "Failed" : payload.error);
+        throw new Error(initPayload.ok ? "Failed" : initPayload.error);
       }
 
-      const extra = payload.errors?.length ? `\nWarnings:\n${payload.errors.join("\n")}` : "";
+      const errors = [...(initPayload.errors ?? [])];
+      for (const f of songFlows) {
+        if (!f.skipped && !f.selectedFileId) {
+          errors.push(`${f.song.title}: no file selected.`);
+        }
+      }
+
+      setGrgDoc(initPayload.grg);
+      setScanStyleSpec(initPayload.scanStyleSpec);
+
+      const songsToImport = initPayload.songsToImport;
+      let isFirstScan = true;
+      for (let i = 0; i < songsToImport.length; i++) {
+        const song = songsToImport[i]!;
+        setApplyProgress(
+          `Importing scan ${i + 1} of ${songsToImport.length}: ${song.title}…`,
+        );
+        const scanRes = await fetch("/api/mvp/apply-scan", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            grgDocId: initPayload.grg.id,
+            scanStyleSpec: initPayload.scanStyleSpec,
+            song,
+            isFirstScan,
+          }),
+        });
+        const scanPayload = (await scanRes.json()) as
+          | { ok: true; errors?: string[] }
+          | { ok: false; error: string };
+        if (!scanRes.ok || !scanPayload.ok) {
+          errors.push(
+            `${song.title}: ${scanPayload.ok ? "import failed" : scanPayload.error}`,
+          );
+        } else if (scanPayload.errors?.length) {
+          errors.push(...scanPayload.errors);
+        }
+        isFirstScan = false;
+      }
+
+      if (songsToImport.length > 0) {
+        setApplyProgress("Applying column layout…");
+        const colRes = await fetch("/api/mvp/apply-columns", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            grgDocId: initPayload.grg.id,
+            scanStyleSpec: initPayload.scanStyleSpec,
+          }),
+        });
+        const colPayload = (await colRes.json()) as { ok: true } | { ok: false; error: string };
+        if (!colRes.ok || !colPayload.ok) {
+          errors.push(
+            `Column layout: ${colPayload.ok ? "failed" : colPayload.error}`,
+          );
+        }
+      }
+
+      const extra = errors.length ? `\nWarnings:\n${errors.join("\n")}` : "";
       setApplyResult(
-        `Created/updated output doc "${payload.grg.name}" from template. Template was not modified.${extra}`,
+        `Created/updated output doc "${initPayload.grg.name}" from template. Template was not modified.${extra}`,
       );
-      setGrgDoc(payload.grg);
       setStep("Sign off");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
       setBusy(false);
+      setApplyProgress(null);
     }
   }
 
@@ -1880,8 +1994,23 @@ export default function Home() {
                 onClick={() => void applyChanges()}
                 className="h-11 rounded-xl bg-emerald-600 px-4 text-sm font-medium text-white disabled:opacity-50"
               >
-                {busy ? "Applying…" : "Approve & update Google Doc"}
+                {busy
+                  ? applyProgress ?? "Applying…"
+                  : "Approve & update Google Doc"}
               </button>
+              {applyResult?.includes("Column layout:") &&
+              !applyResult?.includes("applied successfully on retry") &&
+              grgDoc?.id &&
+              scanStyleSpec ? (
+                <button
+                  type="button"
+                  disabled={busy || columnsRetryBusy || pcoUploadBusy}
+                  onClick={() => void retryColumnLayout()}
+                  className="h-11 rounded-xl border border-amber-300 bg-amber-50 px-4 text-sm font-medium text-amber-900 disabled:opacity-50 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200"
+                >
+                  {columnsRetryBusy ? "Retrying columns…" : "Retry column layout"}
+                </button>
+              ) : null}
               <button
                 type="button"
                 disabled={busy || pcoUploadBusy || !bundle || !grgDoc?.id || !googleConnected}

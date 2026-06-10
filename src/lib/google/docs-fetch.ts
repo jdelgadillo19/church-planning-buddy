@@ -4,6 +4,34 @@ import { resolveGoogleAccessToken } from "@/lib/google/drive-fetch";
 
 const DOCS_API = "https://docs.googleapis.com/v1/documents";
 
+/** Google Docs API allows at most 50 requests per batchUpdate call. */
+export const DOCS_BATCH_LIMIT = 50;
+
+export function chunkDocsRequests<T>(requests: T[], size = DOCS_BATCH_LIMIT): T[][] {
+  if (requests.length === 0) return [];
+  const chunks: T[][] = [];
+  for (let i = 0; i < requests.length; i += size) {
+    chunks.push(requests.slice(i, i + size));
+  }
+  return chunks;
+}
+
+export async function docsBatchUpdateChunked(
+  accessToken: string,
+  documentId: string,
+  requests: docs_v1.Schema$Request[],
+): Promise<docs_v1.Schema$BatchUpdateDocumentResponse> {
+  const chunks = chunkDocsRequests(requests);
+  if (chunks.length === 0) {
+    return {};
+  }
+  let last: docs_v1.Schema$BatchUpdateDocumentResponse = {};
+  for (const chunk of chunks) {
+    last = await docsBatchUpdateFetch(accessToken, documentId, chunk);
+  }
+  return last;
+}
+
 export async function fetchGoogleDocument(
   accessToken: string,
   documentId: string,
@@ -75,7 +103,7 @@ export function createFetchDocsClient(tokens: GoogleTokens): docs_v1.Docs {
         if (!documentId) throw new Error("documentId required");
         const accessToken = await resolveGoogleAccessToken(tokens);
         if (!accessToken) throw new Error("Google access token unavailable.");
-        const data = await docsBatchUpdateFetch(accessToken, documentId, requests);
+        const data = await docsBatchUpdateChunked(accessToken, documentId, requests);
         return { data };
       },
     },

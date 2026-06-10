@@ -8,13 +8,10 @@ import {
   collectRosterSlotErrors,
   isApplyTemplateBlocking,
   loadTemplateValidation,
-  runApplyColumns,
   runApplyInit,
-  runApplyScan,
   type ApplyGrgBody,
 } from "@/lib/mvp/apply-grg";
 
-/** Monolithic apply — kept for compatibility; UI uses phased apply-init/scan/columns. */
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as ApplyGrgBody;
@@ -52,57 +49,18 @@ export async function POST(req: Request) {
 
     const init = await runApplyInit(tokens!, drive, body);
     const errors = [...init.errors, ...collectRosterSlotErrors(templateValidation)];
-    const scanImports: Array<{ title: string; mode: string; warning?: string }> = [];
-
-    const songs = applySongsToImport(body);
-    let isFirstScan = true;
-    for (const song of songs) {
-      try {
-        const imported = await runApplyScan(tokens!, drive, {
-          grgDocId: init.grg.id,
-          scanStyleSpec: init.scanStyleSpec,
-          song,
-          isFirstScan,
-        });
-        isFirstScan = false;
-        scanImports.push({
-          title: song.title,
-          mode: imported.mode,
-          warning: imported.warning,
-        });
-        if (imported.warning) {
-          errors.push(`${song.title}: ${imported.warning} (import mode: ${imported.mode})`);
-        }
-      } catch (e) {
-        errors.push(`${song.title}: ${e instanceof Error ? e.message : "import failed"}`);
-      }
-    }
-
-    for (const song of body.songs ?? []) {
-      if (song.skipped) continue;
-      if (!song.selectedFileId) {
-        errors.push(`${song.title}: no file selected.`);
-      }
-    }
-
-    if (songs.length > 0) {
-      try {
-        await runApplyColumns(tokens!, init.grg.id, init.scanStyleSpec);
-      } catch (e) {
-        errors.push(`Column layout: ${e instanceof Error ? e.message : "failed"}`);
-      }
-    }
 
     return NextResponse.json({
       ok: true,
       grg: init.grg,
       template: init.template,
+      scanStyleSpec: init.scanStyleSpec,
       result: init.result,
-      scanImports,
+      songsToImport: applySongsToImport(body),
       errors,
     });
   } catch (e) {
-    const message = e instanceof Error ? e.message : "Apply failed.";
+    const message = e instanceof Error ? e.message : "Apply init failed.";
     return NextResponse.json({ ok: false, error: message }, { status: 400 });
   }
 }

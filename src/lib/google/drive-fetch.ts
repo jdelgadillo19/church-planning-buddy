@@ -304,6 +304,91 @@ export async function recreateOutputFromTemplateFetch(
   return driveCopyFileFetch(accessToken, templateId, outputTitle, outputFolderId);
 }
 
+const SHORTCUT_MIME = "application/vnd.google-apps.shortcut";
+const GOOGLE_DOC_MIME = "application/vnd.google-apps.document";
+
+/** Resolve shortcuts; returns file id and mime for export/download. */
+export async function resolveDriveExportTarget(
+  accessToken: string,
+  fileId: string,
+): Promise<{ fileId: string; mime: string; name?: string }> {
+  const meta = await driveGetFileMetaFetch(accessToken, fileId);
+  if (!meta?.id) throw new Error("Drive file not found.");
+
+  let resolvedId = meta.id;
+  let mime = meta.mimeType ?? "";
+  let name = meta.name;
+
+  if (mime === SHORTCUT_MIME && meta.shortcutDetails?.targetId) {
+    const target = await driveGetFileMetaFetch(accessToken, meta.shortcutDetails.targetId);
+    if (!target?.id) throw new Error("Drive shortcut target not found.");
+    resolvedId = target.id;
+    mime = target.mimeType ?? meta.shortcutDetails.targetMimeType ?? "";
+    name = target.name ?? name;
+  }
+
+  return { fileId: resolvedId, mime, name };
+}
+
+async function driveDownloadPdfMedia(accessToken: string, fileId: string): Promise<Buffer> {
+  const url = new URL(`${DRIVE_FILES}/${encodeURIComponent(fileId)}`);
+  url.searchParams.set("alt", "media");
+  url.searchParams.set("supportsAllDrives", "true");
+
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    throw new Error(`Drive PDF download failed (${res.status}).`);
+  }
+  const data = await res.arrayBuffer();
+  return Buffer.from(data);
+}
+
+async function driveExportPdfFetch(accessToken: string, fileId: string): Promise<Buffer> {
+  const url = new URL(`${DRIVE_FILES}/${encodeURIComponent(fileId)}/export`);
+  url.searchParams.set("mimeType", "application/pdf");
+  url.searchParams.set("supportsAllDrives", "true");
+
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Drive PDF export failed (${res.status}): ${detail.slice(0, 200)}`);
+  }
+  const data = await res.arrayBuffer();
+  return Buffer.from(data);
+}
+
+/** Export a Google Doc (or PDF) as application/pdf bytes (Workers-safe). */
+export async function exportGoogleDocPdfFetch(
+  accessToken: string,
+  fileId: string,
+): Promise<Buffer> {
+  const { fileId: resolvedId, mime } = await resolveDriveExportTarget(accessToken, fileId);
+  const mimeLabel = mime || "unknown (no mimeType from Drive)";
+
+  if (mime === "application/pdf") {
+    return driveDownloadPdfMedia(accessToken, resolvedId);
+  }
+
+  if (mime !== GOOGLE_DOC_MIME) {
+    throw new Error(`Cannot export to PDF from file type: ${mimeLabel}`);
+  }
+
+  return driveExportPdfFetch(accessToken, resolvedId);
+}
+
+export async function exportGoogleDocPdfForTokens(
+  tokens: GoogleTokens,
+  fileId: string,
+): Promise<Buffer> {
+  const accessToken = await resolveGoogleAccessToken(tokens);
+  if (!accessToken) throw new Error("Google access token unavailable.");
+  return exportGoogleDocPdfFetch(accessToken, fileId);
+}
+
 export async function driveListDocNamesInFolderFetch(
   accessToken: string,
   folderId: string,

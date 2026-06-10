@@ -2,7 +2,8 @@
 
 MVP wizard to build a **Get Ready Guide** output Google Doc from a Planning Center plan: copy a Drive template, fill date + song list placeholders, append song scan bodies from org Drive (via PCO links). **Signoff required** before any writes.
 
-See [`docs/PROJECT-STATUS.md`](./docs/PROJECT-STATUS.md) for **current state, known issues, next steps, and a startup prompt** for the next session.  
+See [`docs/STARTUP-GUIDE.md`](./docs/STARTUP-GUIDE.md) to **resume slide-deck / Grapevine Prep / rig work** (deploy, Sunday workflow, key paths).  
+See [`docs/PROJECT-STATUS.md`](./docs/PROJECT-STATUS.md) for GRG MVP status and long-range handoff.  
 Spec: [`PRODUCT.md`](./PRODUCT.md). Template: [`docs/GRG-TEMPLATE.md`](./docs/GRG-TEMPLATE.md).
 
 ## Setup

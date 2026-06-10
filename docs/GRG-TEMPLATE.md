@@ -70,6 +70,12 @@ Run `scripts/apply-grg-template-format.py` (see below) to regenerate these exemp
 
 Override paths or folder IDs via `.env.local` (see `GRG_*_FOLDER_*` in `.env.local.example`).
 
+### Multi-planner: use a Shared drive
+
+For more than one Grapevine user, put **Template** and **Output** on a church **Shared drive** and grant each planner **Content manager** (not just per-file Editor on docs owned by a personal Gmail). Apply **permanently deletes** any existing dated output before copying the template — non-owners only get Drive **Remove from view**, which leaves the file in place and causes `Drive delete failed (403)`.
+
+Recommended layout and rig handoff: [`planning/multi-user-ops-and-shared-drive.md`](./planning/multi-user-ops-and-shared-drive.md).
+
 ## Output document
 
 Each **Approve** run:

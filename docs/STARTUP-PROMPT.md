@@ -1,6 +1,8 @@
 # Startup prompt — next Cursor session
 
-Copy the block below into a new chat when resuming work on Church Planning Buddy.
+**Slide deck / Grapevine Prep / rig:** use **[`STARTUP-GUIDE.md`](./STARTUP-GUIDE.md)** instead — it has the current deploy state, Sunday workflow, and a fresher Cursor prompt.
+
+Copy the block below into a new chat when resuming **GRG wizard** work on Church Planning Buddy.
 
 ---
 
