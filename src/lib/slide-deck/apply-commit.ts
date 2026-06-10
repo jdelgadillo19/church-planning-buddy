@@ -1,4 +1,5 @@
 import type { MockCommitPlan, MockCommitPlaylistRow } from "./mock-commit";
+import { librarySelectionForRow } from "./plan-element-key";
 import type { PpLibraryItemRef } from "@/lib/propresenter/library-read";
 import type { PpPlaylistItemRef } from "@/lib/propresenter/playlist-read";
 import {
@@ -13,8 +14,9 @@ import {
 import { getPlaylistItems } from "@/lib/propresenter/playlist-read";
 import { loadProPresenterConfig } from "@/lib/propresenter/config";
 import {
+  allowPartialApply,
   comparePlaylistToExpected,
-  expectedNamesFromCommitPlan,
+  expectedNamesFromWriteItems,
   resolveApplyPollIntervalMs,
   resolveApplyVerifyTimeoutMs,
 } from "./playlist-match";
@@ -42,7 +44,10 @@ function resolveLibraryItemForRow(
   libraryIndex: PpLibraryItemRef[],
   librarySelections?: Record<string, string>,
 ): PpLibraryItemRef | undefined {
-  const overrideId = librarySelections?.[String(row.position)];
+  const elementKey = row.elementKey;
+  const overrideId = elementKey
+    ? librarySelectionForRow(elementKey, row, librarySelections ?? {})
+    : librarySelections?.[String(row.position)];
   if (overrideId) {
     const fromOverride = libraryIndex.find((item) => item.id === overrideId);
     if (fromOverride) return fromOverride;
@@ -65,12 +70,18 @@ export function buildWriteItemsFromPreview(input: ApplyCommitInput): {
 } {
   const warnings: string[] = [];
   const items: PpWritePlaylistItem[] = [];
+  const partial = allowPartialApply();
+  const skippedSongs: string[] = [];
 
   for (const row of input.commitPlan.playlistPreview) {
     if (row.kind === "template_inherit") {
       const templateRef = findTemplateItemForName(input.templateItems, row.name);
       if (!templateRef) {
-        warnings.push(`Template item "${row.name}" not found in source template — skipped.`);
+        const msg = `Template item "${row.name}" not found in source template — skipped.`;
+        if (!partial) {
+          throw new Error(`Cannot apply: ${msg}`);
+        }
+        warnings.push(msg);
         continue;
       }
       items.push(templateItemToWritePayload(templateRef, items.length));
@@ -79,11 +90,18 @@ export function buildWriteItemsFromPreview(input: ApplyCommitInput): {
 
     const match = resolveLibraryItemForRow(row, input.libraryIndex, input.librarySelections);
     if (!match) {
+      const label = row.pcoTitle ?? row.name;
       const reason =
         row.libraryMatch?.status === "ambiguous"
           ? "ambiguous library match (no variant selected)"
           : "no library match";
-      warnings.push(`Song "${row.pcoTitle ?? row.name}" has ${reason} — skipped in live apply.`);
+      if (!partial) {
+        throw new Error(
+          `Cannot apply: Song "${label}" has ${reason}. Add it to the ProPresenter library, run Scan now on the rig, refresh the preview, then send again.`,
+        );
+      }
+      skippedSongs.push(label);
+      warnings.push(`Song "${label}" has ${reason} — skipped in live apply.`);
       continue;
     }
 
@@ -100,15 +118,21 @@ export function buildWriteItemsFromPreview(input: ApplyCommitInput): {
     );
   }
 
+  if (skippedSongs.length > 0) {
+    warnings.push(
+      `Partial apply: skipped ${skippedSongs.length} song(s): ${skippedSongs.join(", ")}.`,
+    );
+  }
+
   return { items, warnings };
 }
 
 function mapWrittenItems(
   written: PpPlaylistItemRef[],
-  commitPlan: MockCommitPlan,
+  previewRows: MockCommitPlaylistRow[],
 ): ApplyCommitResult["items"] {
   return written.map((item, index) => {
-    const previewRow = commitPlan.playlistPreview[index];
+    const previewRow = previewRows[index];
     return {
       position: index + 1,
       name: item.name,
@@ -121,12 +145,11 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Poll ProPresenter until playlist matches commit preview or timeout. */
+/** Poll ProPresenter until playlist matches expected written names or timeout. */
 export async function waitForPlaylistMatch(
   playlistId: string,
-  commitPlan: MockCommitPlan,
+  expectedNames: string[],
 ): Promise<{ items: PpPlaylistItemRef[]; warnings: string[] }> {
-  const expected = expectedNamesFromCommitPlan(commitPlan);
   const warnings: string[] = [];
   const deadline = Date.now() + resolveApplyVerifyTimeoutMs();
   const interval = resolveApplyPollIntervalMs();
@@ -134,7 +157,7 @@ export async function waitForPlaylistMatch(
 
   while (Date.now() < deadline) {
     const written = await getPlaylistItems(playlistId);
-    const { matched, differences } = comparePlaylistToExpected(expected, written);
+    const { matched, differences } = comparePlaylistToExpected(expectedNames, written);
     if (matched) {
       return { items: written, warnings };
     }
@@ -143,13 +166,13 @@ export async function waitForPlaylistMatch(
   }
 
   const final = await getPlaylistItems(playlistId);
-  const { matched, differences } = comparePlaylistToExpected(expected, final);
+  const { matched, differences } = comparePlaylistToExpected(expectedNames, final);
   if (matched) {
     return { items: final, warnings };
   }
 
   throw new Error(
-    `Playlist did not match commit preview within ${resolveApplyVerifyTimeoutMs()}ms. ${[...differences, ...lastDiff].slice(0, 5).join(" ")}`,
+    `Playlist did not match written items within ${resolveApplyVerifyTimeoutMs()}ms. ${[...differences, ...lastDiff].slice(0, 5).join(" ")}`,
   );
 }
 
@@ -161,6 +184,7 @@ export async function applyCommitPlan(input: ApplyCommitInput): Promise<ApplyCom
   }
 
   const { items, warnings } = buildWriteItemsFromPreview(input);
+  const expectedNames = expectedNamesFromWriteItems(items);
 
   const created = await resolveTargetPlaylist(
     input.commitPlan.playlistName,
@@ -172,23 +196,32 @@ export async function applyCommitPlan(input: ApplyCommitInput): Promise<ApplyCom
     await putPlaylistItems(created.id, items, config);
   } catch (e) {
     warnings.push(
-      `PUT may have timed out — checking playlist "${created.name}" until it matches preview.`,
+      `PUT may have timed out — checking playlist "${created.name}" until it matches written items.`,
     );
     if (e instanceof Error && !/timeout/i.test(e.message)) throw e;
   }
 
   const { items: written, warnings: pollWarnings } = await waitForPlaylistMatch(
     created.id,
-    input.commitPlan,
+    expectedNames,
   );
   warnings.push(...pollWarnings);
+
+  const previewRowsForMap = allowPartialApply()
+    ? input.commitPlan.playlistPreview.filter((row) => {
+        if (row.kind === "template_inherit") {
+          return findTemplateItemForName(input.templateItems, row.name) !== undefined;
+        }
+        return resolveLibraryItemForRow(row, input.libraryIndex, input.librarySelections) !== undefined;
+      })
+    : input.commitPlan.playlistPreview;
 
   return {
     ok: true,
     playlistId: created.id,
     playlistName: created.name,
     itemCount: written.length,
-    items: mapWrittenItems(written, input.commitPlan),
+    items: mapWrittenItems(written, previewRowsForMap),
     warnings,
   };
 }

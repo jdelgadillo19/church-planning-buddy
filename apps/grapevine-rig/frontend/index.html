@@ -36,8 +36,18 @@
         <p id="rig-label" class="rig-label"></p>
 
         <div id="build-card" class="build-card hidden">
-          <p class="build-title">Build ready</p>
+          <p id="build-title" class="build-title">Build ready</p>
           <p id="build-summary" class="build-summary"></p>
+          <p id="build-error" class="build-error hidden"></p>
+          <div id="conflict-card" class="conflict-card hidden">
+            <p id="conflict-message" class="conflict-message"></p>
+            <div class="conflict-actions">
+              <button id="conflict-overwrite-btn" type="button" class="btn primary">Overwrite</button>
+              <button id="conflict-view-btn" type="button" class="btn">View details</button>
+              <button id="conflict-dismiss-btn" type="button" class="btn ghost">Dismiss</button>
+            </div>
+          </div>
+          <div id="impl-review" class="impl-review hidden"></div>
           <button id="apply-btn" type="button" class="btn primary">Apply Slide Deck</button>
         </div>
         <p id="no-build" class="muted">No pending builds. Waiting for planner to send a deck…</p>

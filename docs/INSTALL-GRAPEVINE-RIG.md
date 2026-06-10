@@ -1,27 +1,36 @@
-# Install Grapevine Rig (macOS)
+# Install Grapevine Rig (macOS and Windows)
 
-Grapevine Rig is the presentation-Mac app that applies slide decks to ProPresenter and uploads your library index to grapevineprep.com. **You** download and install it — the agent does not run install steps on your machine.
+Grapevine Rig is the presentation-rig app that applies slide decks to ProPresenter and uploads your library index to grapevineprep.com. **You** download and install it — the agent does not run install steps on your machine.
 
 ## Prerequisites
 
-- macOS on the presentation computer (pilot: your Mac; later: sanctuary rig)
+- **macOS** or **Windows** on the presentation computer
 - ProPresenter installed with **Network** enabled
 - Org **admin** access on [grapevineprep.com](https://grapevineprep.com) to generate a pairing code
-- Cloud Phase 1 deployed (`npm run deploy:cf`) and migration `20260609120000_rig_pairing.sql` applied in Supabase
+- Cloud Phase 1 deployed and migrations through `20260609140000_slide_deck_submissions.sql` applied in Supabase
 
 ## 1. Download
 
 1. Open the project **GitHub Releases** page.
-2. Find the latest release tagged `grapevine-rig-v*` (use **v0.1.7+** for Intel and Apple Silicon Macs).
-3. Download **`Grapevine-Rig-*-macos.dmg`**.
+2. Find the latest release tagged `grapevine-rig-v*`.
+3. Download **`Grapevine-Rig-*-macos.dmg`** (Mac) or **`Grapevine-Rig-*-windows-setup.exe`** (Windows).
 
-Releases are built by the `grapevine-rig-release` workflow when a matching tag is pushed. Builds from **v0.1.7** onward are **universal** (Intel + Apple Silicon). Older releases (e.g. v0.1.6) are Apple Silicon only and show a **prohibited** icon on Intel Macs.
+Mac builds from **v0.1.7** onward are **universal** (Intel + Apple Silicon).
 
 ## 2. Install
+
+### macOS
 
 1. Open the `.dmg`.
 2. Drag **Grapevine Rig** to **Applications**.
 3. First launch: if macOS blocks the app (unsigned pilot build), **right-click → Open** once, or allow in **System Settings → Privacy & Security**.
+
+### Windows
+
+1. Run **`Grapevine-Rig-*-windows-setup.exe`**.
+2. Launch **Grapevine Rig** from the Start menu.
+3. Ensure **Node.js** is installed and on `PATH` (required for apply/scan workers).
+4. Drive publish via AppleScript export is **not** available on Windows — apply still succeeds; publish is skipped.
 
 ## 3. Pair with your church org
 
@@ -32,7 +41,7 @@ Releases are built by the `grapevine-rig-release` workflow when a matching tag i
 5. Enter the code and a display name (e.g. `Pilot rig` or `Sanctuary Mac`).
 6. Click **Pair this Mac**.
 
-Credentials are stored in the **macOS Keychain** (service `com.grapevineprep.rig`).
+Credentials are stored in the **macOS Keychain** or **Windows Credential Manager** (service `com.grapevineprep.rig`).
 
 ## 4. ProPresenter setup
 
@@ -50,9 +59,11 @@ If Apply or Scan cannot reach ProPresenter, confirm ProPresenter is running, Net
 
 | Who | Action |
 |-----|--------|
-| Planner | grapevineprep.com → Slide deck → preview → **Send to presentation rig** |
-| Rig operator | Grapevine Rig shows **Build ready** → **Apply Slide Deck** (ProPresenter open) |
+| Planner | grapevineprep.com → Slide deck → preview → **Submit draft** (optional, for multi-planner merge) → **Send to presentation rig** |
+| Rig operator | Grapevine Rig shows **Build ready** → review **Implementation plan** row sources (override conflicts if needed) → **Apply Slide Deck** (ProPresenter open) |
 | Planner | **Refresh status** on the website → `Completed` + Drive link if publish succeeded |
+
+**Submitted vs implementation plan:** planners submit row-level drafts; Send merges them into an **implementation plan** stored on the build. The rig applies the implementation plan (overwrite when replanning), not raw per-user drafts.
 
 Build statuses on the website: **Pending** → **Claimed** → **Applying** → **Completed** / **Failed**.
 
@@ -67,7 +78,10 @@ Build statuses on the website: **Pending** → **Claimed** → **Applying** → 
 | Google CLIENT_ID error after apply | Fixed in **v0.2.2+** — OAuth credentials come from Grapevine Prep run-context. |
 | `mkdir '/.data'` during publish | Fixed in **v0.2.3+** — export staging uses app data folder; AppleScript bundled in app. |
 | Build shows Drive publish skipped | Apply still succeeds — playlist is in ProPresenter. Drive upload is optional; enable **Grapevine Rig** under **System Settings → Privacy & Security → Accessibility** if you want automatic Drive publish. |
-| Preview songs not found | Run **Scan now** in Grapevine Rig |
+| Preview songs not found | Add song in ProPresenter → **Scan now** in Grapevine Rig → refresh preview on grapevineprep.com. Send/Submit is blocked until library match. See `docs/planning/new-song-entry-workflow.md`. |
+| Apply failed — build disappeared | Fixed in **v0.2.6+** — failed builds stay on rig with **Retry apply** and error details. |
+| "Playlist already exists" with no Overwrite button | Fixed in **v0.2.6+** — rig overwrites Sunday playlist on apply; conflict card offers **Overwrite** / **View** / **Dismiss**. |
+| Verify timeout with shifted song positions | Fixed in **v0.2.6+** — missing library songs fail before apply instead of partial write + 30s mismatch. |
 | Gatekeeper blocks app | Right-click → Open, or use a signed release when Apple ID secrets are configured in CI |
 | Old bootstrap rig | You may have a rig from `pp:index-upload`; pairing creates a new rig row — revoke the old one in admin if duplicate |
 

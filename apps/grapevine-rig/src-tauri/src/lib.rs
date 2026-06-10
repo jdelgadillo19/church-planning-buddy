@@ -101,6 +101,16 @@ async fn export_playlist_via_osascript(
     playlist_name: &str,
     output_path: &Path,
 ) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = (app, playlist_name, output_path);
+        return Err(
+            "ProPresenter export via AppleScript is not available on Windows.".to_string(),
+        );
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
     let script = app
         .path()
         .resolve("export-playlist.applescript", tauri::path::BaseDirectory::Resource)
@@ -148,6 +158,7 @@ async fn export_playlist_via_osascript(
         return Err("export finished but .proplaylist file was not created".to_string());
     }
     Ok(())
+    }
 }
 
 fn pp_settings_env(settings: &PpSettings) -> Vec<(String, String)> {
@@ -347,33 +358,65 @@ fn spawn_node_worker(
     ),
     String,
 > {
-    let script_arg = shell_quote(&script.to_string_lossy());
-    let zsh_cmd = format!("exec node {script_arg}");
-
-    // Prefer login shell so nvm/Homebrew paths from .zprofile are available (GUI apps have a minimal PATH).
-    match app
-        .shell()
-        .command("/bin/zsh")
-        .args(["-l", "-c", &zsh_cmd])
-        .envs(env.clone())
-        .spawn()
+    #[cfg(target_os = "windows")]
     {
-        Ok(pair) => return Ok(pair),
-        Err(zsh_err) => {
-            if let Some(node) = system_node_path() {
-                return app
-                    .shell()
-                    .command(node)
-                    .arg(script)
-                    .envs(env)
-                    .spawn()
-                    .map_err(|e| format!("Failed to start node worker ({node}): {e}"));
+        return app
+            .shell()
+            .command("cmd")
+            .args(["/C", "node"])
+            .arg(script)
+            .envs(env)
+            .spawn()
+            .map_err(|e| format!("Failed to start node worker on Windows: {e}"));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let script_arg = shell_quote(&script.to_string_lossy());
+        let zsh_cmd = format!("exec node {script_arg}");
+
+        match app
+            .shell()
+            .command("/bin/zsh")
+            .args(["-l", "-c", &zsh_cmd])
+            .envs(env.clone())
+            .spawn()
+        {
+            Ok(pair) => return Ok(pair),
+            Err(zsh_err) => {
+                if let Some(node) = system_node_path() {
+                    return app
+                        .shell()
+                        .command(node)
+                        .arg(script)
+                        .envs(env)
+                        .spawn()
+                        .map_err(|e| format!("Failed to start node worker ({node}): {e}"));
+                }
+                Err(format!(
+                    "Failed to start worker via login shell. Install Node.js (nvm or Homebrew) and try again. ({zsh_err})"
+                ))
             }
-            Err(format!(
-                "Failed to start worker via login shell. Install Node.js (nvm or Homebrew) and try again. ({zsh_err})"
-            ))
         }
     }
+}
+
+fn parse_worker_stdout(stdout: &str) -> Result<String, String> {
+    let trimmed = stdout.trim();
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) {
+        if value.get("conflict").and_then(|v| v.as_bool()) == Some(true) {
+            let payload = serde_json::to_string(&value).map_err(|e| e.to_string())?;
+            return Err(format!("CONFLICT:{payload}"));
+        }
+        if value.get("ok").and_then(|v| v.as_bool()) == Some(false) {
+            let message = value
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("Worker failed.");
+            return Err(message.to_string());
+        }
+    }
+    Ok(format_worker_success(stdout))
 }
 
 fn format_worker_success(stdout: &str) -> String {
@@ -473,9 +516,9 @@ async fn run_node_worker(
     extra_env: Vec<(String, String)>,
     inline_pp: Option<PpSettings>,
 ) -> Result<String, String> {
-    Ok(format_worker_success(
+    Ok(parse_worker_stdout(
         &run_node_worker_stdout(app, node_script, extra_env, inline_pp).await?,
-    ))
+    )?)
 }
 
 #[tauri::command]

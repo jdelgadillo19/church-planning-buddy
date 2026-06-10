@@ -18,10 +18,19 @@ const pairBtn = $("pair-btn");
 const pairError = $("pair-error");
 const rigLabel = $("rig-label");
 const buildCard = $("build-card");
+const buildTitle = $("build-title");
 const buildSummary = $("build-summary");
+const buildError = $("build-error");
+const conflictCard = $("conflict-card");
+const conflictMessage = $("conflict-message");
+const conflictOverwriteBtn = $("conflict-overwrite-btn");
+const conflictViewBtn = $("conflict-view-btn");
+const conflictDismissBtn = $("conflict-dismiss-btn");
 const changeDetail = $("change-detail");
+const implReview = $("impl-review");
 const noBuild = $("no-build");
 const applyBtn = $("apply-btn");
+const changeDetailsEl = document.querySelector("details.details");
 const scanBtn = $("scan-btn");
 const settingsBtn = $("settings-btn");
 const actionStatus = $("action-status");
@@ -32,8 +41,69 @@ const ppSettingsStatus = $("pp-settings-status");
 
 let creds = null;
 let pendingBuild = null;
+let editedImplPlan = null;
+let playlistConflict = null;
 let pollTimer = null;
 let busy = false;
+
+function parsePlaylistConflictFromText(text) {
+  if (!text) return null;
+  const match = text.match(
+    /playlist named "([^"]+)" already exists with (\d+) item/i,
+  );
+  if (!match) return null;
+  return {
+    playlistName: match[1],
+    itemCount: Number.parseInt(match[2], 10),
+    playlistId: "",
+  };
+}
+
+function parseConflictFromWorkerError(err) {
+  const msg = typeof err === "string" ? err : err instanceof Error ? err.message : "";
+  if (msg.startsWith("CONFLICT:")) {
+    try {
+      const payload = JSON.parse(msg.slice("CONFLICT:".length));
+      if (payload.conflict) {
+        return {
+          playlistId: payload.playlistId ?? "",
+          playlistName: payload.playlistName ?? "",
+          itemCount: payload.itemCount ?? 0,
+          message: payload.message ?? msg,
+        };
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+  const fromText = parsePlaylistConflictFromText(msg);
+  if (fromText) {
+    return { ...fromText, message: msg };
+  }
+  return null;
+}
+
+function showConflictCard(conflict) {
+  playlistConflict = conflict;
+  conflictCard.classList.remove("hidden");
+  conflictMessage.textContent =
+    conflict.message ??
+    `Playlist "${conflict.playlistName}" already has ${conflict.itemCount} item(s). Overwrite replaces it with this build.`;
+}
+
+function hideConflictCard() {
+  playlistConflict = null;
+  conflictCard.classList.add("hidden");
+  conflictMessage.textContent = "";
+}
+
+async function resetBuildForRetry(buildId) {
+  const data = await apiFetch(`/api/pp/rigs/${creds.rigId}/builds/${buildId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ resetToClaimed: true }),
+  });
+  if (data.build) pendingBuild = data.build;
+}
 
 function setBadge(kind, text) {
   statusBadge.className = `badge badge-${kind}`;
@@ -151,26 +221,132 @@ async function savePpSettings() {
   }
 }
 
+function formatSourceBadge(entry) {
+  if (entry.sourceSubmissionId === "baseline") return "PCO baseline";
+  if (entry.sourceSubmissionId === "direct") return "Direct send";
+  const when = entry.sourceCreatedAt
+    ? new Date(entry.sourceCreatedAt).toLocaleString()
+    : "";
+  const user = entry.sourceUserId?.slice(0, 8) ?? "planner";
+  return `${user}… ${when}`.trim();
+}
+
+function cloneImplPlan(plan) {
+  return JSON.parse(JSON.stringify(plan));
+}
+
+function applyRowSourceOverride(plan, elementKey, submissionId) {
+  const row = plan.rows.find((r) => r.elementKey === elementKey);
+  if (!row?.alternatives) return plan;
+  const alt = row.alternatives.find((a) => a.submissionId === submissionId);
+  if (!alt) return plan;
+  const next = cloneImplPlan(plan);
+  const target = next.rows.find((r) => r.elementKey === elementKey);
+  if (!target) return plan;
+  target.row = alt.row;
+  target.sourceSubmissionId = alt.submissionId;
+  target.sourceUserId = alt.sourceUserId;
+  target.sourceCreatedAt = alt.sourceCreatedAt;
+  target.autoSelected = false;
+  if (alt.row.libraryMatch?.item?.id) {
+    next.librarySelections[elementKey] = alt.row.libraryMatch.item.id;
+  }
+  return next;
+}
+
+function renderImplementationReview(plan) {
+  if (!plan?.rows?.length) {
+    implReview.classList.add("hidden");
+    implReview.innerHTML = "";
+    return;
+  }
+
+  implReview.classList.remove("hidden");
+  const rows = plan.rows
+    .map((entry) => {
+      const conflict = entry.hadConflict && entry.alternatives?.length;
+      const badge = formatSourceBadge(entry);
+      if (!conflict) {
+        return `<li class="impl-row"><span>${entry.row.name}</span><span class="impl-source">${badge}</span></li>`;
+      }
+      const options = [
+        { submissionId: entry.sourceSubmissionId, label: `${entry.row.name} (auto)` },
+        ...entry.alternatives.map((a) => ({
+          submissionId: a.submissionId,
+          label: `${a.row.name} (${a.sourceUserId.slice(0, 8)}…)`,
+        })),
+      ];
+      const opts = options
+        .map((o) => {
+          const selected = o.submissionId === entry.sourceSubmissionId ? " selected" : "";
+          return `<option value="${o.submissionId}"${selected}>${o.label}</option>`;
+        })
+        .join("");
+      return `<li class="impl-row impl-row-conflict"><span>${entry.row.name}</span><select data-element-key="${entry.elementKey}" class="impl-source-select">${opts}</select></li>`;
+    })
+    .join("");
+
+  implReview.innerHTML = `<p class="impl-title">Implementation plan (${plan.rows.length} rows)</p><ul class="impl-list">${rows}</ul>`;
+
+  implReview.querySelectorAll(".impl-source-select").forEach((select) => {
+    select.addEventListener("change", (e) => {
+      const elementKey = e.target.getAttribute("data-element-key");
+      const submissionId = e.target.value;
+      if (!editedImplPlan || !elementKey) return;
+      editedImplPlan = applyRowSourceOverride(editedImplPlan, elementKey, submissionId);
+      renderImplementationReview(editedImplPlan);
+    });
+  });
+}
+
 function renderBuild() {
   if (pendingBuild) {
     buildCard.classList.remove("hidden");
     noBuild.classList.add("hidden");
+    const isFailed = pendingBuild.status === "failed";
+    buildTitle.textContent = isFailed ? "Apply failed — retry" : "Build ready";
     buildSummary.textContent =
       pendingBuild.change_summary || pendingBuild.plan_id || pendingBuild.id;
+
+    if (isFailed && pendingBuild.error_message) {
+      buildError.textContent = pendingBuild.error_message;
+      buildError.classList.remove("hidden");
+      const conflict = parsePlaylistConflictFromText(pendingBuild.error_message);
+      if (conflict) showConflictCard({ ...conflict, message: pendingBuild.error_message });
+      else hideConflictCard();
+    } else {
+      buildError.classList.add("hidden");
+      buildError.textContent = "";
+      if (!playlistConflict) hideConflictCard();
+    }
+
+    applyBtn.textContent = isFailed ? "Retry apply" : "Apply Slide Deck";
+
+    editedImplPlan = pendingBuild.implementation_plan
+      ? cloneImplPlan(pendingBuild.implementation_plan)
+      : null;
+    renderImplementationReview(editedImplPlan);
+
     changeDetail.textContent = JSON.stringify(
       {
         id: pendingBuild.id,
         status: pendingBuild.status,
         planId: pendingBuild.plan_id,
         summary: pendingBuild.change_summary,
+        error: pendingBuild.error_message,
+        mergeSummary: pendingBuild.implementation_plan?.mergeSummary,
       },
       null,
       2,
     );
-    if (!busy) setBadge("ready", "Build ready");
+    if (!busy) setBadge(isFailed ? "idle" : "ready", isFailed ? "Failed" : "Build ready");
   } else {
     buildCard.classList.add("hidden");
     noBuild.classList.remove("hidden");
+    implReview.classList.add("hidden");
+    buildError.classList.add("hidden");
+    hideConflictCard();
+    editedImplPlan = null;
     if (!busy) setBadge("ready", "Waiting");
   }
 }
@@ -182,9 +358,9 @@ async function pollBuilds() {
       `/api/pp/rigs/${creds.rigId}/builds/pending?list=1`,
     );
     const builds = claimed.builds ?? [];
-    const ready = builds.find((b) =>
-      ["claimed", "applying"].includes(b.status),
-    );
+    const ready =
+      builds.find((b) => b.status === "failed") ??
+      builds.find((b) => ["claimed", "applying"].includes(b.status));
     if (ready) {
       pendingBuild = ready;
     } else {
@@ -271,10 +447,31 @@ async function applyBuild() {
 
   setWorking(true);
   setBadge("busy", "Applying");
+  const priorLabel = applyBtn.textContent;
   applyBtn.textContent = "Applying…";
   setActionStatus(`Applying to ProPresenter on ${PP_HOST}:${ppSettings.ppPort}…`, "busy");
+  hideConflictCard();
 
   try {
+    if (pendingBuild.status === "failed") {
+      await resetBuildForRetry(pendingBuild.id);
+      renderBuild();
+    }
+
+    if (editedImplPlan && pendingBuild.implementation_plan) {
+      const original = JSON.stringify(pendingBuild.implementation_plan);
+      const edited = JSON.stringify(editedImplPlan);
+      if (original !== edited) {
+        await apiFetch(
+          `/api/pp/rigs/${creds.rigId}/builds/${pendingBuild.id}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({ implementationPlan: editedImplPlan }),
+          },
+        );
+      }
+    }
+
     const output = await invoke("run_apply", {
       buildId: pendingBuild.id,
       ppSettings,
@@ -284,19 +481,47 @@ async function applyBuild() {
     renderBuild();
     void pollBuilds();
   } catch (e) {
+    const conflict = parseConflictFromWorkerError(e);
+    if (conflict) showConflictCard(conflict);
     const msg =
       typeof e === "string"
         ? e
         : e instanceof Error
           ? e.message
           : "Apply failed";
-    setActionStatus(msg || "Apply failed", "error");
+    setActionStatus(
+      conflict ? conflict.message ?? msg : msg || "Apply failed",
+      "error",
+    );
+    void pollBuilds();
+    renderBuild();
   } finally {
     setWorking(false);
-    applyBtn.textContent = "Apply Slide Deck";
-    if (pendingBuild) setBadge("ready", "Build ready");
-    else setBadge("ready", "Paired");
+    applyBtn.textContent = pendingBuild?.status === "failed" ? "Retry apply" : priorLabel;
+    if (pendingBuild) {
+      setBadge(pendingBuild.status === "failed" ? "idle" : "ready", pendingBuild.status === "failed" ? "Failed" : "Build ready");
+    } else {
+      setBadge("ready", "Paired");
+    }
   }
+}
+
+async function conflictOverwrite() {
+  if (!pendingBuild || !playlistConflict) return;
+  hideConflictCard();
+  await applyBuild();
+}
+
+function conflictView() {
+  if (changeDetailsEl) {
+    changeDetailsEl.open = true;
+    changeDetail.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+}
+
+function conflictDismiss() {
+  hideConflictCard();
+  setActionStatus("Conflict dismissed. Use Retry apply when ready.", "idle");
 }
 
 async function scanNow() {
@@ -342,6 +567,9 @@ async function unpair() {
 
 pairBtn.addEventListener("click", () => void pair());
 applyBtn.addEventListener("click", () => void applyBuild());
+conflictOverwriteBtn.addEventListener("click", () => void conflictOverwrite());
+conflictViewBtn.addEventListener("click", () => conflictView());
+conflictDismissBtn.addEventListener("click", () => conflictDismiss());
 scanBtn.addEventListener("click", () => void scanNow());
 settingsBtn.addEventListener("click", () => void unpair());
 ppSaveBtn.addEventListener("click", () => void savePpSettings());

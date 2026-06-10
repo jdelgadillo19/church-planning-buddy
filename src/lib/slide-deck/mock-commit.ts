@@ -6,6 +6,7 @@ import {
   resolveTemplateCorrespondence,
   templatePrefixBeforeWelcome,
 } from "./pco-pp-correspondence";
+import { attachElementKeys, elementKeyForRow } from "./plan-element-key";
 
 export type MockCommitOperation = {
   step: number;
@@ -22,8 +23,12 @@ export type MockCommitPlaylistRow = {
   kind: "template_inherit" | "song_add";
   name: string;
   source: string;
+  /** Stable row id for merge (computed). */
+  elementKey?: string;
   libraryMatch?: LibraryMatchResult;
   pcoTitle?: string;
+  /** PCO item id for songs — stable across reorder. */
+  pcoItemId?: string;
   pcoOrder?: number;
   key?: string;
   artist?: string;
@@ -174,6 +179,7 @@ function buildPlaylistPreview(
           : "PCO plan → library match",
       libraryMatch,
       pcoTitle: song.pcoTitle,
+      pcoItemId: song.pcoItemId,
       pcoOrder: song.order,
       key: song.key,
       artist: song.artist,
@@ -219,7 +225,7 @@ function buildPlaylistPreview(
     }
   }
 
-  return rows;
+  return attachElementKeys(rows);
 }
 
 function collectCorrespondences(manifest: SlideDeckManifest): MockCommitPlan["correspondences"] {

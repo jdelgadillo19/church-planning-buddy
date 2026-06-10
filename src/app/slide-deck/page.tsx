@@ -5,6 +5,7 @@ import { GoogleConnectionCard } from "@/components/google-connection-card";
 import { PcoServicePlanPicker } from "@/components/pco-service-plan-picker";
 import {
   LibraryMatchPicker,
+  missingSongRows,
   unresolvedAmbiguousRows,
 } from "@/components/slide-deck-library-match";
 import { SlideDeckHostedPanel } from "@/components/slide-deck-hosted-panel";
@@ -12,7 +13,9 @@ import { ToolShell } from "@/components/tool-shell";
 import { useGoogleConnection } from "@/hooks/use-google-connection";
 import { usePcoServicePlanSelection } from "@/hooks/use-pco-service-plan-selection";
 import type { SlideDeckManifest, ManifestElement } from "@/lib/slide-deck/types";
+import type { ImplementationPlan } from "@/lib/slide-deck/implementation-plan";
 import type { MockCommitPlan, MockCommitOperation, MockCommitPlaylistRow } from "@/lib/slide-deck/mock-commit";
+import type { MergeConflict } from "@/lib/slide-deck/plan-merge";
 
 const STEPS = ["Setup", "Commit preview"] as const;
 type Step = (typeof STEPS)[number];
@@ -99,6 +102,21 @@ export default function SlideDeckPage() {
     }>
   >([]);
   const [queueBusy, setQueueBusy] = useState(false);
+  const [submitBusy, setSubmitBusy] = useState(false);
+  const [submissions, setSubmissions] = useState<
+    Array<{
+      id: string;
+      created_by: string;
+      created_at: string;
+      change_summary: string | null;
+      status: string;
+    }>
+  >([]);
+  const [mergeReview, setMergeReview] = useState<{
+    conflicts: MergeConflict[];
+    implementationPlan: ImplementationPlan;
+    rowSourceOverrides: Record<string, string>;
+  } | null>(null);
 
   const isHosted = Boolean(ppStatus?.hosted);
   const canPublishOnHosted = Boolean(proplaylistFile);
@@ -141,6 +159,8 @@ export default function SlideDeckPage() {
     () => unresolvedAmbiguousRows(commitPlan, librarySelections),
     [commitPlan, librarySelections],
   );
+
+  const missingLibraryRows = useMemo(() => missingSongRows(commitPlan), [commitPlan]);
 
   const refreshPpStatus = useCallback(async () => {
     try {
@@ -198,6 +218,26 @@ export default function SlideDeckPage() {
     }
   }, [orgId]);
 
+  const refreshSubmissions = useCallback(async () => {
+    if (!orgId || !planId.trim() || !commitPlan?.playlistName) return;
+    try {
+      const params = new URLSearchParams({
+        orgId,
+        planId: planId.trim(),
+        playlistName: commitPlan.playlistName,
+      });
+      if (serviceTypeId.trim()) params.set("serviceTypeId", serviceTypeId.trim());
+      const res = await fetch(`/api/pp/submissions?${params}`);
+      const data = (await res.json()) as {
+        ok?: boolean;
+        submissions?: typeof submissions;
+      };
+      if (data.ok && data.submissions) setSubmissions(data.submissions);
+    } catch {
+      /* optional */
+    }
+  }, [orgId, planId, serviceTypeId, commitPlan?.playlistName]);
+
   useEffect(() => {
     if (!isHosted) return;
     void refreshPlatformContext();
@@ -209,6 +249,11 @@ export default function SlideDeckPage() {
     const id = window.setInterval(() => void refreshBuilds(), 8000);
     return () => window.clearInterval(id);
   }, [isHosted, orgId, refreshBuilds]);
+
+  useEffect(() => {
+    if (!isHosted || !orgId || !commitPlan?.playlistName) return;
+    void refreshSubmissions();
+  }, [isHosted, orgId, commitPlan?.playlistName, refreshSubmissions]);
 
   async function fileToBase64(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -226,8 +271,59 @@ export default function SlideDeckPage() {
     });
   }
 
-  async function queueBuild() {
+  async function submitDraft() {
     if (!commitPlan || !planId.trim()) return;
+    if (missingLibraryRows.length > 0) {
+      setError(
+        `Songs not in ProPresenter library: ${missingLibraryRows.map((r) => r.pcoTitle ?? r.name).join(", ")}. Add them on the rig, Scan now, refresh preview.`,
+      );
+      return;
+    }
+    if (unresolvedLibraryRows.length > 0) {
+      setError(
+        `Select a ProPresenter library variant for: ${unresolvedLibraryRows.map((r) => r.pcoTitle ?? r.name).join(", ")}`,
+      );
+      return;
+    }
+    setSubmitBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/pp/submissions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          orgId: orgId ?? undefined,
+          planId: planId.trim(),
+          serviceTypeId: serviceTypeId.trim() || undefined,
+          playlistName: commitPlan.playlistName,
+          commitPlan,
+          manifest: manifest ?? undefined,
+          librarySelections:
+            Object.keys(librarySelections).length > 0 ? librarySelections : undefined,
+          changeSummary: commitPlan.playlistName,
+        }),
+      });
+      const payload = (await res.json()) as { ok: boolean; error?: string };
+      if (!payload.ok) throw new Error(payload.error ?? "Failed to submit draft.");
+      await refreshSubmissions();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to submit draft.");
+    } finally {
+      setSubmitBusy(false);
+    }
+  }
+
+  async function queueBuildWithOverrides(
+    rowSourceOverrides?: Record<string, string>,
+    implementationPlan?: ImplementationPlan,
+  ) {
+    if (!commitPlan || !planId.trim()) return;
+    if (missingLibraryRows.length > 0) {
+      setError(
+        `Songs not in ProPresenter library: ${missingLibraryRows.map((r) => r.pcoTitle ?? r.name).join(", ")}. Add them on the rig, Scan now, refresh preview.`,
+      );
+      return;
+    }
     if (unresolvedLibraryRows.length > 0) {
       setError(
         `Select a ProPresenter library variant for: ${unresolvedLibraryRows.map((r) => r.pcoTitle ?? r.name).join(", ")}`,
@@ -245,19 +341,49 @@ export default function SlideDeckPage() {
           planId: planId.trim(),
           serviceTypeId: serviceTypeId.trim() || undefined,
           commitPlan,
+          baselineCommitPlan: commitPlan,
           librarySelections:
             Object.keys(librarySelections).length > 0 ? librarySelections : undefined,
           changeSummary: commitPlan.playlistName,
+          rowSourceOverrides,
+          implementationPlan,
         }),
       });
-      const payload = (await res.json()) as { ok: boolean; error?: string; build?: { id: string } };
+      const payload = (await res.json()) as {
+        ok: boolean;
+        error?: string;
+        needsReview?: boolean;
+        conflicts?: MergeConflict[];
+        implementationPlan?: ImplementationPlan;
+        build?: { id: string };
+      };
+      if (res.status === 409 && payload.needsReview && payload.conflicts && payload.implementationPlan) {
+        const overrides: Record<string, string> = {};
+        for (const row of payload.implementationPlan.rows) {
+          if (row.hadConflict) {
+            overrides[row.elementKey] = row.sourceSubmissionId;
+          }
+        }
+        setMergeReview({
+          conflicts: payload.conflicts,
+          implementationPlan: payload.implementationPlan,
+          rowSourceOverrides: overrides,
+        });
+        return;
+      }
       if (!payload.ok) throw new Error(payload.error ?? "Failed to queue build.");
+      setMergeReview(null);
       await refreshBuilds();
+      await refreshSubmissions();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to queue build.");
     } finally {
       setQueueBusy(false);
     }
+  }
+
+  async function queueBuild() {
+    await queueBuildWithOverrides();
   }
 
   async function loadMockCommit() {
@@ -357,6 +483,12 @@ export default function SlideDeckPage() {
 
   async function applyToProPresenter() {
     if (!planId.trim() || !commitPlan) return;
+    if (missingLibraryRows.length > 0) {
+      setError(
+        `Songs not in ProPresenter library: ${missingLibraryRows.map((r) => r.pcoTitle ?? r.name).join(", ")}.`,
+      );
+      return;
+    }
     if (unresolvedLibraryRows.length > 0) {
       setError(
         `Select a ProPresenter library variant for: ${unresolvedLibraryRows.map((r) => r.pcoTitle ?? r.name).join(", ")}`,
@@ -524,16 +656,39 @@ export default function SlideDeckPage() {
           librarySelections={librarySelections}
           indexMeta={platformIndex}
           builds={builds}
+          submissions={submissions}
           rigs={rigs}
           orgId={orgId}
           isAdmin={orgRole === "admin"}
           queueBusy={queueBusy}
+          submitBusy={submitBusy}
+          mergeReview={mergeReview}
           onQueueBuild={() => void queueBuild()}
+          onSubmitDraft={() => void submitDraft()}
           onRefreshBuilds={() => void refreshBuilds()}
+          onRefreshSubmissions={() => void refreshSubmissions()}
           onRigsChange={() => void refreshPlatformContext()}
           onSelectLibrary={(position, itemId) =>
             setLibrarySelections((prev) => ({ ...prev, [String(position)]: itemId }))
           }
+          onMergeSourceChange={(elementKey, submissionId) =>
+            setMergeReview((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    rowSourceOverrides: {
+                      ...prev.rowSourceOverrides,
+                      [elementKey]: submissionId,
+                    },
+                  }
+                : prev,
+            )
+          }
+          onConfirmMergeSend={() => {
+            if (!mergeReview) return;
+            void queueBuildWithOverrides(mergeReview.rowSourceOverrides);
+          }}
+          onCancelMergeReview={() => setMergeReview(null)}
           proplaylistFile={proplaylistFile}
           onProplaylistFileChange={setProplaylistFile}
         />

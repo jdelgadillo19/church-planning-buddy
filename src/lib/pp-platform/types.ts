@@ -1,5 +1,7 @@
 import type { BundleSnapshot } from "@/lib/propresenter/bundle-sync/types";
 import type { MockCommitPlan } from "@/lib/slide-deck/mock-commit";
+import type { ImplementationPlan } from "@/lib/slide-deck/implementation-plan";
+import type { SlideDeckManifest } from "@/lib/slide-deck/types";
 
 export type PpRigRow = {
   id: string;
@@ -26,6 +28,22 @@ export type PpIndexSnapshotRow = {
   created_at: string;
 };
 
+export type SlideDeckSubmissionRow = {
+  id: string;
+  org_id: string;
+  plan_id: string;
+  service_type_id: string | null;
+  playlist_name: string;
+  created_by: string;
+  status: string;
+  commit_plan: MockCommitPlan;
+  library_selections: Record<string, string>;
+  manifest: SlideDeckManifest | null;
+  change_summary: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type SlideDeckBuildRow = {
   id: string;
   org_id: string;
@@ -35,6 +53,7 @@ export type SlideDeckBuildRow = {
   service_type_id: string | null;
   status: string;
   commit_plan: MockCommitPlan;
+  implementation_plan: ImplementationPlan | null;
   library_selections: Record<string, string>;
   change_summary: string | null;
   publish_after_apply: boolean;

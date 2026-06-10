@@ -1,4 +1,7 @@
 import type { MockCommitPlan } from "@/lib/slide-deck/mock-commit";
+import type { ImplementationPlan } from "@/lib/slide-deck/implementation-plan";
+import { attachElementKeys } from "@/lib/slide-deck/plan-element-key";
+import { librarySelectionForRow } from "@/lib/slide-deck/plan-element-key";
 import { createAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/admin";
 import type { SlideDeckBuildRow } from "./types";
 
@@ -20,7 +23,39 @@ export type CreateSlideDeckBuildInput = {
   changeSummary?: string;
   publishAfterApply?: boolean;
   baseSnapshotId?: string;
+  implementationPlan?: ImplementationPlan | null;
 };
+
+export function implementationPlanFromCommitPlan(
+  commitPlan: MockCommitPlan,
+  librarySelections: Record<string, string> = {},
+): ImplementationPlan {
+  const rows = attachElementKeys(commitPlan.playlistPreview);
+  const libByKey: Record<string, string> = {};
+  const implRows = rows.map((row, index) => {
+    const elementKey = row.elementKey!;
+    const lib = librarySelectionForRow(elementKey, row, librarySelections);
+    if (lib) libByKey[elementKey] = lib;
+    return {
+      elementKey,
+      row: { ...row, position: index + 1 },
+      sourceSubmissionId: "direct",
+      sourceUserId: "direct",
+      sourceCreatedAt: "",
+      autoSelected: true,
+      hadConflict: false,
+    };
+  });
+
+  return {
+    playlistName: commitPlan.playlistName,
+    planId: commitPlan.planId,
+    serviceDate: commitPlan.serviceDate,
+    rows: implRows,
+    librarySelections: libByKey,
+    mergeSummary: { conflictCount: 0, submissionIds: [] },
+  };
+}
 
 export async function createSlideDeckBuild(
   input: CreateSlideDeckBuildInput,
@@ -37,8 +72,9 @@ export async function createSlideDeckBuild(
       commit_plan: input.commitPlan,
       library_selections: input.librarySelections ?? {},
       change_summary: input.changeSummary ?? null,
-      publish_after_apply: input.publishAfterApply !== false,
+      publish_after_apply: input.publishAfterApply === true,
       base_snapshot_id: input.baseSnapshotId ?? null,
+      implementation_plan: input.implementationPlan ?? null,
       status: "pending",
     })
     .select("*")
@@ -122,7 +158,7 @@ export async function listClaimedBuildsForRig(rigId: string): Promise<SlideDeckB
     .from("slide_deck_builds")
     .select("*")
     .eq("rig_id", rigId)
-    .in("status", ["claimed", "applying"])
+    .in("status", ["claimed", "applying", "failed"])
     .order("created_at", { ascending: true });
 
   if (error) throw new Error(error.message);
@@ -143,6 +179,11 @@ export async function setBuildStatus(
   if (status === "applying") {
     patch.claimed_at = now;
   }
+  if (status === "claimed") {
+    patch.error_message = extra?.error_message ?? null;
+    patch.completed_at = null;
+    patch.result = null;
+  }
   if (status === "completed" || status === "failed") {
     patch.completed_at = now;
     patch.result = extra?.result ?? null;
@@ -158,4 +199,26 @@ export async function setBuildStatus(
 
   if (error || !data) throw new Error(error?.message ?? "Failed to update build.");
   return data as SlideDeckBuildRow;
+}
+
+export async function updateBuildImplementationPlan(
+  buildId: string,
+  implementationPlan: ImplementationPlan,
+): Promise<SlideDeckBuildRow> {
+  const supabase = requireAdmin();
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("slide_deck_builds")
+    .update({ implementation_plan: implementationPlan, updated_at: now })
+    .eq("id", buildId)
+    .select("*")
+    .single();
+
+  if (error || !data) throw new Error(error?.message ?? "Failed to update implementation plan.");
+  return data as SlideDeckBuildRow;
+}
+
+/** Reset a failed build so the rig operator can retry apply. */
+export async function resetBuildForRetry(buildId: string): Promise<SlideDeckBuildRow> {
+  return setBuildStatus(buildId, "claimed", { error_message: null, result: null });
 }

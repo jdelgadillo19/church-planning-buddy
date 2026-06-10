@@ -1,6 +1,7 @@
 import type { GoogleTokens } from "@/app/api/auth/google/_session";
 import { getAuthedClients, type GoogleOAuthConfig } from "@/lib/google/auth";
 import { applyCommitPlan, type ApplyCommitResult } from "@/lib/slide-deck/apply-commit";
+import { implementationPlanToCommitPlan } from "@/lib/slide-deck/implementation-plan";
 import { buildPublishBundleFromCommit } from "@/lib/slide-deck/load-bundle";
 import { publishSlideDeckPackage } from "@/lib/slide-deck/publish";
 import { resolveApplyContextFromClientPlan } from "@/lib/slide-deck/resolve-apply-context";
@@ -47,8 +48,12 @@ export async function runSlideDeckPublish(input: RunSlideDeckPublishInput) {
   const { build, applyResult } = input;
   requirePublishAuth(build, input.googleTokens, input.googleOAuth);
 
+  const commitPlan = build.implementation_plan
+    ? implementationPlanToCommitPlan(build.implementation_plan)
+    : build.commit_plan;
+
   const bundle = buildPublishBundleFromCommit(
-    build.commit_plan,
+    commitPlan,
     applyResult,
     build.service_type_id ? Number(build.service_type_id) : undefined,
   );
@@ -69,16 +74,21 @@ export async function runSlideDeckBuild(input: RunSlideDeckBuildInput) {
     throw new Error("PP_ALLOW_WRITES=true is required on the presentation rig.");
   }
 
-  const { commitPlan, templateItems, libraryIndex } = await resolveApplyContextFromClientPlan(
-    build.commit_plan,
-  );
+  const impl = build.implementation_plan;
+  const commitPlan = impl ? implementationPlanToCommitPlan(impl) : build.commit_plan;
+  const librarySelections = impl?.librarySelections ?? build.library_selections ?? {};
+  // Queued rig/agent builds always replace an existing Sunday playlist (replan).
+  const playlistResolution = "overwrite" as const;
+
+  const { commitPlan: resolvedPlan, templateItems, libraryIndex } =
+    await resolveApplyContextFromClientPlan(commitPlan);
 
   const applyResult = await applyCommitPlan({
-    commitPlan,
+    commitPlan: resolvedPlan,
     templateItems,
     libraryIndex,
-    playlistResolution: "reuse_empty",
-    librarySelections: build.library_selections,
+    playlistResolution,
+    librarySelections,
   });
 
   let publishResult;

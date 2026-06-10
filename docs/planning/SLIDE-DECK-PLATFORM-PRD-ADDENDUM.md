@@ -8,7 +8,7 @@
 
 ## Goal (one sentence)
 
-Any authorized church user builds a **Sunday slide deck plan** in the browser from **PCO + org ProPresenter index**; the **presentation rig** applies it via an **installable Mac client** — no terminal, no ProPresenter required for plan generation.
+Any authorized church user builds a **Sunday slide deck plan** in the browser from **PCO + org ProPresenter index**; collaborators **submit row-level drafts** that merge into an **implementation plan**; the **presentation rig** (Mac or Windows) applies it — no terminal, no ProPresenter required for plan generation.
 
 ---
 
@@ -16,7 +16,7 @@ Any authorized church user builds a **Sunday slide deck plan** in the browser fr
 
 | Actor | Capability |
 |-------|------------|
-| **Remote planner** (`planner`, `admin`) | Select PCO plan, preview commit JSON, queue build to org rig |
+| **Remote planner** (`planner`, `admin`) | Select PCO plan, preview commit, **submit draft**, merge on **Send to rig** |
 | **Rig operator** (`operator`, `admin`) | Install rig client, apply pending builds, refresh index |
 | **Org admin** | Pair rig to org, manage members, view audit |
 | **Presentation rig** | Sole apply authority — validates build against local index |
@@ -55,7 +55,22 @@ Unchanged: arrangement tile reorder not automatable; signoff before write; new p
 |----------------|-------------------|
 | Phase 1 scanner rig-local only | Phase 0 adds **cloud snapshot upload** API |
 | Phase 2 change sets | Unchanged timeline — **after** rig apply loop validated |
-| Rig pull approval | Phase 1 builds use simpler apply/skip; full conflict UI Phase 2 |
+| Rig pull approval | Phase 1 uses row-level merge at Send + rig source review; full PROPRESENTER-SYNC classifier Phase 2 |
+
+---
+
+## Submitted plan vs implementation plan
+
+| Artifact | Storage | Purpose |
+|----------|---------|---------|
+| **Submitted plan** | `slide_deck_submissions` | Per-user draft snapshot (`commit_plan`, `library_selections`, author) |
+| **Implementation plan** | `slide_deck_builds.implementation_plan` | Reconciled playlist rows + provenance; rig applies this |
+
+**Service scope:** `org_id` + `plan_id` + `service_type_id` + `playlist_name`.
+
+**Row identity (`elementKey`):** each playlist preview row — `song:{pcoItemId}` or `template:{correspondence|name}`.
+
+**Merge at Send:** auto-merge when no conflicts; merge review when multiple users touch the same row. Rig operator may override row source before Apply.
 
 ---
 
@@ -66,23 +81,26 @@ Unchanged: arrangement tile reorder not automatable; signoff before write; new p
 1. Build slide deck manifest from PCO plan (existing).
 2. Build commit preview from **latest org index snapshot** when ProPresenter not local.
 3. Show index freshness: *"Library index last updated {relative time} by {rig name}."*
-4. Primary action: **Send to presentation rig** (replaces agent/CLI primary UX).
-5. Job status with visible loading states and step labels.
-6. Org context on all builds (schema Phase 0; switcher UI Phase 1).
+4. **Submit draft** saves a row-level submission for the service scope.
+5. **Send to presentation rig** merges drafts → `implementation_plan` → queues build (merge review if conflicts).
+6. Job status with visible loading states and step labels.
+7. Org context on all builds (schema Phase 0; switcher UI Phase 1).
 
 ### Rig client ("Grapevine Rig")
 
 1. One-time pairing to org (admin-generated code).
 2. Periodic index scan → upload snapshot.
 3. Poll or receive pending builds for paired org/rig.
-4. Validate build against local index; apply or reject with reason.
-5. Optional: publish to Drive after apply (reuse existing publish path).
-6. UI: small persistent window; minimize to menu bar; **Apply Slide Deck** primary button.
-7. Phase 2: ProPresenter startup prompt for pending builds.
+4. Apply **implementation plan** (reconciled rows); operator may override per-row source before Apply.
+5. Replan apply uses playlist **overwrite** when target playlist is non-empty.
+6. Optional: publish to Drive after apply (soft-skip when export unavailable).
+7. UI: small persistent window; **Apply Slide Deck** primary button.
+8. Windows + Mac installable clients (PLATFORM-1.6.6).
+9. Phase 2: ProPresenter startup prompt for pending builds.
 
 ### Security
 
-- Per-rig Ed25519 keypair; private key in macOS Keychain.
+- Per-rig Ed25519 keypair; private key in OS credential store (Keychain / Windows Credential Manager).
 - No shared `SLIDE_DECK_AGENT_TOKEN` in production operator docs.
 - RLS: `org_id` on `pp_rigs`, `pp_index_snapshots`, `slide_deck_builds`.
 
@@ -102,10 +120,12 @@ Unchanged: arrangement tile reorder not automatable; signoff before write; new p
 ## Out of scope (this addendum)
 
 - Lyric tile reorder automation
-- Full PROPRESENTER-SYNC Phase 2 conflict classifier UI
-- Windows rig client
+- Full PROPRESENTER-SYNC Phase 2 conflict classifier UI (row-level merge covers Phase 1 pilot)
 - ProPresenter Cloud API
 - Replacing `.proplaylist` upload emergency path
+- Queue supersede / cancel UI (deferred)
+
+**In scope (PLATFORM-1.6):** Windows rig client for apply + scan.
 
 ---
 

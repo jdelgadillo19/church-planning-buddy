@@ -17,6 +17,7 @@ export async function runSlideDeckAgentJob(job: SlideDeckJobRow) {
       service_type_id: job.service_type_id,
       status: job.status,
       commit_plan: job.commit_plan,
+      implementation_plan: null,
       library_selections: job.library_selections,
       change_summary: null,
       publish_after_apply: job.publish_after_apply,

@@ -15,6 +15,17 @@ export function expectedNamesFromCommitPlan(commitPlan: MockCommitPlan): string[
   return commitPlan.playlistPreview.map((row) => row.name.trim()).filter(Boolean);
 }
 
+/** Ordered presentation names from items about to be PUT (post-skip resolution). */
+export function expectedNamesFromWriteItems(
+  items: Array<{ id: { name: string } }>,
+): string[] {
+  return items.map((item) => item.id.name.trim()).filter(Boolean);
+}
+
+export function allowPartialApply(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.PP_ALLOW_PARTIAL_APPLY === "true";
+}
+
 export type PlaylistMatchResult = {
   matched: boolean;
   differences: string[];

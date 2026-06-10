@@ -196,6 +196,94 @@
 
 ---
 
+## Epic PLATFORM-1.6: Submitted plans & implementation merge (Correct Course 2026-06)
+
+**User value:** Multiple planners submit row-level drafts; Send merges into one implementation plan; rig confirms sources before apply.
+
+### Story PLATFORM-1.6.1 — Row elementKey + merge engine
+
+**As** a platform engineer  
+**I want** stable row keys and a merge/diff engine  
+**So that** submissions combine without full overwrite
+
+**Acceptance criteria:**
+
+- [ ] `elementKey` + `pcoItemId` on each `MockCommitPlaylistRow`
+- [ ] `plan-element-key.ts`, `plan-merge.ts` with change score vs PCO baseline
+- [ ] Unit tests: WD songs + Pastor sermon combine; same-user song reorder
+
+---
+
+### Story PLATFORM-1.6.2 — Submissions table + Submit draft
+
+**As** a remote planner  
+**I want** to save a draft without sending to the rig  
+**So that** my work persists before others contribute
+
+**Acceptance criteria:**
+
+- [ ] `slide_deck_submissions` migration + RLS
+- [ ] `POST/GET /api/pp/submissions`
+- [ ] Hosted panel **Submit draft** + draft list for service scope
+
+---
+
+### Story PLATFORM-1.6.3 — Merge review on Send
+
+**As** a planner sending to the rig  
+**I want** conflict review when drafts overlap  
+**So that** I can combine WD + Pastor plans
+
+**Acceptance criteria:**
+
+- [ ] Auto-merge when no conflicts
+- [ ] Merge review UI with per-row source picker + auto-defaults
+- [ ] Same-user full vs selective overwrite
+- [ ] `implementation_plan` stored on build
+
+---
+
+### Story PLATFORM-1.6.4 — Rig implementation review UI
+
+**As** a rig operator  
+**I want** to see row sources before Apply  
+**So that** I can override merge defaults
+
+**Acceptance criteria:**
+
+- [ ] Rig shows implementation rows with author badges
+- [ ] Per-row source override when conflicts existed
+
+---
+
+### Story PLATFORM-1.6.5 — Apply from implementation + overwrite replan
+
+**As** a rig operator  
+**I want** replan apply to replace existing playlists  
+**So that** Sunday updates don't fail on conflict
+
+**Acceptance criteria:**
+
+- [ ] Worker reads `implementation_plan` when present
+- [ ] `playlistResolution: overwrite` for rig replans
+- [ ] INSTALL doc updated
+
+---
+
+### Story PLATFORM-1.6.6 — Windows rig client
+
+**As** a Windows presentation rig operator  
+**I want** Grapevine Rig on Windows  
+**So that** our true presentation PC can apply builds
+
+**Acceptance criteria:**
+
+- [ ] Tauri Windows build in CI
+- [ ] Node spawn on Windows; no AppleScript export
+- [ ] Credential Manager for pairing secrets
+
+---
+
 ## Epic PLATFORM-2: Remote editor sync (Phase 2, weeks 5–8)
 
 **User value:** Remote editors pull scoped files, edit in ProPresenter, push change sets for rig review.

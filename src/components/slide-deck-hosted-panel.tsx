@@ -2,12 +2,16 @@
 
 import {
   ambiguousSongRows,
+  missingSongRows,
   SlideDeckLibraryDisambiguation,
+  SlideDeckMissingSongs,
   unresolvedAmbiguousRows,
 } from "@/components/slide-deck-library-match";
 import { SlideDeckRigAdmin } from "@/components/slide-deck-rig-admin";
 import { buildStatusTone, formatBuildStatus } from "@/lib/slide-deck/build-status";
+import type { ImplementationPlan } from "@/lib/slide-deck/implementation-plan";
 import type { MockCommitPlan } from "@/lib/slide-deck/mock-commit";
+import type { MergeConflict } from "@/lib/slide-deck/plan-merge";
 import type { SlideDeckManifest } from "@/lib/slide-deck/types";
 
 type BuildJob = {
@@ -18,6 +22,14 @@ type BuildJob = {
   created_at?: string;
   change_summary?: string | null;
   result?: { publish?: { driveFolderUrl?: string }; publishWarning?: string } | null;
+};
+
+type SubmissionDraft = {
+  id: string;
+  created_by: string;
+  created_at: string;
+  change_summary: string | null;
+  status: string;
 };
 
 type Rig = {
@@ -42,14 +54,26 @@ type Props = {
   librarySelections: Record<string, string>;
   indexMeta: IndexMeta;
   builds: BuildJob[];
+  submissions: SubmissionDraft[];
   rigs: Rig[];
   orgId: string | null;
   isAdmin: boolean;
   queueBusy: boolean;
+  submitBusy: boolean;
+  mergeReview: {
+    conflicts: MergeConflict[];
+    implementationPlan: ImplementationPlan;
+    rowSourceOverrides: Record<string, string>;
+  } | null;
   onQueueBuild: () => void;
+  onSubmitDraft: () => void;
   onRefreshBuilds: () => void;
+  onRefreshSubmissions: () => void;
   onRigsChange: () => void;
   onSelectLibrary: (position: number, itemId: string) => void;
+  onMergeSourceChange: (elementKey: string, submissionId: string) => void;
+  onConfirmMergeSend: () => void;
+  onCancelMergeReview: () => void;
   proplaylistFile: File | null;
   onProplaylistFileChange: (file: File | null) => void;
 };
@@ -64,6 +88,14 @@ function cliPublishCommand(planId: string, serviceTypeId: string) {
   return `npm run slide-deck:publish -- ${planId.trim()}${st}`;
 }
 
+function formatSubmissionTime(iso: string) {
+  try {
+    return new Date(iso).toLocaleString();
+  } catch {
+    return iso;
+  }
+}
+
 export function SlideDeckHostedPanel({
   planId,
   serviceTypeId,
@@ -72,21 +104,33 @@ export function SlideDeckHostedPanel({
   librarySelections,
   indexMeta,
   builds,
+  submissions,
   rigs,
   orgId,
   isAdmin,
   queueBusy,
+  submitBusy,
+  mergeReview,
   onQueueBuild,
+  onSubmitDraft,
   onRefreshBuilds,
+  onRefreshSubmissions,
   onRigsChange,
   onSelectLibrary,
+  onMergeSourceChange,
+  onConfirmMergeSend,
+  onCancelMergeReview,
   proplaylistFile,
   onProplaylistFileChange,
 }: Props) {
   const rigNameById = new Map(rigs.map((r) => [r.id, r.displayName]));
   const ambiguousRows = ambiguousSongRows(commitPlan);
   const unresolvedRows = unresolvedAmbiguousRows(commitPlan, librarySelections);
-  const sendBlocked = !commitPlan || unresolvedRows.length > 0;
+  const missingRows = missingSongRows(commitPlan);
+  const sendBlocked =
+    !commitPlan || unresolvedRows.length > 0 || missingRows.length > 0;
+  const draftCount = submissions.length;
+
   function downloadBundle() {
     if (!manifest || !commitPlan) return;
     const blob = new Blob(
@@ -128,8 +172,9 @@ export function SlideDeckHostedPanel({
     <section className="flex flex-col gap-4 rounded-xl border border-sky-200 bg-sky-50 p-5 text-sm text-sky-950 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100">
       <h2 className="text-base font-medium">Send to presentation rig</h2>
       <p>
-        Build your preview here, then queue the deck for your church&apos;s presentation Mac.
-        Grapevine Rig (installable app, Phase 1) applies the build — no terminal required.
+        Build your preview, <strong>submit a draft</strong> to save your row-level plan, then{" "}
+        <strong>send to rig</strong> when ready. Multiple planners can submit; Send merges drafts
+        automatically when there are no conflicts.
       </p>
 
       {indexMeta ? (
@@ -155,13 +200,116 @@ export function SlideDeckHostedPanel({
         </p>
       )}
 
+      {commitPlan?.warnings?.length ? (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-100">
+          <p className="font-medium">Preview warnings</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4 opacity-90">
+            {commitPlan.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <SlideDeckMissingSongs rows={missingRows} />
+
       <SlideDeckLibraryDisambiguation
         rows={ambiguousRows}
         librarySelections={librarySelections}
         onSelectLibrary={onSelectLibrary}
       />
 
+      {draftCount > 0 ? (
+        <div className="rounded-lg border border-sky-300/60 bg-white/50 px-3 py-2 dark:border-sky-800 dark:bg-sky-900/30">
+          <p className="text-xs font-medium">Draft submissions for this service ({draftCount})</p>
+          <ul className="mt-1 space-y-1 text-xs opacity-90">
+            {submissions.map((s) => (
+              <li key={s.id}>
+                <span className="font-mono">{s.id.slice(0, 8)}…</span> —{" "}
+                {s.change_summary ?? "Draft"} — {formatSubmissionTime(s.created_at)}
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            disabled={queueBusy}
+            onClick={onRefreshSubmissions}
+            className="mt-2 text-xs underline opacity-80"
+          >
+            Refresh drafts
+          </button>
+        </div>
+      ) : null}
+
+      {mergeReview ? (
+        <div className="rounded-lg border border-amber-400 bg-amber-50 px-3 py-3 dark:border-amber-700 dark:bg-amber-950/50">
+          <p className="text-sm font-medium text-amber-950 dark:text-amber-100">
+            Merge review required ({mergeReview.conflicts.length} conflict
+            {mergeReview.conflicts.length === 1 ? "" : "s"})
+          </p>
+          <p className="mt-1 text-xs opacity-90">
+            Multiple drafts changed the same playlist rows. Pick which submission wins for each row,
+            then confirm send.
+          </p>
+          <ul className="mt-3 flex flex-col gap-2">
+            {mergeReview.conflicts.map((conflict) => {
+              const selected =
+                mergeReview.rowSourceOverrides[conflict.elementKey] ??
+                conflict.candidates[0]?.submissionId ??
+                "";
+              const rowName =
+                conflict.candidates.find((c) => c.submissionId === selected)?.row.name ??
+                conflict.elementKey;
+              return (
+                <li
+                  key={conflict.elementKey}
+                  className="flex flex-col gap-1 rounded border border-amber-300/60 bg-white/60 px-2 py-2 dark:border-amber-800 dark:bg-amber-950/30"
+                >
+                  <span className="text-xs font-medium">{rowName}</span>
+                  <span className="font-mono text-[10px] opacity-70">{conflict.elementKey}</span>
+                  <select
+                    value={selected}
+                    onChange={(e) => onMergeSourceChange(conflict.elementKey, e.target.value)}
+                    className="rounded border border-amber-400 bg-white px-2 py-1 text-xs dark:border-amber-700 dark:bg-zinc-900"
+                  >
+                    {conflict.candidates.map((c) => (
+                      <option key={c.submissionId} value={c.submissionId}>
+                        {c.row.name} — score {c.changeScore} —{" "}
+                        {formatSubmissionTime(c.createdAt)}
+                      </option>
+                    ))}
+                  </select>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={queueBusy}
+              onClick={onConfirmMergeSend}
+              className="h-9 rounded-lg bg-amber-800 px-3 text-xs font-medium text-white disabled:opacity-50 dark:bg-amber-700"
+            >
+              {queueBusy ? "Sending…" : "Confirm and send to rig"}
+            </button>
+            <button
+              type="button"
+              disabled={queueBusy}
+              onClick={onCancelMergeReview}
+              className="h-9 rounded-lg border border-amber-700 px-3 text-xs dark:border-amber-600"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="flex flex-col gap-2">
+        {missingRows.length > 0 ? (
+          <p className="text-xs text-red-900 dark:text-red-100">
+            Resolve {missingRows.length} missing song(s) above before submitting or sending.
+          </p>
+        ) : null}
         {unresolvedRows.length > 0 ? (
           <p className="text-xs text-amber-900 dark:text-amber-100">
             Choose a library variant for {unresolvedRows.length} song(s) above before sending.
@@ -170,7 +318,15 @@ export function SlideDeckHostedPanel({
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={queueBusy || sendBlocked}
+            disabled={submitBusy || sendBlocked}
+            onClick={onSubmitDraft}
+            className="h-11 rounded-lg border border-sky-700 px-4 text-sm font-medium dark:border-sky-500 disabled:opacity-50"
+          >
+            {submitBusy ? "Submitting draft…" : "Submit draft"}
+          </button>
+          <button
+            type="button"
+            disabled={queueBusy || sendBlocked || Boolean(mergeReview)}
             onClick={onQueueBuild}
             className="h-11 rounded-lg bg-sky-800 px-4 text-sm font-medium text-white disabled:opacity-50 dark:bg-sky-600"
           >

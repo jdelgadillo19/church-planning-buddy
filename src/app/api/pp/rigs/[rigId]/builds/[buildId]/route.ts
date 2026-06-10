@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { getBuildById, setBuildStatus } from "@/lib/pp-platform/builds";
+import {
+  getBuildById,
+  resetBuildForRetry,
+  setBuildStatus,
+  updateBuildImplementationPlan,
+} from "@/lib/pp-platform/builds";
 import { authenticateRigOrBootstrap } from "@/lib/pp-platform/rig-auth";
 import type { SlideDeckBuildRow } from "@/lib/pp-platform/types";
 
@@ -26,9 +31,21 @@ export async function PATCH(req: Request, context: RouteContext) {
       status?: SlideDeckBuildRow["status"];
       result?: SlideDeckBuildRow["result"];
       error?: string;
+      implementationPlan?: SlideDeckBuildRow["implementation_plan"];
+      resetToClaimed?: boolean;
     };
 
-    const allowed = new Set(["applying", "completed", "failed"]);
+    if (body.resetToClaimed) {
+      const updated = await resetBuildForRetry(buildId);
+      return NextResponse.json({ ok: true, build: updated });
+    }
+
+    const allowed = new Set(["applying", "completed", "failed", "claimed"]);
+    if (body.implementationPlan && !body.status) {
+      const updated = await updateBuildImplementationPlan(buildId, body.implementationPlan);
+      return NextResponse.json({ ok: true, build: updated });
+    }
+
     if (!body.status || !allowed.has(body.status)) {
       return NextResponse.json({ ok: false, error: "Invalid status." }, { status: 400 });
     }

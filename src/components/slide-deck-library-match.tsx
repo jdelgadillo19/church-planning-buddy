@@ -1,19 +1,19 @@
 "use client";
 
 import type { MockCommitPlaylistRow } from "@/lib/slide-deck/mock-commit";
+import {
+  missingSongRows,
+  unresolvedAmbiguousRows as unresolvedAmbiguousRowsGuard,
+} from "@/lib/slide-deck/commit-guards";
 import type { LibraryMatchResult } from "@/lib/propresenter/library-read";
+
+export { missingSongRows };
 
 export function unresolvedAmbiguousRows(
   commitPlan: { playlistPreview: MockCommitPlaylistRow[] } | null,
   librarySelections: Record<string, string>,
 ): MockCommitPlaylistRow[] {
-  if (!commitPlan) return [];
-  return commitPlan.playlistPreview.filter(
-    (row) =>
-      row.kind === "song_add" &&
-      row.libraryMatch?.status === "ambiguous" &&
-      !librarySelections[String(row.position)],
-  );
+  return unresolvedAmbiguousRowsGuard(commitPlan, librarySelections);
 }
 
 export function ambiguousSongRows(
@@ -79,6 +79,33 @@ export function LibraryMatchPicker({
     <span className="text-red-700 dark:text-red-300" title={match.note}>
       Not found{match.note ? ` — ${match.note}` : ""}
     </span>
+  );
+}
+
+export function SlideDeckMissingSongs({
+  rows,
+}: {
+  rows: MockCommitPlaylistRow[];
+}) {
+  if (rows.length === 0) return null;
+
+  return (
+    <section className="flex flex-col gap-3 rounded-lg border border-red-300 bg-red-50/80 p-4 dark:border-red-800 dark:bg-red-950/30">
+      <div>
+        <h3 className="text-sm font-medium text-red-950 dark:text-red-100">
+          Songs missing from ProPresenter library
+        </h3>
+        <p className="mt-1 text-xs text-red-900/90 dark:text-red-100/80">
+          Add these songs in ProPresenter on the presentation rig, click <strong>Scan now</strong> in
+          Grapevine Rig, then refresh this preview before submitting or sending.
+        </p>
+      </div>
+      <ul className="list-disc space-y-1 pl-5 text-sm text-red-900 dark:text-red-100">
+        {rows.map((row) => (
+          <li key={row.position}>{row.pcoTitle ?? row.name}</li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

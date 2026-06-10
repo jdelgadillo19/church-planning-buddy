@@ -13,6 +13,7 @@ import type { ApplyCommitResult } from "@/lib/slide-deck/apply-commit";
 import { runSlideDeckBuild, runSlideDeckPublish } from "@/lib/slide-deck/run-build";
 import type { SlideDeckBuildRow } from "@/lib/pp-platform/types";
 import type { GoogleTokens } from "@/app/api/auth/google/_session";
+import { PlaylistConflictError } from "@/lib/propresenter/playlist-write";
 import { softenPublishWarning } from "@/lib/slide-deck/publish-warning";
 
 function rigAuthHeader() {
@@ -223,6 +224,19 @@ async function main() {
       method: "PATCH",
       body: JSON.stringify({ status: "failed", error: message }),
     });
+
+    if (e instanceof PlaylistConflictError) {
+      logWorkerResult({
+        ok: false,
+        conflict: true,
+        playlistId: e.playlistId,
+        playlistName: e.playlistName,
+        itemCount: e.itemCount,
+        message: e.message,
+      });
+      process.exit(0);
+    }
+
     throw e;
   }
 }
