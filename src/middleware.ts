@@ -9,7 +9,7 @@ import {
   isRigCorsApiPath,
   rigCorsPreflightResponse,
 } from "@/lib/http/rig-cors";
-import { isRigMachineBypassRequest } from "@/lib/pp-platform/rig-auth";
+import { isRigMachineBypassRequest } from "@/lib/pp-platform/rig-middleware-bypass";
 import { isGrapevineAuthEnabled } from "@/lib/supabase/config";
 
 const PUBLIC_PREFIXES = ["/login", "/auth/"];

@@ -42,7 +42,10 @@ export async function fetchGoogleDocument(
   });
 
   if (!res.ok) {
-    throw new Error(`Google Docs API ${res.status}: could not read document.`);
+    const detail = await res.text().catch(() => "");
+    throw new Error(
+      `Google Docs API ${res.status}: could not read document${documentId ? ` (${documentId})` : ""}.${detail ? ` ${detail.slice(0, 120)}` : ""}`,
+    );
   }
 
   const doc = (await res.json()) as docs_v1.Schema$Document;

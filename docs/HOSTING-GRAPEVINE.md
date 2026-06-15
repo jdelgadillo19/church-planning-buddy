@@ -116,9 +116,11 @@ Or the reverse — just use one consistently everywhere (Site URL, bookmarks, OA
 ```bash
 cd church-planning-buddy
 npm install
-npm run deploy:cf    # build + deploy Worker
+npm run deploy:cf    # build + deploy Worker (rebakes Drive folder IDs from .env.local)
 npm run env:cf       # sync .env.local secrets/vars (sets prod Google redirect URI)
 ```
+
+After changing **Drive folder or template IDs** (`GRG_*`, `PP_*`), run **`deploy:cf`** — not only `env:cf`. OpenNext bakes those vars into the Worker bundle at build time.
 
 `env:cf` sets `GOOGLE_REDIRECT_URI` to `https://grapevineprep.com/api/auth/google/callback` automatically.
 

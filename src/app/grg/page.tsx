@@ -1059,13 +1059,23 @@ export default function Home() {
     setError(null);
     setPcoUploadResult(null);
     try {
+      let exportDocId = grgDoc.id;
+      if (googleConnected && grgTitle.trim()) {
+        try {
+          const lookup = await lookupGrgOnDrive(grgTitle);
+          if (lookup.output?.id) exportDocId = lookup.output.id;
+        } catch {
+          /* export API also resolves by title server-side */
+        }
+      }
+
       const res = await fetch("/api/mvp/export-grg", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           planId: String(bundle.planId),
           serviceTypeId: String(bundle.serviceTypeId),
-          grgDocId: grgDoc.id,
+          grgDocId: exportDocId,
           grgTitle: grgTitle.trim(),
         }),
       });

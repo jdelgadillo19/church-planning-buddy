@@ -389,6 +389,29 @@ export async function exportGoogleDocPdfForTokens(
   return exportGoogleDocPdfFetch(accessToken, fileId);
 }
 
+/** Prefer the dated output Google Doc in the Output folder over a client-supplied id. */
+export async function resolveGrgExportFileId(
+  tokens: GoogleTokens,
+  opts: { grgDocId: string; outputTitle: string; outputFolderId?: string },
+): Promise<{ fileId: string; source: "output-folder-title" | "client-id" }> {
+  const accessToken = await resolveGoogleAccessToken(tokens);
+  if (!accessToken) throw new Error("Google access token unavailable.");
+
+  const folderId = opts.outputFolderId?.trim() || process.env.GRG_OUTPUT_FOLDER_ID?.trim();
+  if (folderId) {
+    const byTitle = await driveFindDocByTitleInParentFetch(
+      accessToken,
+      opts.outputTitle,
+      folderId,
+    );
+    if (byTitle?.id) {
+      return { fileId: byTitle.id, source: "output-folder-title" };
+    }
+  }
+
+  return { fileId: opts.grgDocId, source: "client-id" };
+}
+
 export async function driveListDocNamesInFolderFetch(
   accessToken: string,
   folderId: string,

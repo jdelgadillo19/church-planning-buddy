@@ -9,6 +9,7 @@ import {
 } from "./drive-files";
 
 const FOLDER_MIME = "application/vnd.google-apps.folder";
+const GOOGLE_DOC_MIME = "application/vnd.google-apps.document";
 
 function escapeDriveQueryValue(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll("'", "\\'");
@@ -155,20 +156,31 @@ export async function findGrgTemplateDoc(
 ): Promise<DriveCandidate> {
   let idLookupCode: number | undefined;
 
+  // Prefer folder + title when folder ID is configured (stable after Drive conversion / env drift).
+  const refs = resolveGrgDriveFolderRefs();
+  if (refs.templateFolderId) {
+    const byFolderId = await findDocByTitleInFolder(drive, refs.templateFolderId, ref.title);
+    if (byFolderId) return byFolderId;
+  }
+
   if (ref.id) {
     const byId = await findDocByIdWithAccess(tokens, ref.id);
-    if (byId.ok) return byId.doc;
-    idLookupCode = byId.code;
-    if (byId.code === 403) {
+    if (byId.ok) {
+      if (byId.doc.mimeType === GOOGLE_DOC_MIME) return byId.doc;
+      // Stale ID after Drive conversion (e.g. .docx → native Google Doc) — fall through to folder lookup.
+    } else {
+      idLookupCode = byId.code;
+      if (byId.code === 403) {
+        throw new Error(byId.message);
+      }
+      if (byId.code === 404) {
+        throw new Error(
+          `Template ID \`${ref.id}\` not visible to the connected Google account (Drive returned 404). ` +
+            "Open the doc in Drive while signed in as the same account, or use Connect Google with the church Drive account.",
+        );
+      }
       throw new Error(byId.message);
     }
-    if (byId.code === 404) {
-      throw new Error(
-        `Template ID \`${ref.id}\` not visible to the connected Google account (Drive returned 404). ` +
-          "Open the doc in Drive while signed in as the same account, or use Connect Google with the church Drive account.",
-      );
-    }
-    throw new Error(byId.message);
   }
 
   const folderId = await resolveGrgTemplateFolderId(drive);

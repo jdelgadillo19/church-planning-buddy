@@ -14,6 +14,8 @@
     "start": "next start",
     "lint": "eslint",
     "sync:roster-map": "npx tsx scripts/sync-roster-position-map.ts",
+    "drive:layout-list": "npx tsx scripts/resolve-grapevine-drive-layout.ts --list",
+    "drive:layout-resolve": "npx tsx scripts/resolve-grapevine-drive-layout.ts",
     "pp:status": "npx tsx scripts/propresenter-probe.ts --status",
     "pp:diagnose": "npx tsx scripts/propresenter-probe.ts --diagnose",
     "pp:probe": "npx tsx scripts/propresenter-probe.ts",

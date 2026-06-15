@@ -34,9 +34,11 @@ Shared drive: Saddleback Berlin — Grapevine
 │       └── Get Ready Guide YYYY.MM.DD     ← recreated each Apply run
 ├── Song Scans/                            ← PCO-linked scan library (read for all planners)
 │   └── … (existing scan tree)
-└── Slide Deck/                            ← optional; rig Drive publish target if used
+└── Slide Deck/                            ← legacy; see filebase-architecture.md for Services/ + Filebase/
     └── …
 ```
+
+**Presentation filebase:** See **[`filebase-architecture.md`](./filebase-architecture.md)** for `Filebase/`, `Services/{date}/`, selective pull, and Gameday package layout.
 
 ### Membership (Shared drive)
 
@@ -134,3 +136,6 @@ Missing songs: [`new-song-entry-workflow.md`](./new-song-entry-workflow.md) — 
 | [`INSTALL-GRAPEVINE-RIG.md`](../INSTALL-GRAPEVINE-RIG.md) | Rig install, pair, troubleshoot |
 | [`STARTUP-GUIDE.md`](../STARTUP-GUIDE.md) | Sunday workflow, ship rig build |
 | [`SLIDE-DECK-PLATFORM-PRD-ADDENDUM.md`](./SLIDE-DECK-PLATFORM-PRD-ADDENDUM.md) | Product rules for web + rig |
+| [`filebase-architecture.md`](./filebase-architecture.md) | GDrive filebase, selective pull, Gameday packages |
+| [`m0-drive-repoint.md`](./m0-drive-repoint.md) | Re-point GRG + PP env to new layout root |
+| [`filebase-migration-plan.md`](./filebase-migration-plan.md) | M0–M5 strangler migration from existing code |
