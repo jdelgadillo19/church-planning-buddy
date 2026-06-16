@@ -197,6 +197,22 @@ See `docs/PROPRESENTER-PUBLISH.md`, `docs/planning/SLIDE-DECK-PHASE-0-SPEC.md`, 
 
 Wired: `wrangler.jsonc`, `open-next.config.ts`, `public/_headers`.
 
+### Grapevine Rig installers (R2)
+
+Permanent operator download URLs are served from R2 via `/downloads/*` routes. **One-time setup:**
+
+1. Enable **R2** in [Cloudflare Dashboard](https://dash.cloudflare.com/) → R2 → Enable R2
+2. Create bucket: `npx wrangler r2 bucket create grapevine-rig-downloads`
+3. Uncomment `r2_buckets` in `wrangler.jsonc` (binding `RIG_DOWNLOADS` → `grapevine-rig-downloads`), then `npm run deploy:cf`
+3. GitHub repo secrets for rig release CI:
+   - `CLOUDFLARE_API_TOKEN` — R2 Object Write on this bucket
+   - `CLOUDFLARE_ACCOUNT_ID`
+4. After deploy, seed installers: `npm run rig:upload-downloads -- --mac … --win … --version x.y.z`
+
+Each `grapevine-rig-v*` tag overwrites the same R2 keys; login-page links never change.
+
+Until R2 is enabled, `/downloads/*` routes redirect to the latest GitHub Release asset (same permanent URLs on grapevineprep.com).
+
 ```bash
 npm install
 npm run env:cf

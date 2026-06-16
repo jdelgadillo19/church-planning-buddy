@@ -87,7 +87,14 @@ Expect ~7 min build + upload. Success ends with `Deployed grapevine-prep` and cu
 2. `npm run rig:prepare` (rebuilds `worker.mjs` into Tauri resources)
 3. Commit, push `main`
 4. `git tag grapevine-rig-v0.2.x && git push origin grapevine-rig-v0.2.x`
-5. GitHub Actions **Grapevine Rig Release** → download `.dmg` / Windows installer
+5. GitHub Actions **Grapevine Rig Release** → uploads to R2 (permanent download URLs) + GitHub Release archive
+
+**Operator download URLs** (never change; R2 object overwritten each release):
+
+- macOS: `https://grapevineprep.com/downloads/grapevine-rig-macos.dmg`
+- Windows: `https://grapevineprep.com/downloads/grapevine-rig-windows-setup.exe`
+
+Manual bootstrap: `npm run rig:upload-downloads -- --mac … --win … --version x.y.z`
 
 Operator install: [`INSTALL-GRAPEVINE-RIG.md`](./INSTALL-GRAPEVINE-RIG.md)
 

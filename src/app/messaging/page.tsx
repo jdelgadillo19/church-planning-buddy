@@ -6,6 +6,21 @@ import { ToolShell } from "@/components/tool-shell";
 import type { PendingDraft } from "@/lib/messaging/pending-drafts";
 import type { MessagingConfig, MessagingHealthResult, SendPlan } from "@/lib/messaging/types";
 
+async function parseApiJson(res: Response): Promise<{
+  health?: MessagingHealthResult | null;
+  error?: string;
+  sendPlan?: SendPlan;
+  result?: {
+    sendPlan?: SendPlan;
+    awaitingForward?: boolean;
+    deliveryChannels?: string[];
+    error?: string;
+    ok?: boolean;
+  };
+}> {
+  return res.json();
+}
+
 export default function MessagingPage() {
   const [config, setConfig] = useState<MessagingConfig | null>(null);
   const [workflowId, setWorkflowId] = useState("");
@@ -85,7 +100,7 @@ export default function MessagingPage() {
           purpose: activeWorkflow?.purpose,
         }),
       });
-      const data = await res.json();
+      const data = await parseApiJson(res);
       setHealth(data.health as MessagingHealthResult);
       if (!data.health?.ok) setError("Health check has blocking issues.");
       else setMessage("Health check passed.");
@@ -107,12 +122,12 @@ export default function MessagingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workflowId, group }),
       });
-      const data = await res.json();
+      const data = await parseApiJson(res);
       if (!res.ok) {
         setHealth(data.health ?? null);
         throw new Error(data.error ?? "Preview failed");
       }
-      setHealth(data.health);
+      setHealth(data.health ?? null);
       setPreview(data.sendPlan as SendPlan);
       setMessage("Preview ready.");
     } catch (e) {
@@ -134,7 +149,7 @@ export default function MessagingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workflowId, group }),
       });
-      const data = await res.json();
+      const data = await parseApiJson(res);
       if (!res.ok) throw new Error(data.error ?? "Prepare failed");
       const result = data.result;
       if (result?.sendPlan) setPreview(result.sendPlan);
@@ -187,7 +202,7 @@ export default function MessagingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ workflowId, group, confirmSend, dryRun: false }),
       });
-      const data = await res.json();
+      const data = await parseApiJson(res);
       if (!res.ok) throw new Error(data.error ?? "Send failed");
       const result = data.result;
       if (result?.sendPlan) setPreview(result.sendPlan);

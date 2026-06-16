@@ -27,6 +27,7 @@
     "rig:prepare": "node scripts/grapevine-rig-prepare.mjs",
     "rig:publish-smoke": "npx tsx scripts/grapevine-rig-publish-smoke-test.ts",
     "rig:build": "npm run rig:prepare && npm run rig:tauri:build",
+    "rig:upload-downloads": "node scripts/upload-rig-downloads.mjs",
     "rig:tauri:build": "cd apps/grapevine-rig && npm install && npm run tauri build",
     "slide-deck:manifest": "npx tsx scripts/slide-deck-manifest.ts",
     "slide-deck:apply": "npx tsx scripts/slide-deck-apply.ts",

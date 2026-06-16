@@ -12,7 +12,7 @@ import {
 import { isRigMachineBypassRequest } from "@/lib/pp-platform/rig-middleware-bypass";
 import { isGrapevineAuthEnabled } from "@/lib/supabase/config";
 
-const PUBLIC_PREFIXES = ["/login", "/auth/"];
+const PUBLIC_PREFIXES = ["/login", "/auth/", "/downloads/"];
 const GOOGLE_OAUTH_CALLBACK = "/api/auth/google/callback";
 
 function isPublicPath(pathname: string): boolean {

@@ -11,9 +11,16 @@ Grapevine Rig is the presentation-rig app that applies slide decks to ProPresent
 
 ## 1. Download
 
-1. Open the project **GitHub Releases** page.
-2. Find the latest release tagged `grapevine-rig-v*`.
-3. Download **`Grapevine-Rig-*-macos.dmg`** (Mac) or **`Grapevine-Rig-*-windows-setup.exe`** (Windows).
+**Permanent links** (always the latest build — bookmark these):
+
+| Platform | URL |
+|----------|-----|
+| macOS | https://grapevineprep.com/downloads/grapevine-rig-macos.dmg |
+| Windows | https://grapevineprep.com/downloads/grapevine-rig-windows-setup.exe |
+
+Also on the [grapevineprep.com login page](https://grapevineprep.com/login) under **Presentation rig**.
+
+**Archive:** versioned builds remain on the project [GitHub Releases](https://github.com/jdelgadillo19/church-planning-buddy/releases) (`grapevine-rig-v*` tags).
 
 Mac builds from **v0.1.7** onward are **universal** (Intel + Apple Silicon).
 

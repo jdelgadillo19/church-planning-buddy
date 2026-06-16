@@ -3,17 +3,14 @@
 # Usage: powershell -ExecutionPolicy Bypass -File envy-rig-setup.ps1
 
 $ErrorActionPreference = "Stop"
-$RigVersion = "0.2.7"
-$ReleaseTag = "grapevine-rig-v$RigVersion"
-$Repo = "jdelgadillo19/church-planning-buddy"
-$InstallerName = "Grapevine-Rig-$RigVersion-windows-setup.exe"
+$DownloadUrl = "https://grapevineprep.com/downloads/grapevine-rig-windows-setup.exe"
+$InstallerName = "grapevine-rig-windows-setup.exe"
 $DownloadDir = Join-Path $env:USERPROFILE "Downloads"
 $InstallerPath = Join-Path $DownloadDir $InstallerName
-$ApiUrl = "https://api.github.com/repos/$Repo/releases/tags/$ReleaseTag"
 
 Write-Host ""
 Write-Host "=== Grapevine Rig setup (HP Envy) ===" -ForegroundColor Cyan
-Write-Host "Target version: $RigVersion"
+Write-Host "Download: $DownloadUrl"
 Write-Host ""
 
 # 1. Node.js (required for Apply / Scan workers)
@@ -40,21 +37,15 @@ Write-Host "  - Settings -> Network -> Enable Network ON"
 Write-Host "  - Note the TCP/IP Port ID for Grapevine Rig settings"
 Write-Host "  (This script cannot verify ProPresenter automatically.)"
 
-# 3. Download installer
+# 3. Download installer (permanent grapevineprep.com URL)
 Write-Host ""
 Write-Host "[3/4] Downloading $InstallerName..." -ForegroundColor Yellow
 try {
-    $release = Invoke-RestMethod -Uri $ApiUrl -Headers @{ "User-Agent" = "grapevine-rig-setup" }
-    $asset = $release.assets | Where-Object { $_.name -eq $InstallerName } | Select-Object -First 1
-    if (-not $asset) {
-        $names = ($release.assets | ForEach-Object { $_.name }) -join ", "
-        throw "Asset '$InstallerName' not found. Available: $names"
-    }
-    Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $InstallerPath -UseBasicParsing
+    Invoke-WebRequest -Uri $DownloadUrl -OutFile $InstallerPath -UseBasicParsing
     Write-Host "  OK: Saved to $InstallerPath" -ForegroundColor Green
 } catch {
     Write-Host "  FAIL: $($_.Exception.Message)" -ForegroundColor Red
-    Write-Host "  Manual download: https://github.com/$Repo/releases/tag/$ReleaseTag"
+    Write-Host "  Manual download: $DownloadUrl"
     exit 1
 }
 

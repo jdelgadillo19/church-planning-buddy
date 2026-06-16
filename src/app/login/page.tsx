@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { LoginForm } from "./login-form";
+import { RigDownloadLinks } from "@/components/rig-download-links";
 import { createClientIfConfigured } from "@/lib/supabase/server";
 import { userHasOrgAccess } from "@/lib/supabase/membership";
 import { isGrapevineAuthEnabled } from "@/lib/supabase/config";
@@ -62,6 +63,7 @@ export default async function LoginPage({ searchParams }: PageProps) {
         </p>
       ) : null}
       <LoginForm redirectTo={params.next} />
+      <RigDownloadLinks />
     </div>
   );
 }
