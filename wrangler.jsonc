@@ -17,8 +17,12 @@
   "images": {
     "binding": "IMAGES"
   },
-  // Enable after R2 is activated in Cloudflare Dashboard:
-  // "r2_buckets": [{ "binding": "RIG_DOWNLOADS", "bucket_name": "grapevine-rig-downloads" }],
+  "r2_buckets": [
+    {
+      "binding": "RIG_DOWNLOADS",
+      "bucket_name": "grapevine-rig-downloads"
+    }
+  ],
   "observability": {
     "enabled": true
   },

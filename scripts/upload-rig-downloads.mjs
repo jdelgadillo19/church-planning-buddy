@@ -48,14 +48,12 @@ function putObject({ platform, filePath, version }) {
     "object",
     "put",
     `${BUCKET}/${key}`,
+    "--remote",
     "--file",
     resolved,
     "--content-type",
     CONTENT_TYPES[platform],
   ];
-  if (version) {
-    args.push("--custom-metadata", `version=${version}`);
-  }
 
   console.log(`Uploading ${resolved} → r2://${BUCKET}/${key}`);
   const result = spawnSync("npx", args, {

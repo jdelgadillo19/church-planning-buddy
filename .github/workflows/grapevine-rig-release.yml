@@ -94,9 +94,9 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#grapevine-rig-v}"
           npx wrangler r2 object put grapevine-rig-downloads/grapevine-rig-macos.dmg \
+            --remote \
             --file="release-assets/Grapevine-Rig-${VERSION}-macos.dmg" \
-            --content-type=application/x-apple-diskimage \
-            --custom-metadata "version=${VERSION}"
+            --content-type=application/x-apple-diskimage
 
   build-windows-nsis:
     runs-on: windows-latest
@@ -159,6 +159,6 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#grapevine-rig-v}"
           npx wrangler r2 object put grapevine-rig-downloads/grapevine-rig-windows-setup.exe \
+            --remote \
             --file="release-assets/Grapevine-Rig-${VERSION}-windows-setup.exe" \
-            --content-type=application/octet-stream \
-            --custom-metadata "version=${VERSION}"
+            --content-type=application/octet-stream

@@ -201,9 +201,8 @@ Wired: `wrangler.jsonc`, `open-next.config.ts`, `public/_headers`.
 
 Permanent operator download URLs are served from R2 via `/downloads/*` routes. **One-time setup:**
 
-1. Enable **R2** in [Cloudflare Dashboard](https://dash.cloudflare.com/) → R2 → Enable R2
-2. Create bucket: `npx wrangler r2 bucket create grapevine-rig-downloads`
-3. Uncomment `r2_buckets` in `wrangler.jsonc` (binding `RIG_DOWNLOADS` → `grapevine-rig-downloads`), then `npm run deploy:cf`
+1. Create bucket: `npx wrangler r2 bucket create grapevine-rig-downloads` (done if bucket exists)
+2. `r2_buckets` in `wrangler.jsonc` binds `RIG_DOWNLOADS` → `grapevine-rig-downloads`, then `npm run deploy:cf`
 3. GitHub repo secrets for rig release CI:
    - `CLOUDFLARE_API_TOKEN` — R2 Object Write on this bucket
    - `CLOUDFLARE_ACCOUNT_ID`
@@ -211,7 +210,7 @@ Permanent operator download URLs are served from R2 via `/downloads/*` routes. *
 
 Each `grapevine-rig-v*` tag overwrites the same R2 keys; login-page links never change.
 
-Until R2 is enabled, `/downloads/*` routes redirect to the latest GitHub Release asset (same permanent URLs on grapevineprep.com).
+If R2 objects are missing, `/downloads/*` falls back to redirecting to the latest GitHub Release asset.
 
 ```bash
 npm install

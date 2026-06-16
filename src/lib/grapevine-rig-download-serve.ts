@@ -36,7 +36,7 @@ async function latestGithubDownloadUrl(platform: RigDownloadPlatform): Promise<s
 
 export async function serveRigDownload(platform: RigDownloadPlatform): Promise<Response> {
   const { env } = await getCloudflareContext({ async: true });
-  const bucket = (env as { RIG_DOWNLOADS?: R2Bucket }).RIG_DOWNLOADS;
+  const bucket = env.RIG_DOWNLOADS;
   const key = RIG_R2_KEYS[platform];
 
   if (bucket) {
