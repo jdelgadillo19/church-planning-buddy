@@ -27,10 +27,12 @@ Mac builds from **v0.1.7** onward are **universal** (Intel + Apple Silicon).
 
 ### Windows
 
-1. Run **`Grapevine-Rig-*-windows-setup.exe`**.
+1. Run **`Grapevine-Rig-*-windows-setup.exe`** (use **v0.2.7+** for Windows Credential Manager pairing).
 2. Launch **Grapevine Rig** from the Start menu.
-3. Ensure **Node.js** is installed and on `PATH` (required for apply/scan workers).
+3. Ensure **Node.js 20+** is installed and on `PATH` (required for apply/scan workers).
 4. Drive publish via AppleScript export is **not** available on Windows — apply still succeeds; publish is skipped.
+
+**HP Envy TE01:** run `scripts/envy-rig-setup.ps1` in PowerShell (checks Node, downloads installer, prints pairing steps).
 
 ## 3. Pair with your church org
 
@@ -82,7 +84,7 @@ Build statuses on the website: **Pending** → **Claimed** → **Applying** → 
 | Apply failed — build disappeared | Fixed in **v0.2.6+** — failed builds stay on rig with **Retry apply** and error details. |
 | "Playlist already exists" with no Overwrite button | Fixed in **v0.2.6+** — rig overwrites Sunday playlist on apply; conflict card offers **Overwrite** / **View** / **Dismiss**. |
 | Verify timeout with shifted song positions | Fixed in **v0.2.6+** — missing library songs fail before apply instead of partial write + 30s mismatch. |
-| Gatekeeper blocks app | Right-click → Open, or use a signed release when Apple ID secrets are configured in CI |
+| Pairing doesn’t stick after restart (Windows) | Use **v0.2.7+** (Windows Credential Manager via `keyring` `windows-native`). Re-pair after upgrade. |
 | Old bootstrap rig | You may have a rig from `pp:index-upload`; pairing creates a new rig row — revoke the old one in admin if duplicate |
 
 ## 7. Unpair
