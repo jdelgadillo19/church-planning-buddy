@@ -65,6 +65,7 @@ export async function GET(req: Request) {
       rigs: rigs.map((r) => ({
         id: r.id,
         displayName: r.display_name,
+        rigKind: r.rig_kind ?? "presentation",
         lastSeenAt: r.last_seen_at,
       })),
       canQueueBuilds: canQueueBuilds(activeOrg.role),

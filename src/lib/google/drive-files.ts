@@ -670,7 +670,7 @@ export async function exportGoogleDocPdf(drive: drive_v3.Drive, fileId: string):
       { fileId, alt: "media", ...SHARED_DRIVE_OPTS },
       { responseType: "arraybuffer" },
     );
-    const data = downloaded.data;
+    const data = downloaded.data as ArrayBuffer | Buffer;
     if (data instanceof ArrayBuffer) return Buffer.from(data);
     if (Buffer.isBuffer(data)) return data;
     throw new Error("Drive download did not return PDF bytes.");
@@ -684,7 +684,7 @@ export async function exportGoogleDocPdf(drive: drive_v3.Drive, fileId: string):
     { fileId, mimeType: "application/pdf" },
     { responseType: "arraybuffer" },
   );
-  const data = exported.data;
+  const data = exported.data as ArrayBuffer | Buffer;
   if (data instanceof ArrayBuffer) return Buffer.from(data);
   if (Buffer.isBuffer(data)) return data;
   throw new Error("Drive export did not return PDF bytes.");

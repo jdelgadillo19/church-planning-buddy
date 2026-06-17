@@ -44,6 +44,12 @@ This folder is the **canonical UX source** for Grapevine Prep (web) and Grapevin
 | **Filebase** | ProPresenter libraries/playlists on Shared Drive (`Filebase/`) |
 | **Service package** | Week handoff under `Services/{date}/` |
 | **Implementation plan** | Merged playlist rows on `slide_deck_builds` — what rig applies |
+| **Browser planner** | grapevineprep.com — preview/submit without local PP; Send to rig |
+| **Remote prep device** | Volunteer machine with local ProPresenter; upload handoff — not a presentation rig |
+| **Presentation rig** | Sanctuary machine + Grapevine Rig; hosts filebase; Scan now + apply authority |
+| **Local PP connected** | Technical ping only — not a product role (`device-context.ts`) |
+
+Device capability matrix: [filebase-architecture.md](../filebase-architecture.md#device-roles-in-code).
 
 ---
 

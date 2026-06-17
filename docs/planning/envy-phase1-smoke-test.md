@@ -51,6 +51,22 @@ The script checks Node, downloads `Grapevine-Rig-0.2.7-windows-setup.exe`, runs 
 
 ---
 
+## E. Remote prep handoff lane
+
+| Step | Actor | Action | Pass |
+|------|-------|--------|------|
+| E1 | Prep laptop | grapevineprep.com → weekend → **Create Presentation** | Preview OK |
+| E2 | Prep laptop | **Pull filebase files** (if M2 seeded) or manual library copy | Zip or local files |
+| E3 | Prep laptop | Local dev `PP_ALLOW_WRITES=true` → **Download presentation** | Playlist in PP |
+| E4 | Prep laptop | Edit playlist → **Open upload tool** → **Upload complete** | Handoff row in Supabase |
+| E5 | Planner | Web shows complete handoff in weekend list | Green banner |
+| E6 | Rig | **Import handoff** in Grapevine Rig | Staged `.proplaylist` path shown |
+| E7 | Rig operator | ProPresenter → File → Import → Playlist | Playlist visible |
+
+Set `GV_DRIVE_LAYOUT=dual` or `v1` and `PP_SERVICES_FOLDER_ID` for automatic Services/ publish on complete upload.
+
+---
+
 ## D. Credential persistence check (v0.2.7)
 
 1. Close Grapevine Rig completely.

@@ -1,4 +1,5 @@
 import { createAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/admin";
+import { isPresentationRigKind } from "@/lib/slide-deck/device-context";
 import type { PpRigRow } from "./types";
 
 function requireAdmin() {
@@ -26,6 +27,16 @@ export async function listRigsForOrg(orgId: string): Promise<PpRigRow[]> {
 
   if (error) throw new Error(error.message);
   return (data ?? []) as PpRigRow[];
+}
+
+export async function listPresentationRigsForOrg(orgId: string): Promise<PpRigRow[]> {
+  const rigs = await listRigsForOrg(orgId);
+  return rigs.filter((r) => isPresentationRigKind(r.rig_kind));
+}
+
+export async function countActivePresentationRigs(orgId: string): Promise<number> {
+  const presentation = await listPresentationRigsForOrg(orgId);
+  return presentation.length;
 }
 
 export async function upsertBootstrapRig(input: {
@@ -71,6 +82,7 @@ export async function upsertBootstrapRig(input: {
       display_name: input.displayName,
       device_fingerprint: fingerprint,
       public_key: publicKey,
+      rig_kind: "bootstrap",
       status: "active",
       last_seen_at: now,
       paired_by: input.pairedBy ?? null,

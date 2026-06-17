@@ -21,6 +21,7 @@
     "pp:probe": "npx tsx scripts/propresenter-probe.ts",
     "pp:bundle-scan": "npx tsx scripts/pp-bundle-scan.ts",
     "pp:index-upload": "npx tsx scripts/pp-index-upload.ts",
+    "pp:inspect-index": "npx tsx scripts/inspect-cloud-index.ts",
     "rig:worker:build": "node apps/grapevine-rig-worker/build.mjs",
     "rig:worker-run": "npx tsx apps/grapevine-rig-worker/src/worker.ts",
     "rig:scan-run": "npx tsx apps/grapevine-rig-worker/src/scan.ts",
@@ -33,6 +34,10 @@
     "slide-deck:apply": "npx tsx scripts/slide-deck-apply.ts",
     "slide-deck:publish": "npx tsx scripts/slide-deck-publish.ts",
     "slide-deck:agent": "npx tsx scripts/slide-deck-agent.ts",
+    "handoff:verify-migration": "npx tsx scripts/verify-handoff-migration.ts",
+    "handoff:apply-migration": "npx tsx scripts/apply-handoff-rig-policy-migration.ts",
+    "filebase:seed-upload": "npx tsx scripts/filebase-seed-upload.ts",
+    "prep:companion": "PP_ALLOW_WRITES=true PP_HOST=127.0.0.1 next dev -H 127.0.0.1",
     "messaging:run": "npx tsx scripts/messaging-run.ts"
   },
   "dependencies": {

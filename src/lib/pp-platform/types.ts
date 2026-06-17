@@ -10,6 +10,7 @@ export type PpRigRow = {
   device_fingerprint: string | null;
   public_key: string;
   rig_secret_hash: string | null;
+  rig_kind: string;
   status: string;
   last_seen_at: string | null;
   paired_by: string | null;
@@ -28,6 +29,8 @@ export type PpIndexSnapshotRow = {
   created_at: string;
 };
 
+export type HandoffStatus = "complete" | "incomplete";
+
 export type SlideDeckSubmissionRow = {
   id: string;
   org_id: string;
@@ -36,6 +39,17 @@ export type SlideDeckSubmissionRow = {
   playlist_name: string;
   created_by: string;
   status: string;
+  handoff_status: HandoffStatus | null;
+  missing_elements: Array<{ kind: string; label: string; detail?: string }>;
+  missing_files: Array<{ label: string; libraryItemId?: string; libraryName?: string; reason: string }>;
+  parent_handoff_id: string | null;
+  presentation_instance_id: string;
+  services_package_id: string | null;
+  services_drive_url: string | null;
+  rig_handoff_status: "pending" | "synced" | "skipped" | "awaiting_approval" | null;
+  replace_on_rig: boolean;
+  admin_approved_for_rig: boolean;
+  version_label: string | null;
   commit_plan: MockCommitPlan;
   library_selections: Record<string, string>;
   manifest: SlideDeckManifest | null;

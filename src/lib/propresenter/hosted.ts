@@ -1,18 +1,19 @@
 import { NextResponse } from "next/server";
+import { PP_HOSTED_MESSAGE } from "@/lib/slide-deck/device-context";
 
-/** ProPresenter Local API is only reachable from the operator Mac — not from Cloudflare Workers. */
+/**
+ * True when this deployment cannot reach ProPresenter (Cloudflare Workers).
+ * Set PP_UNAVAILABLE_ON_HOSTED=true in Worker env only — not on local prep machines.
+ */
 export function isProPresenterUnavailableOnHosted(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-  if (env.PP_UNAVAILABLE_ON_HOSTED === "true") return true;
-  const host = (env.PP_HOST?.trim() || "127.0.0.1").toLowerCase();
-  return host === "127.0.0.1" || host === "localhost" || host === "::1";
+  return env.PP_UNAVAILABLE_ON_HOSTED === "true";
 }
 
 export const PP_HOSTED_ERROR_CODE = "pp_hosted_unavailable" as const;
 
-export const PP_HOSTED_MESSAGE =
-  "ProPresenter runs on the operator Mac only. Use the Mac agent, local CLI, or upload a .proplaylist for Drive publish.";
+export { PP_HOSTED_MESSAGE };
 
 export type PpHostedUnavailableBody = {
   ok: false;

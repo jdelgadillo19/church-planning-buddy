@@ -52,6 +52,14 @@
         </div>
         <p id="no-build" class="muted">No pending builds. Waiting for planner to send a deck…</p>
 
+        <div id="handoff-card" class="build-card hidden">
+          <p id="handoff-title" class="build-title">Handoff ready</p>
+          <p id="handoff-summary" class="build-summary"></p>
+          <button id="handoff-import-btn" type="button" class="btn primary">Import handoff</button>
+          <button id="handoff-skip-btn" type="button" class="btn ghost">Skip</button>
+        </div>
+        <p id="no-handoff" class="muted hidden">No pending complete handoffs.</p>
+
         <details class="details">
           <summary>What changed?</summary>
           <pre id="change-detail" class="mono"></pre>

@@ -90,6 +90,12 @@ async function main() {
   if (pp.playlistsFolderId) await assertFolder(drive, pp.playlistsFolderId, "PP_PLAYLISTS_FOLDER");
   if (pp.newFilesFolderId) await assertFolder(drive, pp.newFilesFolderId, "PP_NEW_FILES_FOLDER");
 
+  const servicesId = process.env.PP_SERVICES_FOLDER_ID?.trim();
+  if (servicesId) await assertFolder(drive, servicesId, "PP_SERVICES_FOLDER");
+
+  const filebaseId = process.env.PP_FILEBASE_FOLDER_ID?.trim();
+  if (filebaseId) await assertFolder(drive, filebaseId, "PP_FILEBASE_FOLDER");
+
   console.log("\nAll M0 Drive IDs verified.");
 }
 

@@ -611,6 +611,21 @@ async fn run_scan(app: tauri::AppHandle, pp_settings: Option<PpSettings>) -> Res
 }
 
 #[tauri::command]
+async fn run_handoff(
+    app: tauri::AppHandle,
+    handoff_id: String,
+    pp_settings: Option<PpSettings>,
+) -> Result<String, String> {
+    run_node_worker(
+        &app,
+        "handoff.mjs",
+        vec![("HANDOFF_ID".to_string(), handoff_id)],
+        pp_settings,
+    )
+    .await
+}
+
+#[tauri::command]
 fn app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
@@ -629,6 +644,7 @@ pub fn run() {
             app_version,
             run_apply,
             run_scan,
+            run_handoff,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Grapevine Rig");

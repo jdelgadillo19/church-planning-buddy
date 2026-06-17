@@ -18,3 +18,7 @@ export async function resolveUserOrg(
 export function canQueueBuilds(role: string): boolean {
   return role === "admin" || role === "planner";
 }
+
+export function isOrgAdmin(role: string): boolean {
+  return role === "admin";
+}

@@ -23,5 +23,9 @@ bundle(
   path.join(root, "apps/grapevine-rig-worker/src/scan.ts"),
   path.join(outDir, "scan.mjs"),
 );
+bundle(
+  path.join(root, "apps/grapevine-rig-worker/src/handoff-worker.ts"),
+  path.join(outDir, "handoff.mjs"),
+);
 
-console.log("Built worker.mjs + scan.mjs");
+console.log("Built worker.mjs + scan.mjs + handoff.mjs");

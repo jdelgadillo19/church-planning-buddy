@@ -29,6 +29,12 @@ const conflictDismissBtn = $("conflict-dismiss-btn");
 const changeDetail = $("change-detail");
 const implReview = $("impl-review");
 const noBuild = $("no-build");
+const handoffCard = $("handoff-card");
+const handoffTitle = $("handoff-title");
+const handoffSummary = $("handoff-summary");
+const handoffImportBtn = $("handoff-import-btn");
+const handoffSkipBtn = $("handoff-skip-btn");
+const noHandoff = $("no-handoff");
 const applyBtn = $("apply-btn");
 const changeDetailsEl = document.querySelector("details.details");
 const scanBtn = $("scan-btn");
@@ -41,6 +47,8 @@ const ppSettingsStatus = $("pp-settings-status");
 
 let creds = null;
 let pendingBuild = null;
+let pendingHandoff = null;
+let lastAutoHandoffId = null;
 let editedImplPlan = null;
 let playlistConflict = null;
 let pollTimer = null;
@@ -351,6 +359,65 @@ function renderBuild() {
   }
 }
 
+async function pollHandoffs() {
+  if (!creds || busy) return;
+  try {
+    const data = await apiFetch(`/api/pp/rigs/${creds.rigId}/handoffs/pending`);
+    const handoffs = data.handoffs ?? [];
+    const completeApproved = handoffs.filter(
+      (h) => h.handoff_status === "complete" && h.admin_approved_for_rig,
+    );
+    const incomplete = handoffs.filter((h) => h.handoff_status === "incomplete");
+    pendingHandoff =
+      completeApproved.find((h) => h.services_drive_url) ??
+      completeApproved[0] ??
+      incomplete[0] ??
+      null;
+    renderHandoff();
+
+    if (
+      pendingHandoff &&
+      pendingHandoff.handoff_status === "complete" &&
+      pendingHandoff.admin_approved_for_rig &&
+      pendingHandoff.services_drive_url &&
+      pendingHandoff.id !== lastAutoHandoffId &&
+      !busy
+    ) {
+      lastAutoHandoffId = pendingHandoff.id;
+      void importHandoff();
+    }
+  } catch {
+    /* optional */
+  }
+}
+
+function renderHandoff() {
+  if (!handoffCard || !noHandoff) return;
+  if (pendingHandoff) {
+    handoffCard.classList.remove("hidden");
+    noHandoff.classList.add("hidden");
+    const isIncomplete = pendingHandoff.handoff_status === "incomplete";
+    handoffTitle.textContent = isIncomplete
+      ? "Incomplete handoff (import with caution)"
+      : pendingHandoff.replace_on_rig
+        ? "Complete handoff — replace requested"
+        : "Complete handoff ready";
+    const name =
+      pendingHandoff.commit_plan?.playlistName ??
+      pendingHandoff.playlist_name ??
+      pendingHandoff.id;
+    const version = pendingHandoff.version_label ? ` (${pendingHandoff.version_label})` : "";
+    const replaceNote =
+      pendingHandoff.replace_on_rig && !pendingHandoff.admin_approved_for_rig
+        ? " Volunteer requested replace — confirm before overwriting."
+        : "";
+    handoffSummary.textContent = `${name}${version}.${isIncomplete ? " Missing elements may remain." : replaceNote}`;
+  } else {
+    handoffCard.classList.add("hidden");
+    noHandoff.classList.remove("hidden");
+  }
+}
+
 async function pollBuilds() {
   if (!creds || busy) return;
   try {
@@ -376,7 +443,11 @@ async function pollBuilds() {
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
   void pollBuilds();
-  pollTimer = setInterval(() => void pollBuilds(), POLL_MS);
+  void pollHandoffs();
+  pollTimer = setInterval(() => {
+    void pollBuilds();
+    void pollHandoffs();
+  }, POLL_MS);
 }
 
 async function pair() {
@@ -524,6 +595,50 @@ function conflictDismiss() {
   setActionStatus("Conflict dismissed. Use Retry apply when ready.", "idle");
 }
 
+async function importHandoff() {
+  if (busy || !pendingHandoff) return;
+  const ppSettings = getPpSettingsOrExplain();
+  if (!ppSettings) return;
+
+  setWorking(true);
+  setBadge("busy", "Importing");
+  handoffImportBtn.textContent = "Importing…";
+  setActionStatus("Downloading Services package and staging playlist…", "busy");
+
+  try {
+    const output = await invoke("run_handoff", {
+      handoffId: pendingHandoff.id,
+      ppSettings,
+    });
+    setActionStatus(output || "Handoff staged for ProPresenter import.", "ok");
+    pendingHandoff = null;
+    renderHandoff();
+    void pollHandoffs();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Handoff import failed";
+    setActionStatus(msg, "error");
+  } finally {
+    setWorking(false);
+    handoffImportBtn.textContent = "Import handoff";
+    setBadge("ready", pendingBuild ? "Build ready" : "Paired");
+  }
+}
+
+async function skipHandoff() {
+  if (!pendingHandoff || !creds) return;
+  try {
+    await apiFetch(`/api/pp/rigs/${creds.rigId}/handoffs/pending`, {
+      method: "PATCH",
+      body: JSON.stringify({ handoffId: pendingHandoff.id, status: "skipped" }),
+    });
+    pendingHandoff = null;
+    renderHandoff();
+    setActionStatus("Handoff skipped.", "idle");
+  } catch (e) {
+    setActionStatus(e instanceof Error ? e.message : "Skip failed", "error");
+  }
+}
+
 async function scanNow() {
   if (busy) {
     setActionStatus("Still working on the previous action…", "busy");
@@ -571,6 +686,8 @@ conflictOverwriteBtn.addEventListener("click", () => void conflictOverwrite());
 conflictViewBtn.addEventListener("click", () => conflictView());
 conflictDismissBtn.addEventListener("click", () => conflictDismiss());
 scanBtn.addEventListener("click", () => void scanNow());
+handoffImportBtn.addEventListener("click", () => void importHandoff());
+handoffSkipBtn.addEventListener("click", () => void skipHandoff());
 settingsBtn.addEventListener("click", () => void unpair());
 ppSaveBtn.addEventListener("click", () => void savePpSettings());
 

@@ -43,8 +43,11 @@ _Add rows: `global.header`, `settings.shell`, etc._
 | id | route | roles | entry | elements | primary_action | api | next_states | notes |
 |----|-------|-------|-------|----------|----------------|-----|-------------|-------|
 | `slide.main` | `/slide-deck` | planner+ | hub | Load plan, preview panel, hosted panel | Send to rig | mock-commit, builds | | |
+| `slide.handoff_discovery` | `/slide-deck` | planner+ | select weekend | Weekend presentations list, download existing | Download existing | submissions?handoffsOnly=1 | slide.builder | green/yellow status |
+| `slide.builder` | `/slide-deck` | planner+ | create or download | Create Presentation, review, Download | Create Presentation | mock-commit, apply | slide.upload | |
+| `slide.upload` | `/slide-deck` | planner+ (local PP) | after download + edit | Upload complete/incomplete, Cancel | Upload complete | submissions POST, upload/scan | slide.handoff_discovery | prep machine only |
 | `slide.merge_review` | `/slide-deck` | planner+ | send conflicts | Per-row source select | Confirm merge | submissions/merge | slide.main | |
-| `slide.conflict.local_pp` | `/slide-deck` | planner+ | local apply preflight | Overwrite, View, Cancel | _your design_ | apply?resolution= | | dev Mac only |
+| `slide.conflict.local_pp` | `/slide-deck` | planner+ | local apply preflight | Overwrite, View, Cancel | Overwrite | apply?resolution= | | remote prep |
 
 ---
 
@@ -55,11 +58,7 @@ _Add rows: `global.header`, `settings.shell`, etc._
 | `rig.pair` | pair screen | admin | first launch | Code input, display name, Pair | Pair | pair API | rig.main | |
 | `rig.main.idle` | main | operator | paired | Scan now, Unpair, no build message | — | poll builds | rig.main.build_ready | |
 | `rig.main.build_ready` | main | operator | pending build | Apply Slide Deck, impl review | Apply | run_apply | applying / conflict | |
-| `rig.conflict.playlist_exists` | main / build card | operator | apply failed: playlist exists | **EXAMPLE — replace with your labels** | | | | |
-| | | | | Message: playlist exists | | | | |
-| | | | | `[Overwrite]` `[Keep both]` `[Cancel]` | Overwrite | `run_apply(resolution=overwrite)` | applying → done | _wire resolution_ |
-| | | | | | Keep both | `run_apply(resolution=keep_both)` | applying → done | rename playlist |
-| | | | | | Cancel | — | rig.main.build_ready | no PP write |
+| `rig.handoff_pending` | main | operator | complete handoff queued | Import handoff, Skip | Import | run_handoff, handoffs/pending | staged import | Services/ package |
 | `rig.main.failed` | main | operator | apply error | Retry apply, error text | Retry | run_apply | | |
 
 ---

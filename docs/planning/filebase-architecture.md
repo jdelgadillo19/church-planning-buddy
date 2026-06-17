@@ -25,6 +25,23 @@ Host the church **ProPresenter filebase** on Google Shared Drive so remote volun
 | **Presentation rig** | Machine that presents during service | Sanctuary Mac/PC + Grapevine Rig + **Operator** login |
 | **Browser planner** | grapevineprep.com `/slide-deck` — PCO preview/submit without local PP | Separate lane from remote PP editing |
 
+### Device roles in code
+
+Do not treat **local ProPresenter reachable** as **presentation rig**. See `src/lib/slide-deck/device-context.ts`.
+
+| Capability | Browser planner | Remote prep (local PP) | Presentation rig |
+|------------|-----------------|------------------------|------------------|
+| PCO preview / Create Presentation | Yes (cloud index) | Yes | Yes |
+| Build playlist in local PP (Download) | No | Yes (interim: manual files until M4 pull) | N/A (operator review) |
+| Send to rig (sanctuary apply queue) | Yes | No | Receives queue |
+| Apply queued build to sanctuary PP | No | No | Yes (Grapevine Rig) |
+| Scan now → org library index | No | No | Yes |
+| Upload Incomplete/Complete | No | Yes (draft / Services M4) | Operator import |
+
+**Remote prep model (approved):** pull-then-build — selective Filebase pull (phase **M4**, after M2 seed), then build in local ProPresenter. Until M4, volunteers ensure library files exist locally, then **Create Presentation → Download**.
+
+**Grapevine Rig** pairs only on the sanctuary presentation rig (`pp_rigs.rig_kind = presentation`). One active presentation rig per org.
+
 ---
 
 ## Anti-goals (non-negotiable)

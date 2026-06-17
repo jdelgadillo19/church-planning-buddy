@@ -1,4 +1,5 @@
 import { createAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/admin";
+import { countActivePresentationRigs } from "./rigs";
 import { generateRigSecret, hashRigSecret } from "./rig-secret";
 import type { PpRigRow } from "./types";
 
@@ -65,6 +66,13 @@ export async function pairRigWithCode(input: {
     throw new Error("Pairing code expired.");
   }
 
+  const existingPresentation = await countActivePresentationRigs(pairing.org_id);
+  if (existingPresentation > 0) {
+    throw new Error(
+      "This org already has an active presentation rig. Revoke the existing rig before pairing a new sanctuary machine.",
+    );
+  }
+
   const { data: rig, error: rigError } = await supabase
     .from("pp_rigs")
     .insert({
@@ -73,6 +81,7 @@ export async function pairRigWithCode(input: {
       device_fingerprint: input.deviceFingerprint?.trim() || null,
       public_key: input.publicKey?.trim() || "paired",
       rig_secret_hash: hashRigSecret(rigSecret),
+      rig_kind: "presentation",
       status: "active",
       last_seen_at: now,
       paired_by: pairing.created_by,

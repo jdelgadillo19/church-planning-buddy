@@ -20,6 +20,10 @@ type BuildJob = {
   rig_id?: string | null;
   error_message?: string | null;
   created_at?: string;
+  completed_at?: string | null;
+  plan_id?: string;
+  service_type_id?: string | null;
+  commit_plan?: MockCommitPlan;
   change_summary?: string | null;
   result?: { publish?: { driveFolderUrl?: string }; publishWarning?: string } | null;
 };
@@ -30,11 +34,15 @@ type SubmissionDraft = {
   created_at: string;
   change_summary: string | null;
   status: string;
+  commit_plan?: MockCommitPlan;
+  manifest?: SlideDeckManifest | null;
+  library_selections?: Record<string, string>;
 };
 
 type Rig = {
   id: string;
   displayName: string;
+  rigKind?: string;
   lastSeenAt: string | null;
 };
 
@@ -76,6 +84,11 @@ type Props = {
   onCancelMergeReview: () => void;
   proplaylistFile: File | null;
   onProplaylistFileChange: (file: File | null) => void;
+  pendingRigHandoffs?: Array<{
+    id: string;
+    playlist_name: string;
+    services_drive_url: string | null;
+  }>;
 };
 
 function cliApplyCommand(planId: string, serviceTypeId: string) {
@@ -122,6 +135,7 @@ export function SlideDeckHostedPanel({
   onCancelMergeReview,
   proplaylistFile,
   onProplaylistFileChange,
+  pendingRigHandoffs = [],
 }: Props) {
   const rigNameById = new Map(rigs.map((r) => [r.id, r.displayName]));
   const ambiguousRows = ambiguousSongRows(commitPlan);
@@ -130,6 +144,22 @@ export function SlideDeckHostedPanel({
   const sendBlocked =
     !commitPlan || unresolvedRows.length > 0 || missingRows.length > 0;
   const draftCount = submissions.length;
+
+  const completedBuilds = builds
+    .filter((b) => b.status === "completed" && b.commit_plan?.playlistName === commitPlan?.playlistName)
+    .sort((a, b) => {
+      const atA = Date.parse(a.completed_at ?? a.created_at ?? "");
+      const atB = Date.parse(b.completed_at ?? b.created_at ?? "");
+      return Number.isFinite(atB - atA) ? atB - atA : 0;
+    });
+
+  const latestDraft = [...submissions].sort(
+    (a, b) => Date.parse(b.created_at) - Date.parse(a.created_at),
+  )[0];
+  const latestDraftMissing = latestDraft?.commit_plan ? missingSongRows(latestDraft.commit_plan) : [];
+  const latestDraftUnresolved = latestDraft?.commit_plan
+    ? unresolvedAmbiguousRows(latestDraft.commit_plan, latestDraft.library_selections ?? {})
+    : [];
 
   function downloadBundle() {
     if (!manifest || !commitPlan) return;
@@ -163,12 +193,55 @@ export function SlideDeckHostedPanel({
 
   return (
     <>
+      <section className="flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+        <h3 className="font-medium">Remote prep on this Mac</h3>
+        <p className="text-xs opacity-90">
+          Create and review here. For Download and Upload, run{" "}
+          <code className="rounded bg-amber-100 px-1 dark:bg-amber-900">npm run prep:companion</code>{" "}
+          in the repo and open{" "}
+          <a href="http://127.0.0.1:3000/slide-deck" className="underline">
+            http://127.0.0.1:3000/slide-deck
+          </a>
+          .
+        </p>
+      </section>
+
       <SlideDeckRigAdmin
         orgId={orgId}
         isAdmin={isAdmin}
         rigs={rigs}
         onRigsChange={onRigsChange}
       />
+
+      {pendingRigHandoffs.length > 0 ? (
+        <section className="flex flex-col gap-2 rounded-xl border border-violet-200 bg-violet-50/40 p-4 text-sm dark:border-violet-900 dark:bg-violet-950/30">
+          <h3 className="font-medium">Pending rig handoffs</h3>
+          <p className="text-xs opacity-90">
+            Complete remote-prep uploads awaiting import on the presentation rig.
+          </p>
+          <ul className="list-disc space-y-1 pl-5 text-xs">
+            {pendingRigHandoffs.slice(0, 5).map((h) => (
+              <li key={h.id}>
+                {h.playlist_name}
+                {h.services_drive_url ? (
+                  <>
+                    {" "}
+                    —{" "}
+                    <a
+                      href={h.services_drive_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline"
+                    >
+                      Drive package
+                    </a>
+                  </>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     <section className="flex flex-col gap-4 rounded-xl border border-sky-200 bg-sky-50 p-5 text-sm text-sky-950 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100">
       <h2 className="text-base font-medium">Send to presentation rig</h2>
       <p>
@@ -176,6 +249,40 @@ export function SlideDeckHostedPanel({
         <strong>send to rig</strong> when ready. Multiple planners can submit; Send merges drafts
         automatically when there are no conflicts.
       </p>
+
+      {completedBuilds.length > 0 ? (
+        <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-100">
+          <p className="font-medium">Complete presentation exists</p>
+          <p className="mt-1">
+            Most recent build:{" "}
+            <span className="font-mono">{completedBuilds[0]?.id.slice(0, 8)}…</span> —{" "}
+            {completedBuilds[0]?.completed_at
+              ? new Date(completedBuilds[0]!.completed_at!).toLocaleString()
+              : "completed"}
+          </p>
+        </div>
+      ) : null}
+
+      {draftCount > 0 ? (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+          <p className="font-medium">Incomplete submissions exist</p>
+          <p className="mt-1">
+            Latest draft missing{" "}
+            <span className="font-mono">
+              {latestDraftMissing.length} song(s){latestDraftUnresolved.length > 0 ? " + variant selections" : ""}
+            </span>
+            .
+          </p>
+          {latestDraftMissing.length > 0 ? (
+            <ul className="mt-1 list-disc space-y-0.5 pl-5">
+              {latestDraftMissing.slice(0, 5).map((r) => (
+                <li key={r.position}>{r.pcoTitle ?? r.name}</li>
+              ))}
+              {latestDraftMissing.length > 5 ? <li>…</li> : null}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
 
       {indexMeta ? (
         <p
@@ -381,7 +488,7 @@ export function SlideDeckHostedPanel({
         ) : (
           <p className="text-xs opacity-80">
             After sending, status updates here. The rig applies when Grapevine Rig is running on the
-            presentation Mac.
+            presentation computer.
           </p>
         )}
       </div>
@@ -396,7 +503,7 @@ export function SlideDeckHostedPanel({
             <code className="font-mono">docs/SLIDE-DECK-DEPRECATION.md</code>.
           </p>
           <div>
-            <p className="font-medium">Mac agent (npm)</p>
+            <p className="font-medium">Dev agent (npm, deprecated)</p>
             <code className="font-mono">npm run slide-deck:agent</code>
           </div>
           <div>
@@ -424,8 +531,8 @@ export function SlideDeckHostedPanel({
       <div className="flex flex-col gap-2">
         <h3 className="font-medium">Emergency — upload .proplaylist for Drive publish</h3>
         <p className="text-xs opacity-90">
-          After applying on the Mac (or exporting manually), choose the playlist file here, then use
-          Publish to Drive (Connect Google first).
+          After applying on the presentation rig (or exporting manually), choose the playlist file
+          here, then use Publish to Drive (Connect Google first).
         </p>
         <input
           type="file"

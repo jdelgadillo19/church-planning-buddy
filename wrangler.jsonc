@@ -27,7 +27,8 @@
     "enabled": true
   },
   "vars": {
-    "GOOGLE_REDIRECT_URI": "https://grapevineprep.com/api/auth/google/callback"
+    "GOOGLE_REDIRECT_URI": "https://grapevineprep.com/api/auth/google/callback",
+    "PP_UNAVAILABLE_ON_HOSTED": "true"
   },
   "routes": [
     {

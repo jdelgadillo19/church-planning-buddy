@@ -46,15 +46,15 @@ Mac builds from **v0.1.7** onward are **universal** (Intel + Apple Silicon).
 1. On grapevineprep.com, sign in as org admin.
 2. Go to **Slide deck** → **Presentation rigs (admin)** → **Add presentation rig**.
 3. Copy the **8-character code** (expires in 15 minutes).
-4. Open **Grapevine Rig** on the presentation Mac.
-5. Enter the code and a display name (e.g. `Pilot rig` or `Sanctuary Mac`).
-6. Click **Pair this Mac**.
+4. Open **Grapevine Rig** on the presentation computer (Mac or Windows).
+5. Enter the code and a display name (e.g. `Pilot rig` or `Sanctuary Windows`).
+6. Click **Pair this rig**.
 
 Credentials are stored in the **macOS Keychain** or **Windows Credential Manager** (service `com.grapevineprep.rig`).
 
 ## 4. ProPresenter setup
 
-1. Open ProPresenter on this Mac.
+1. Open ProPresenter on this computer.
 2. **ProPresenter → Settings → Network** → turn **Enable Network** ON.
 3. Note the **TCP/IP Port ID** (example: `64509` — yours may differ; it is often **not** `50001`).
 4. In **Grapevine Rig**, expand **ProPresenter settings**, enter that port, set transport to **TCP** (recommended for ProPresenter 21+), and click **Save ProPresenter settings**.
@@ -98,6 +98,28 @@ Build statuses on the website: **Pending** → **Claimed** → **Applying** → 
 
 In Grapevine Rig → **Unpair** removes Keychain credentials. Generate a new pairing code to link again.
 
+## 8. Presentation rig vs remote prep
+
+| Device | Grapevine Rig? | Scan now? | Send → Apply? |
+|--------|----------------|-----------|---------------|
+| **Sanctuary presentation rig** (HP Envy TE01) | Yes — pair once | Yes | Receives builds from browser |
+| **Volunteer prep laptop** (local ProPresenter) | **No** | No | No — **Download** builds into local PP; upload handoff; not sanctuary apply |
+| **Browser planner** (grapevineprep.com) | No | No | Queues Send to rig |
+
+Only one active **presentation rig** per org. Do not pair Grapevine Rig on prep machines.
+
+## Ops checklist (before first Sunday)
+
+1. Apply Supabase migration `20260616120000_pp_rigs_rig_kind.sql` and `20260616130000_pp_rigs_deduplicate_presentation.sql`, **or** paste [`scripts/sql/pp-rigs-migration-fix.sql`](../../scripts/sql/pp-rigs-migration-fix.sql) in the Supabase SQL Editor (idempotent). If the unique index failed before, revoke duplicate rigs first — only **SBB Presentation Computer** (newest) should stay `active`.
+2. **Revoke** any bootstrap or dev `pp_rigs` rows in Supabase (or admin UI) except the sanctuary machine.
+3. Install **Grapevine Rig v0.2.7+** and **Node 20+** on the HP Envy presentation rig only.
+4. Pair the HP Envy as the org presentation rig (Slide deck → Register sanctuary presentation rig).
+5. Configure ProPresenter TCP port in Grapevine Rig → **Scan now**.
+6. On grapevineprep.com: Create Presentation → **Send to presentation rig** → on rig, **Apply Slide Deck**.
+7. Zip a ProPresenter filebase backup; pause/uninstall `sbblegacytech@gmail` bidirectional GDrive sync on the rig.
+8. Confirm planners use the church Shared drive layout — not personal sync accounts for writes.
+9. **Remote prep (interim):** volunteers with local ProPresenter run slide deck on their machine (`PP_ALLOW_WRITES=true`) → Create Presentation → **Download presentation** → edit → upload. Automated Filebase pull (M4) waits until M2 seed.
+
 ## Dev / repo checkout (not for operators)
 
 ```bash
@@ -106,8 +128,4 @@ npm run rig:prepare
 cd apps/grapevine-rig && npm install && npm run tauri dev
 ```
 
-Requires Node 20+, Rust, and Xcode command-line tools. Apply uses bundled worker scripts in release builds (`worker.mjs` via login-shell Node); dev falls back to `node` + `apps/grapevine-rig-worker/dist/*.mjs`.
-
-## Windows (later)
-
-After the Mac pilot, a Windows `.msi` / `.exe` will follow the same pairing and Apply flow. See `docs/planning/SLIDE-DECK-PHASE-1-SPEC.md`.
+Requires Node 20+, Rust, and Xcode command-line tools (macOS) or Visual Studio Build Tools (Windows). Apply uses bundled worker scripts in release builds (`worker.mjs` via login-shell Node); dev falls back to `node` + `apps/grapevine-rig-worker/dist/*.mjs`.

@@ -2,6 +2,7 @@ import type { MockCommitPlan } from "@/lib/slide-deck/mock-commit";
 import type { ImplementationPlan } from "@/lib/slide-deck/implementation-plan";
 import { attachElementKeys } from "@/lib/slide-deck/plan-element-key";
 import { librarySelectionForRow } from "@/lib/slide-deck/plan-element-key";
+import { isPresentationRigKind } from "@/lib/slide-deck/device-context";
 import { createAdminClient, isSupabaseAdminConfigured } from "@/lib/supabase/admin";
 import type { SlideDeckBuildRow } from "./types";
 
@@ -116,7 +117,11 @@ export async function getBuildById(buildId: string): Promise<SlideDeckBuildRow |
 export async function claimNextBuildForRig(rig: {
   id: string;
   org_id: string;
+  rig_kind?: string;
 }): Promise<SlideDeckBuildRow | null> {
+  if (!isPresentationRigKind(rig.rig_kind)) {
+    return null;
+  }
   const supabase = requireAdmin();
 
   let query = supabase

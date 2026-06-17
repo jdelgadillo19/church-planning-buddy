@@ -60,6 +60,8 @@ npm run dev                        # http://localhost:3000
 |------|---------|
 | Hub shell (canonical UI) | `cd ../gojito-platform && npm run dev` → http://127.0.0.1:5173/ |
 | Slide deck page only | http://localhost:3000/slide-deck |
+| Handoff migration verify | `npm run handoff:verify-migration` |
+| Prep companion (Option A) | `npm run prep:companion` → http://127.0.0.1:3000/slide-deck — see [`PREP-LAPTOP-OPTION-A.md`](./PREP-LAPTOP-OPTION-A.md) |
 | ProPresenter probe (Mac w/ PP) | `npm run pp:diagnose` |
 | Rig worker (terminal, paired) | `npm run rig:worker-run` (needs `BUILD_ID`, `RIG_ID`, `RIG_SECRET`) |
 | Rig Tauri dev | `npm run rig:prepare && cd apps/grapevine-rig && npm run tauri dev` |

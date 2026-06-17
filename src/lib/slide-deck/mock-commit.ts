@@ -6,7 +6,7 @@ import {
   resolveTemplateCorrespondence,
   templatePrefixBeforeWelcome,
 } from "./pco-pp-correspondence";
-import { attachElementKeys, elementKeyForRow } from "./plan-element-key";
+import { attachElementKeys } from "./plan-element-key";
 
 export type MockCommitOperation = {
   step: number;
