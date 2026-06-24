@@ -178,17 +178,11 @@ export async function POST(req: Request) {
 
     return NextResponse.json(
       {
-        ok: true,
-        fileName,
-        zipBase64: zip.toString("base64"),
-        manifest: pullManifest,
+        ok: false,
+        error:
+          "Could not stage file download on the server. Try again in a moment or contact your admin.",
       },
-      {
-        headers: {
-          "Cache-Control": "no-store, no-transform",
-          "Content-Type": "application/json; charset=utf-8",
-        },
-      },
+      { status: 503 },
     );
   } catch (e) {
     const message = e instanceof Error ? e.message : "Filebase pull failed.";

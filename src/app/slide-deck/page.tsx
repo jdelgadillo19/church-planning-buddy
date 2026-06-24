@@ -10,11 +10,10 @@ import { SlideDeckUploadTool } from "@/components/slide-deck-upload-tool";
 import { ToolShell } from "@/components/tool-shell";
 import { missingSongRows, unresolvedAmbiguousRows } from "@/components/slide-deck-library-match";
 import { usePcoServicePlanSelection } from "@/hooks/use-pco-service-plan-selection";
-import { base64ToBlob } from "@/lib/base64-blob";
 import { downloadBlob } from "@/lib/download-blob";
 import type { FilebasePullManifest } from "@/lib/google/filebase-pull";
 import { formatApiErrorBody, readJsonOrText } from "@/lib/http/read-json-or-text";
-import { sanitizeErrorMessage } from "@/lib/http/sanitize-error-message";
+import { looksLikeBinaryPayload, sanitizeErrorMessage } from "@/lib/http/sanitize-error-message";
 import type { ImplementationPlan } from "@/lib/slide-deck/implementation-plan";
 import type { MockCommitPlan } from "@/lib/slide-deck/mock-commit";
 import {
@@ -740,7 +739,11 @@ export default function SlideDeckPage() {
     try {
       const res = await fetch("/api/filebase/pull", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json",
+        },
+        credentials: "same-origin",
         body: JSON.stringify({
           orgId,
           planId: planId.trim(),
@@ -759,12 +762,15 @@ export default function SlideDeckPage() {
         throw new Error(sanitizeErrorMessage(formatApiErrorBody(res.status, parsed)));
       }
       if (parsed.kind !== "json") {
-        throw new Error("Filebase pull returned an unexpected response. Hard-refresh and try again.");
+        throw new Error(
+          looksLikeBinaryPayload(parsed.text)
+            ? "Filebase pull returned a zip file but the browser could not download it. Hard-refresh and try again."
+            : "Filebase pull returned an unexpected response. Hard-refresh and try again.",
+        );
       }
       const payload = parsed.json as {
         ok?: boolean;
         error?: string;
-        zipBase64?: string;
         downloadUrl?: string;
         fileName?: string;
         manifest?: FilebasePullManifest;
@@ -776,20 +782,17 @@ export default function SlideDeckPage() {
       const pullManifest = payload.manifest ?? null;
       const outFileName = payload.fileName ?? `filebase-pull-${planId.trim()}.zip`;
 
-      if (payload.downloadUrl?.trim()) {
-        const a = document.createElement("a");
-        a.href = payload.downloadUrl;
-        a.download = outFileName;
-        a.style.display = "none";
-        document.body.appendChild(a);
-        a.click();
-        window.setTimeout(() => document.body.removeChild(a), 200);
-      } else if (payload.zipBase64?.trim()) {
-        const blob = base64ToBlob(payload.zipBase64, "application/zip");
-        downloadBlob(blob, outFileName);
-      } else {
-        throw new Error("Filebase pull returned no download.");
+      if (!payload.downloadUrl?.trim()) {
+        throw new Error("Filebase pull returned no download link.");
       }
+
+      const dl = await fetch(payload.downloadUrl, { credentials: "same-origin" });
+      if (!dl.ok) {
+        const dlParsed = await readJsonOrText(dl);
+        throw new Error(sanitizeErrorMessage(formatApiErrorBody(dl.status, dlParsed)));
+      }
+      const blob = await dl.blob();
+      downloadBlob(blob, outFileName);
 
       const count = pullManifest?.fileCount ?? 0;
       const name = pullManifest?.playlistName ?? "presentation";

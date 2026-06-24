@@ -28,7 +28,7 @@ export async function stageFilebasePullZip(input: {
     const key = pullObjectKey(input.orgId, pullId);
     const createdAt = Date.now();
 
-    await bucket.put(key, input.zip, {
+    await bucket.put(key, new Uint8Array(input.zip), {
       httpMetadata: { contentType: "application/zip" },
       customMetadata: {
         planId: input.planId,

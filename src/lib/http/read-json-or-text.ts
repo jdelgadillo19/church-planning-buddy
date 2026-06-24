@@ -1,4 +1,4 @@
-import { sanitizeErrorMessage } from "./sanitize-error-message";
+import { sanitizeErrorMessage, looksLikeBinaryPayload } from "./sanitize-error-message";
 
 export async function readJsonOrText(res: Response) {
   const text = await res.text();
@@ -18,6 +18,11 @@ export function formatApiErrorBody(status: number, parsed: Awaited<ReturnType<ty
     );
   }
   const snippet = parsed.text.trim().slice(0, 200);
+  if (looksLikeBinaryPayload(snippet)) {
+    return `Request failed (${status}). Hard-refresh and try again.`;
+  }
   const printable = snippet && /^[\x20-\x7e]+$/.test(snippet);
-  return printable ? `Request failed (${status}) — ${snippet}` : `Request failed (${status}).`;
+  return printable
+    ? sanitizeErrorMessage(`Request failed (${status}) — ${snippet}`)
+    : `Request failed (${status}).`;
 }
