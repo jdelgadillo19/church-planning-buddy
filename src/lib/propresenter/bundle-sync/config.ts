@@ -6,10 +6,13 @@ const DEFAULT_MAC_BUNDLE = path.join(
   "Library/Application Support/RenewedVision/ProPresenter",
 );
 
+const DEFAULT_WIN_BUNDLE = path.join(os.homedir(), "Documents", "ProPresenter");
+
 /** Resolve ProPresenter Support Files root for bundle scanning. */
 export function resolveBundleRoot(): string {
   const fromEnv = process.env.PP_BUNDLE_ROOT?.trim();
   if (fromEnv) return path.resolve(fromEnv);
+  if (process.platform === "win32") return DEFAULT_WIN_BUNDLE;
   return DEFAULT_MAC_BUNDLE;
 }
 

@@ -40,6 +40,8 @@ pub struct PpSettings {
     pub pp_host: String,
     pub pp_port: u16,
     pub pp_transport: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pp_bundle_root: Option<String>,
 }
 
 fn parse_pp_transport(raw: &str) -> Result<String, String> {
@@ -162,11 +164,33 @@ async fn export_playlist_via_osascript(
 }
 
 fn pp_settings_env(settings: &PpSettings) -> Vec<(String, String)> {
-    vec![
+    let mut env = vec![
         ("PP_HOST".to_string(), settings.pp_host.clone()),
         ("PP_PORT".to_string(), settings.pp_port.to_string()),
         ("PP_TRANSPORT".to_string(), settings.pp_transport.clone()),
-    ]
+    ];
+    if let Some(root) = settings.pp_bundle_root.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        env.push(("PP_BUNDLE_ROOT".to_string(), root.to_string()));
+    }
+    env
+}
+
+fn default_bundle_root() -> String {
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(documents) = std::env::var("USERPROFILE") {
+            return format!("{documents}\\Documents\\ProPresenter");
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Ok(home) = std::env::var("HOME") {
+            return format!(
+                "{home}/Library/Application Support/RenewedVision/ProPresenter"
+            );
+        }
+    }
+    String::new()
 }
 
 fn write_credentials(creds: &RigCredentials) -> Result<(), String> {
@@ -185,6 +209,7 @@ fn pp_from_creds(creds: &RigCredentials) -> Option<PpSettings> {
             .pp_transport
             .clone()
             .unwrap_or_else(|| "tcp".to_string()),
+        pp_bundle_root: None,
     })
 }
 
@@ -244,14 +269,27 @@ fn load_pp_settings_for_app(app: &tauri::AppHandle) -> Result<Option<PpSettings>
     migrate_pp_settings_from_keychain(app)
 }
 
-fn build_pp_settings(pp_host: String, pp_port: u16, pp_transport: String) -> Result<PpSettings, String> {
+fn build_pp_settings(
+    pp_host: String,
+    pp_port: u16,
+    pp_transport: String,
+    pp_bundle_root: Option<String>,
+) -> Result<PpSettings, String> {
     if pp_port == 0 {
         return Err("ProPresenter port is required.".to_string());
     }
+    let bundle = pp_bundle_root
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            let d = default_bundle_root();
+            if d.is_empty() { None } else { Some(d) }
+        });
     Ok(PpSettings {
         pp_host: normalize_pp_host(&pp_host),
         pp_port,
         pp_transport: parse_pp_transport(&pp_transport)?,
+        pp_bundle_root: bundle,
     })
 }
 
@@ -261,8 +299,9 @@ fn save_pp_settings(
     pp_host: String,
     pp_port: u16,
     pp_transport: String,
+    pp_bundle_root: Option<String>,
 ) -> Result<(), String> {
-    let settings = build_pp_settings(pp_host, pp_port, pp_transport)?;
+    let settings = build_pp_settings(pp_host, pp_port, pp_transport, pp_bundle_root)?;
     write_pp_settings_file(&app, &settings)
 }
 
@@ -347,6 +386,33 @@ fn system_node_path() -> Option<&'static str> {
     None
 }
 
+fn windows_node_command() -> Result<String, String> {
+    if let Ok(path) = std::env::var("GRAPEVINE_NODE_PATH") {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() && Path::new(trimmed).exists() {
+            return Ok(trimmed.to_string());
+        }
+    }
+    for candidate in ["node.exe", "node"] {
+        if let Ok(output) = std::process::Command::new("where")
+            .arg(candidate)
+            .output()
+        {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                if let Some(line) = stdout.lines().map(str::trim).find(|l| !l.is_empty()) {
+                    if Path::new(line).exists() {
+                        return Ok(line.to_string());
+                    }
+                }
+            }
+        }
+    }
+    Err(
+        "Node.js not found on PATH. Install Node.js 20+ and restart Grapevine Rig.".to_string(),
+    )
+}
+
 fn spawn_node_worker(
     app: &tauri::AppHandle,
     script: &Path,
@@ -360,11 +426,12 @@ fn spawn_node_worker(
 > {
     #[cfg(target_os = "windows")]
     {
+        let node = windows_node_command()?;
+        let script_str = script.to_string_lossy().into_owned();
         return app
             .shell()
-            .command("cmd")
-            .args(["/C", "node"])
-            .arg(script)
+            .command(node)
+            .args([script_str.as_str()])
             .envs(env)
             .spawn()
             .map_err(|e| format!("Failed to start node worker on Windows: {e}"));

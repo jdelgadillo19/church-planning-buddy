@@ -34,6 +34,8 @@ const handoffTitle = $("handoff-title");
 const handoffSummary = $("handoff-summary");
 const handoffImportBtn = $("handoff-import-btn");
 const handoffSkipBtn = $("handoff-skip-btn");
+const handoffPickerWrap = $("handoff-picker-wrap");
+const handoffPicker = $("handoff-picker");
 const noHandoff = $("no-handoff");
 const applyBtn = $("apply-btn");
 const changeDetailsEl = document.querySelector("details.details");
@@ -42,12 +44,14 @@ const settingsBtn = $("settings-btn");
 const actionStatus = $("action-status");
 const ppPort = $("pp-port");
 const ppTransport = $("pp-transport");
+const ppBundleRoot = $("pp-bundle-root");
 const ppSaveBtn = $("pp-save-btn");
 const ppSettingsStatus = $("pp-settings-status");
 
 let creds = null;
 let pendingBuild = null;
 let pendingHandoff = null;
+let pendingHandoffs = [];
 let lastAutoHandoffId = null;
 let editedImplPlan = null;
 let playlistConflict = null;
@@ -169,6 +173,9 @@ async function loadPpSettings() {
     if (saved) {
       ppPort.value = String(saved.ppPort || "");
       ppTransport.value = saved.ppTransport || "tcp";
+      if (ppBundleRoot) {
+        ppBundleRoot.value = saved.ppBundleRoot || "";
+      }
       setPpStatus(`Saved port ${saved.ppPort} (${saved.ppTransport}) on ${PP_HOST}.`, "ok");
     }
   } catch (e) {
@@ -189,6 +196,7 @@ function readPpSettingsFromForm() {
     ppHost: PP_HOST,
     ppPort: port,
     ppTransport: ppTransport.value || "tcp",
+    ppBundleRoot: ppBundleRoot?.value?.trim() || null,
   };
 }
 
@@ -359,20 +367,53 @@ function renderBuild() {
   }
 }
 
+function handoffRecencyMs(h) {
+  const mtime = h.playlist_file_mtime || h.updated_at || h.created_at;
+  const t = Date.parse(mtime);
+  return Number.isFinite(t) ? t : 0;
+}
+
+function sortHandoffsForRig(handoffs) {
+  return [...handoffs].sort((a, b) => {
+    const rank = (h) => {
+      if (h.handoff_status === "complete" && h.admin_approved_for_rig && h.services_drive_url) {
+        return 3;
+      }
+      if (h.handoff_status === "complete") return 2;
+      if (h.handoff_status === "incomplete") return 1;
+      return 0;
+    };
+    const byRank = rank(b) - rank(a);
+    if (byRank !== 0) return byRank;
+    return handoffRecencyMs(b) - handoffRecencyMs(a);
+  });
+}
+
+function handoffOptionLabel(h) {
+  const name =
+    h.commit_plan?.playlistName ?? h.playlist_name ?? h.id.slice(0, 8);
+  const version = h.version_label ? ` ${h.version_label}` : "";
+  const status =
+    h.handoff_status === "complete"
+      ? h.admin_approved_for_rig
+        ? "Complete (approved)"
+        : "Complete"
+      : "Incomplete";
+  return `${status}${version} — ${name}`;
+}
+
 async function pollHandoffs() {
   if (!creds || busy) return;
   try {
     const data = await apiFetch(`/api/pp/rigs/${creds.rigId}/handoffs/pending`);
     const handoffs = data.handoffs ?? [];
-    const completeApproved = handoffs.filter(
-      (h) => h.handoff_status === "complete" && h.admin_approved_for_rig,
+    const eligible = handoffs.filter(
+      (h) =>
+        (h.handoff_status === "complete" && h.admin_approved_for_rig) ||
+        h.handoff_status === "incomplete",
     );
-    const incomplete = handoffs.filter((h) => h.handoff_status === "incomplete");
-    pendingHandoff =
-      completeApproved.find((h) => h.services_drive_url) ??
-      completeApproved[0] ??
-      incomplete[0] ??
-      null;
+    pendingHandoffs = sortHandoffsForRig(eligible);
+    pendingHandoff = pendingHandoffs[0] ?? null;
     renderHandoff();
 
     if (
@@ -412,9 +453,24 @@ function renderHandoff() {
         ? " Volunteer requested replace — confirm before overwriting."
         : "";
     handoffSummary.textContent = `${name}${version}.${isIncomplete ? " Missing elements may remain." : replaceNote}`;
+
+    if (handoffPickerWrap && handoffPicker && pendingHandoffs.length > 1) {
+      handoffPickerWrap.classList.remove("hidden");
+      handoffPicker.innerHTML = "";
+      for (const h of pendingHandoffs) {
+        const opt = document.createElement("option");
+        opt.value = h.id;
+        opt.textContent = handoffOptionLabel(h);
+        if (h.id === pendingHandoff.id) opt.selected = true;
+        handoffPicker.appendChild(opt);
+      }
+    } else if (handoffPickerWrap) {
+      handoffPickerWrap.classList.add("hidden");
+    }
   } else {
     handoffCard.classList.add("hidden");
     noHandoff.classList.remove("hidden");
+    if (handoffPickerWrap) handoffPickerWrap.classList.add("hidden");
   }
 }
 
@@ -688,6 +744,15 @@ conflictDismissBtn.addEventListener("click", () => conflictDismiss());
 scanBtn.addEventListener("click", () => void scanNow());
 handoffImportBtn.addEventListener("click", () => void importHandoff());
 handoffSkipBtn.addEventListener("click", () => void skipHandoff());
+if (handoffPicker) {
+  handoffPicker.addEventListener("change", () => {
+    const next = pendingHandoffs.find((h) => h.id === handoffPicker.value);
+    if (next) {
+      pendingHandoff = next;
+      renderHandoff();
+    }
+  });
+}
 settingsBtn.addEventListener("click", () => void unpair());
 ppSaveBtn.addEventListener("click", () => void savePpSettings());
 

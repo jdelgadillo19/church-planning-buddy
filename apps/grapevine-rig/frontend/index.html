@@ -55,6 +55,10 @@
         <div id="handoff-card" class="build-card hidden">
           <p id="handoff-title" class="build-title">Handoff ready</p>
           <p id="handoff-summary" class="build-summary"></p>
+          <label id="handoff-picker-wrap" class="field hidden">
+            <span>Pending handoffs</span>
+            <select id="handoff-picker"></select>
+          </label>
           <button id="handoff-import-btn" type="button" class="btn primary">Import handoff</button>
           <button id="handoff-skip-btn" type="button" class="btn ghost">Skip</button>
         </div>
@@ -91,6 +95,19 @@
               <option value="http">HTTP only</option>
             </select>
           </label>
+          <label class="field">
+            <span>ProPresenter library folder</span>
+            <input
+              id="pp-bundle-root"
+              type="text"
+              autocomplete="off"
+              placeholder="C:\Users\...\Documents\ProPresenter"
+            />
+          </label>
+          <p class="hint">
+            Folder containing your ProPresenter library (Support Files). On Windows this is usually
+            <strong>Documents\ProPresenter</strong>.
+          </p>
           <button id="pp-save-btn" type="button" class="btn">Save settings</button>
           <p id="pp-settings-status" class="hint">
             Port is saved automatically when you Apply or Scan.

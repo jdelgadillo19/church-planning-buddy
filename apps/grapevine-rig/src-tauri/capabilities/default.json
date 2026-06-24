@@ -29,6 +29,16 @@
           "args": true
         },
         {
+          "name": "windows-node",
+          "cmd": "node.exe",
+          "args": true
+        },
+        {
+          "name": "windows-node-plain",
+          "cmd": "node",
+          "args": true
+        },
+        {
           "name": "osascript-export",
           "cmd": "/usr/bin/osascript",
           "args": true
