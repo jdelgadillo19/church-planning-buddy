@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { buildFilebasePullZip } from "@/lib/google/filebase-pull";
+import { stageFilebasePullZip } from "@/lib/google/filebase-pull-store";
 import { loadFilebaseDriveFileIndex } from "@/lib/google/filebase-drive-index";
 import { resolveFilebaseRootFolderId } from "@/lib/google/filebase-drive-folders";
 import { loadOrgLibrarianDrive } from "@/lib/google/org-librarian-drive";
@@ -149,12 +150,46 @@ export async function POST(req: Request) {
     }
 
     const fileName = `filebase-pull-${planId}-${Date.now()}.zip`;
-    return NextResponse.json({
-      ok: true,
+    const staged = await stageFilebasePullZip({
+      orgId: org.orgId,
+      userId: user.id,
+      planId,
       fileName,
-      zipBase64: zip.toString("base64"),
-      manifest: pullManifest,
+      zip,
     });
+
+    if (staged) {
+      return NextResponse.json(
+        {
+          ok: true,
+          fileName,
+          downloadUrl: staged.downloadUrl,
+          pullId: staged.pullId,
+          manifest: pullManifest,
+        },
+        {
+          headers: {
+            "Cache-Control": "no-store, no-transform",
+            "Content-Type": "application/json; charset=utf-8",
+          },
+        },
+      );
+    }
+
+    return NextResponse.json(
+      {
+        ok: true,
+        fileName,
+        zipBase64: zip.toString("base64"),
+        manifest: pullManifest,
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, no-transform",
+          "Content-Type": "application/json; charset=utf-8",
+        },
+      },
+    );
   } catch (e) {
     const message = e instanceof Error ? e.message : "Filebase pull failed.";
     return NextResponse.json({ ok: false, error: message }, { status: 400 });

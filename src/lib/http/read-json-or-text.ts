@@ -1,3 +1,5 @@
+import { sanitizeErrorMessage } from "./sanitize-error-message";
+
 export async function readJsonOrText(res: Response) {
   const text = await res.text();
   try {
@@ -11,7 +13,9 @@ export async function readJsonOrText(res: Response) {
 export function formatApiErrorBody(status: number, parsed: Awaited<ReturnType<typeof readJsonOrText>>) {
   if (parsed.kind === "json") {
     const payload = parsed.json as { error?: string; message?: string };
-    return payload.error ?? payload.message ?? `Request failed (${status}).`;
+    return sanitizeErrorMessage(
+      payload.error ?? payload.message ?? `Request failed (${status}).`,
+    );
   }
   const snippet = parsed.text.trim().slice(0, 200);
   const printable = snippet && /^[\x20-\x7e]+$/.test(snippet);

@@ -14,6 +14,7 @@ import { base64ToBlob } from "@/lib/base64-blob";
 import { downloadBlob } from "@/lib/download-blob";
 import type { FilebasePullManifest } from "@/lib/google/filebase-pull";
 import { formatApiErrorBody, readJsonOrText } from "@/lib/http/read-json-or-text";
+import { sanitizeErrorMessage } from "@/lib/http/sanitize-error-message";
 import type { ImplementationPlan } from "@/lib/slide-deck/implementation-plan";
 import type { MockCommitPlan } from "@/lib/slide-deck/mock-commit";
 import {
@@ -746,26 +747,50 @@ export default function SlideDeckPage() {
           serviceTypeId: serviceTypeId.trim() || undefined,
         }),
       });
+      const contentType = res.headers.get("content-type") ?? "";
+      if (res.ok && contentType.includes("application/zip")) {
+        const blob = await res.blob();
+        downloadBlob(blob, `filebase-pull-${planId.trim()}.zip`);
+        setFilebasePullMessage("Download started.");
+        return;
+      }
       const parsed = await readJsonOrText(res);
       if (!res.ok) {
-        throw new Error(formatApiErrorBody(res.status, parsed));
+        throw new Error(sanitizeErrorMessage(formatApiErrorBody(res.status, parsed)));
       }
       if (parsed.kind !== "json") {
-        throw new Error("Filebase pull returned an unexpected response.");
+        throw new Error("Filebase pull returned an unexpected response. Hard-refresh and try again.");
       }
       const payload = parsed.json as {
         ok?: boolean;
         error?: string;
         zipBase64?: string;
+        downloadUrl?: string;
         fileName?: string;
         manifest?: FilebasePullManifest;
       };
-      if (!payload.ok || !payload.zipBase64?.trim()) {
-        throw new Error(payload.error ?? "Filebase pull returned no zip.");
+      if (!payload.ok) {
+        throw new Error(sanitizeErrorMessage(payload.error ?? "Filebase pull failed."));
       }
+
       const pullManifest = payload.manifest ?? null;
-      const blob = base64ToBlob(payload.zipBase64, "application/zip");
-      downloadBlob(blob, payload.fileName ?? `filebase-pull-${planId.trim()}.zip`);
+      const outFileName = payload.fileName ?? `filebase-pull-${planId.trim()}.zip`;
+
+      if (payload.downloadUrl?.trim()) {
+        const a = document.createElement("a");
+        a.href = payload.downloadUrl;
+        a.download = outFileName;
+        a.style.display = "none";
+        document.body.appendChild(a);
+        a.click();
+        window.setTimeout(() => document.body.removeChild(a), 200);
+      } else if (payload.zipBase64?.trim()) {
+        const blob = base64ToBlob(payload.zipBase64, "application/zip");
+        downloadBlob(blob, outFileName);
+      } else {
+        throw new Error("Filebase pull returned no download.");
+      }
+
       const count = pullManifest?.fileCount ?? 0;
       const name = pullManifest?.playlistName ?? "presentation";
       setFilebasePullMessage(
@@ -774,7 +799,9 @@ export default function SlideDeckPage() {
           : "Download started.",
       );
     } catch (e) {
-      const message = e instanceof Error ? e.message : "Filebase pull failed.";
+      const message = sanitizeErrorMessage(
+        e instanceof Error ? e.message : "Filebase pull failed.",
+      );
       setFilebasePullError(message);
       setError(message);
     } finally {
