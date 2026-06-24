@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { buildFilebasePullZip } from "@/lib/google/filebase-pull";
-import { driveListFilesFetch, resolveGoogleAccessToken } from "@/lib/google/drive-fetch";
+import { loadFilebaseDriveFileIndex } from "@/lib/google/filebase-drive-index";
 import { resolveFilebaseRootFolderId } from "@/lib/google/filebase-drive-folders";
 import { loadOrgLibrarianDrive } from "@/lib/google/org-librarian-drive";
 import { getLatestSnapshotForOrg } from "@/lib/pp-platform/snapshots";
@@ -79,10 +79,6 @@ export async function POST(req: Request) {
     });
 
     const { drive } = librarian;
-    const accessToken = await resolveGoogleAccessToken(librarian.tokens);
-    if (!accessToken) {
-      return NextResponse.json({ ok: false, error: "Librarian Google token unavailable." }, { status: 401 });
-    }
 
     const filebaseRoot = await resolveFilebaseRootFolderId(drive);
     if (!filebaseRoot) {
@@ -90,37 +86,24 @@ export async function POST(req: Request) {
         {
           ok: false,
           error:
-            "Computer filebase folder not configured. Set PP_COMPUTER_FILEBASE_FOLDER_ID in env.",
+            "Filebase folder not configured. Set GV_DRIVE_LAYOUT_ROOT_FOLDER_ID + Filebase path or PP_FILEBASE_FOLDER_ID.",
         },
         { status: 400 },
       );
     }
 
-    const snapshotMetaPath = `Filebase/snapshots/${snapshot.id}.json`;
-    const indexFiles = snapshot.index_json.files ?? [];
-    const driveFileIndex: Array<{ relativePath: string; driveFileId: string }> = [];
-
-    for (const file of indexFiles) {
-      const rel = file.relativePath.replace(/\\/g, "/");
-      const escaped = rel.split("/").pop()!.replaceAll("'", "\\'");
-      const q = `'${filebaseRoot}' in parents and name = '${escaped}' and trashed=false`;
-      const listed = await driveListFilesFetch(accessToken, { q, pageSize: 5 });
-      const hit = listed.files[0];
-      if (hit?.id) {
-        driveFileIndex.push({ relativePath: rel, driveFileId: hit.id });
-      }
-    }
-
-    if (driveFileIndex.length === 0) {
+    const driveIndex = await loadFilebaseDriveFileIndex(drive, filebaseRoot);
+    if (!driveIndex || driveIndex.files.length === 0) {
       return NextResponse.json(
         {
           ok: false,
-          error:
-            "Filebase/ is empty or not seeded. Run npm run filebase:seed-upload on the presentation rig.",
+          error: "No files found under Filebase/ on Google Drive.",
         },
         { status: 400 },
       );
     }
+
+    const driveFileIndex = driveIndex.files;
 
     const { zip, manifest: pullManifest } = await buildFilebasePullZip({
       drive,
@@ -130,14 +113,47 @@ export async function POST(req: Request) {
       snapshotFiles: driveFileIndex,
     });
 
+    if (driveIndex.snapshotMetaPath) {
+      pullManifest.snapshotMetaPath = driveIndex.snapshotMetaPath;
+    }
+
+    if (pullManifest.requestedPaths.length === 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "No filebase files matched this plan. Confirm songs exist in Filebase/Libraries/ and rig Scan is current.",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (pullManifest.missingPaths.length > 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Filebase pull incomplete — missing: ${pullManifest.missingPaths.slice(0, 8).join(", ")}${
+            pullManifest.missingPaths.length > 8 ? "…" : ""
+          }`,
+          missingPaths: pullManifest.missingPaths,
+        },
+        { status: 400 },
+      );
+    }
+
+    if (pullManifest.fileCount === 0) {
+      return NextResponse.json(
+        { ok: false, error: "Filebase pull produced an empty zip." },
+        { status: 400 },
+      );
+    }
+
     const fileName = `filebase-pull-${planId}-${Date.now()}.zip`;
-    return new NextResponse(new Uint8Array(zip), {
-      status: 200,
-      headers: {
-        "content-type": "application/zip",
-        "content-disposition": `attachment; filename="${fileName}"`,
-        "x-cpb-pull-manifest": JSON.stringify({ ...pullManifest, snapshotMetaPath }),
-      },
+    return NextResponse.json({
+      ok: true,
+      fileName,
+      zipBase64: zip.toString("base64"),
+      manifest: pullManifest,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Filebase pull failed.";

@@ -5,10 +5,15 @@ import { GoogleConnectionCard } from "@/components/google-connection-card";
 import { SlideDeckBuilderEditor } from "@/components/slide-deck-builder-editor";
 import { SlideDeckHandoffDiscovery } from "@/components/slide-deck-handoff-discovery";
 import { SlideDeckHostedPanel } from "@/components/slide-deck-hosted-panel";
+import { PrepDownloadLinks } from "@/components/prep-download-links";
 import { SlideDeckUploadTool } from "@/components/slide-deck-upload-tool";
 import { ToolShell } from "@/components/tool-shell";
 import { missingSongRows, unresolvedAmbiguousRows } from "@/components/slide-deck-library-match";
 import { usePcoServicePlanSelection } from "@/hooks/use-pco-service-plan-selection";
+import { base64ToBlob } from "@/lib/base64-blob";
+import { downloadBlob } from "@/lib/download-blob";
+import type { FilebasePullManifest } from "@/lib/google/filebase-pull";
+import { formatApiErrorBody, readJsonOrText } from "@/lib/http/read-json-or-text";
 import type { ImplementationPlan } from "@/lib/slide-deck/implementation-plan";
 import type { MockCommitPlan } from "@/lib/slide-deck/mock-commit";
 import {
@@ -147,6 +152,8 @@ export default function SlideDeckPage() {
   const [replaceOnRig, setReplaceOnRig] = useState(false);
   const [adminApproveForRig, setAdminApproveForRig] = useState(false);
   const [filebasePullBusy, setFilebasePullBusy] = useState(false);
+  const [filebasePullMessage, setFilebasePullMessage] = useState<string | null>(null);
+  const [filebasePullError, setFilebasePullError] = useState<string | null>(null);
   const [missingFiles, setMissingFiles] = useState<MissingFileRef[]>([]);
   const [pendingRigHandoffs, setPendingRigHandoffs] = useState<
     Array<{ id: string; playlist_name: string; services_drive_url: string | null }>
@@ -321,6 +328,17 @@ export default function SlideDeckPage() {
     queueMicrotask(() => void refreshSubmissions());
   }, [orgId, commitPlan?.playlistName, refreshSubmissions]);
 
+  useEffect(() => {
+    if (!previewReady || !commitPlan) return;
+    const readiness = evaluateCreatePresentationReadiness(
+      commitPlan,
+      manifest,
+      librarySelections,
+    );
+    setCreateIssues(readiness.issues);
+    if (readiness.ready) setError(null);
+  }, [previewReady, commitPlan, manifest, librarySelections]);
+
   function resetPreviewState() {
     setPreviewReady(false);
     setManifest(null);
@@ -366,21 +384,19 @@ export default function SlideDeckPage() {
         throw new Error(payload.error ?? "Create presentation failed.");
       }
 
+      setManifest(payload.manifest);
+      setCommitPlan(payload.commitPlan);
+      setPresentationInstanceId(freshId);
+      setPreviewReady(true);
+
       const readiness = evaluateCreatePresentationReadiness(
         payload.commitPlan,
         payload.manifest,
         {},
       );
-      if (!readiness.ready) {
-        setCreateIssues(readiness.issues);
-        setError(readiness.issues.map((i) => i.message).join(" "));
-        return;
-      }
-
-      setManifest(payload.manifest);
-      setCommitPlan(payload.commitPlan);
-      setPresentationInstanceId(freshId);
-      setPreviewReady(true);
+      setCreateIssues(readiness.issues);
+      // Keep preview visible so library variant pickers render; block Send/Download via createIssues.
+      setError(null);
       void refreshPpStatus();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create presentation.");
@@ -634,7 +650,7 @@ export default function SlideDeckPage() {
     try {
       let proplaylistBase64: string | undefined;
       let proplaylistFileName: string | undefined;
-      if (tag === "complete") {
+      if (tag === "complete" || tag === "incomplete") {
         const exportRes = await fetch("/api/slide-deck/upload/export", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -717,6 +733,8 @@ export default function SlideDeckPage() {
   async function pullFilebaseZip() {
     if (!planId.trim() || !orgId) return;
     setFilebasePullBusy(true);
+    setFilebasePullError(null);
+    setFilebasePullMessage(null);
     setError(null);
     try {
       const res = await fetch("/api/filebase/pull", {
@@ -728,19 +746,37 @@ export default function SlideDeckPage() {
           serviceTypeId: serviceTypeId.trim() || undefined,
         }),
       });
+      const parsed = await readJsonOrText(res);
       if (!res.ok) {
-        const payload = (await res.json()) as { error?: string };
-        throw new Error(payload.error ?? "Filebase pull failed.");
+        throw new Error(formatApiErrorBody(res.status, parsed));
       }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `filebase-pull-${planId.trim()}.zip`;
-      a.click();
-      URL.revokeObjectURL(url);
+      if (parsed.kind !== "json") {
+        throw new Error("Filebase pull returned an unexpected response.");
+      }
+      const payload = parsed.json as {
+        ok?: boolean;
+        error?: string;
+        zipBase64?: string;
+        fileName?: string;
+        manifest?: FilebasePullManifest;
+      };
+      if (!payload.ok || !payload.zipBase64?.trim()) {
+        throw new Error(payload.error ?? "Filebase pull returned no zip.");
+      }
+      const pullManifest = payload.manifest ?? null;
+      const blob = base64ToBlob(payload.zipBase64, "application/zip");
+      downloadBlob(blob, payload.fileName ?? `filebase-pull-${planId.trim()}.zip`);
+      const count = pullManifest?.fileCount ?? 0;
+      const name = pullManifest?.playlistName ?? "presentation";
+      setFilebasePullMessage(
+        count > 0
+          ? `Downloaded ${count} file${count === 1 ? "" : "s"} for ${name}. Unzip into your ProPresenter library folder.`
+          : "Download started.",
+      );
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Filebase pull failed.");
+      const message = e instanceof Error ? e.message : "Filebase pull failed.";
+      setFilebasePullError(message);
+      setError(message);
     } finally {
       setFilebasePullBusy(false);
     }
@@ -793,28 +829,19 @@ export default function SlideDeckPage() {
   return (
     <ToolShell toolId="slide-deck">
       {isHosted ? (
-        <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100">
-          <p>
-            Browser planner mode — preview, handoffs, and <strong>Send to presentation rig</strong>{" "}
-            work here. Download and upload need ProPresenter on this Mac.
-          </p>
-          <p className="mt-2 text-xs">
-            <strong>Prep laptop (Option A):</strong> keep planning here, then on this Mac run{" "}
-            <code className="rounded bg-sky-100 px-1 dark:bg-sky-900">npm run prep:companion</code>{" "}
-            and open{" "}
-            <a href="http://127.0.0.1:3000/slide-deck" className="underline">
-              http://127.0.0.1:3000/slide-deck
-            </a>{" "}
-            for Download and Upload. See{" "}
-            <code className="rounded bg-sky-100 px-1 dark:bg-sky-900">
-              docs/PREP-LAPTOP-OPTION-A.md
-            </code>
-            .
-          </p>
+        <div className="flex flex-col gap-3">
+          <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100">
+            <p>
+              Browser planner mode — preview, handoffs, and <strong>Send to presentation rig</strong>{" "}
+              work here. Download and upload need the Grapevine Prep desktop app on a laptop with
+              ProPresenter.
+            </p>
+          </div>
+          <PrepDownloadLinks compact />
         </div>
       ) : deviceMode === "local_prep" || deviceMode === "dev_local" ? (
         <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-950 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-100">
-          <strong>Prep companion</strong> — continue Download and Upload here. Use the same weekend
+          <strong>Grapevine Prep</strong> — continue Download and Upload here. Use the same weekend
           you chose on grapevineprep.com, then Create Presentation again before downloading.
         </div>
       ) : null}
@@ -944,6 +971,8 @@ export default function SlideDeckPage() {
         }}
         onPullFilebase={() => void pullFilebaseZip()}
         filebasePullBusy={filebasePullBusy}
+        filebasePullMessage={filebasePullMessage}
+        filebasePullError={filebasePullError}
         canPullFilebase={isHosted && previewReady && Boolean(orgId)}
         ppConnected={Boolean(ppStatus?.connected)}
         ppAllowWrites={Boolean(ppStatus?.allowWrites)}

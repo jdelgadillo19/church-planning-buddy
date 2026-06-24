@@ -2,8 +2,10 @@
 
 import { PcoServicePlanPicker } from "@/components/pco-service-plan-picker";
 import {
+  ambiguousSongRows,
   LibraryMatchPicker,
   missingSongRows,
+  SlideDeckLibraryDisambiguation,
   unresolvedAmbiguousRows,
 } from "@/components/slide-deck-library-match";
 import type { CreatePresentationIssue } from "@/lib/slide-deck/commit-guards";
@@ -59,6 +61,8 @@ type Props = {
   onOpenUploadTool?: () => void;
   onPullFilebase?: () => void;
   filebasePullBusy?: boolean;
+  filebasePullMessage?: string | null;
+  filebasePullError?: string | null;
   canPullFilebase?: boolean;
   ppConnected: boolean;
   ppAllowWrites: boolean;
@@ -100,6 +104,8 @@ export function SlideDeckBuilderEditor({
   onOpenUploadTool,
   onPullFilebase,
   filebasePullBusy = false,
+  filebasePullMessage = null,
+  filebasePullError = null,
   canPullFilebase = false,
   ppConnected,
   ppAllowWrites,
@@ -110,6 +116,7 @@ export function SlideDeckBuilderEditor({
   onCancelConflict,
 }: Props) {
   const missingRows = missingSongRows(commitPlan);
+  const ambiguousRows = ambiguousSongRows(commitPlan);
   const unresolvedRows = unresolvedAmbiguousRows(commitPlan, librarySelections);
   const createReady = missingRows.length === 0 && unresolvedRows.length === 0 && createIssues.length === 0;
 
@@ -145,11 +152,25 @@ export function SlideDeckBuilderEditor({
       />
 
       {createIssues.length > 0 ? (
-        <ul className="list-disc space-y-1 rounded-lg border border-red-200 bg-red-50 pl-5 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
+        <ul
+          className={`list-disc space-y-1 rounded-lg border pl-5 py-3 text-sm ${
+            createIssues.every((i) => i.kind === "ambiguous_song")
+              ? "border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
+              : "border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200"
+          }`}
+        >
           {createIssues.map((issue, i) => (
             <li key={`${issue.kind}-${i}`}>{issue.message}</li>
           ))}
         </ul>
+      ) : null}
+
+      {previewReady && ambiguousRows.length > 0 ? (
+        <SlideDeckLibraryDisambiguation
+          rows={ambiguousRows}
+          librarySelections={librarySelections}
+          onSelectLibrary={onSelectLibrary}
+        />
       ) : null}
 
       <div className="flex flex-wrap gap-2">
@@ -226,14 +247,22 @@ export function SlideDeckBuilderEditor({
                 sanctuary apply.
               </p>
               {canPullFilebase && onPullFilebase ? (
-                <button
-                  type="button"
-                  disabled={filebasePullBusy}
-                  onClick={onPullFilebase}
-                  className="h-10 w-fit rounded-xl border border-sky-700 px-3 text-sm font-medium text-sky-900 dark:border-sky-500 dark:text-sky-100"
-                >
-                  {filebasePullBusy ? "Preparing zip…" : "Pull filebase files"}
-                </button>
+                <div className="flex flex-col gap-1">
+                  <button
+                    type="button"
+                    disabled={filebasePullBusy}
+                    onClick={onPullFilebase}
+                    className="h-10 w-fit rounded-xl border border-sky-700 px-3 text-sm font-medium text-sky-900 dark:border-sky-500 dark:text-sky-100"
+                  >
+                    {filebasePullBusy ? "Preparing zip…" : "Pull filebase files"}
+                  </button>
+                  {filebasePullError ? (
+                    <p className="text-xs text-red-700 dark:text-red-300">{filebasePullError}</p>
+                  ) : null}
+                  {filebasePullMessage ? (
+                    <p className="text-xs text-emerald-800 dark:text-emerald-200">{filebasePullMessage}</p>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           )}

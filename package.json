@@ -37,7 +37,12 @@
     "handoff:verify-migration": "npx tsx scripts/verify-handoff-migration.ts",
     "handoff:apply-migration": "npx tsx scripts/apply-handoff-rig-policy-migration.ts",
     "filebase:seed-upload": "npx tsx scripts/filebase-seed-upload.ts",
+    "filebase:verify-drive": "npx tsx scripts/verify-filebase-drive-snapshot.ts",
+    "filebase:verify-librarian": "npx tsx scripts/verify-filebase-librarian.ts",
     "prep:companion": "PP_ALLOW_WRITES=true PP_HOST=127.0.0.1 next dev -H 127.0.0.1",
+    "operational:verify": "npx tsx scripts/verify-operational-readiness.ts",
+    "prep:prepare": "node scripts/grapevine-prep-prepare.mjs",
+    "prep:build": "npm run prep:prepare && cd apps/grapevine-prep && npm install && npm run tauri build",
     "messaging:run": "npx tsx scripts/messaging-run.ts"
   },
   "dependencies": {
