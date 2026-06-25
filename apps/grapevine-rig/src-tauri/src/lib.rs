@@ -386,11 +386,14 @@ fn system_node_path() -> Option<&'static str> {
     None
 }
 
-fn windows_node_command() -> Result<String, String> {
+/// Tauri shell allowlist permits `node.exe` / `node` by name — not full `C:\...` paths.
+fn windows_node_on_path() -> Result<&'static str, String> {
     if let Ok(path) = std::env::var("GRAPEVINE_NODE_PATH") {
         let trimmed = path.trim();
-        if !trimmed.is_empty() && Path::new(trimmed).exists() {
-            return Ok(trimmed.to_string());
+        if !trimmed.is_empty() && !Path::new(trimmed).exists() {
+            return Err(format!(
+                "GRAPEVINE_NODE_PATH not found: {trimmed}. Install Node.js 20+ or fix the path."
+            ));
         }
     }
     for candidate in ["node.exe", "node"] {
@@ -400,10 +403,15 @@ fn windows_node_command() -> Result<String, String> {
         {
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
-                if let Some(line) = stdout.lines().map(str::trim).find(|l| !l.is_empty()) {
-                    if Path::new(line).exists() {
-                        return Ok(line.to_string());
-                    }
+                if stdout.lines().any(|line| {
+                    let line = line.trim();
+                    !line.is_empty() && Path::new(line).exists()
+                }) {
+                    return Ok(if candidate == "node.exe" {
+                        "node.exe"
+                    } else {
+                        "node"
+                    });
                 }
             }
         }
@@ -411,6 +419,11 @@ fn windows_node_command() -> Result<String, String> {
     Err(
         "Node.js not found on PATH. Install Node.js 20+ and restart Grapevine Rig.".to_string(),
     )
+}
+
+/// Forward slashes avoid `C:` being parsed as a separate argv token on Windows.
+fn windows_script_arg(script: &Path) -> String {
+    script.to_string_lossy().replace('\\', "/")
 }
 
 fn spawn_node_worker(
@@ -426,8 +439,8 @@ fn spawn_node_worker(
 > {
     #[cfg(target_os = "windows")]
     {
-        let node = windows_node_command()?;
-        let script_str = script.to_string_lossy().into_owned();
+        let node = windows_node_on_path()?;
+        let script_str = windows_script_arg(script);
         return app
             .shell()
             .command(node)

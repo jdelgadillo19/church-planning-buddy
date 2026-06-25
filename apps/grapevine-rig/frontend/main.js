@@ -41,6 +41,9 @@ const applyBtn = $("apply-btn");
 const changeDetailsEl = document.querySelector("details.details");
 const scanBtn = $("scan-btn");
 const settingsBtn = $("settings-btn");
+const unpairConfirm = $("unpair-confirm");
+const unpairConfirmBtn = $("unpair-confirm-btn");
+const unpairCancelBtn = $("unpair-cancel-btn");
 const actionStatus = $("action-status");
 const ppPort = $("pp-port");
 const ppTransport = $("pp-transport");
@@ -156,6 +159,7 @@ async function apiFetch(path, init) {
 function showPair() {
   pairScreen.classList.remove("hidden");
   mainScreen.classList.add("hidden");
+  hideUnpairConfirm();
   setBadge("idle", "Not paired");
 }
 
@@ -727,13 +731,28 @@ async function scanNow() {
   }
 }
 
+function showUnpairConfirm() {
+  unpairConfirm.classList.remove("hidden");
+}
+
+function hideUnpairConfirm() {
+  unpairConfirm.classList.add("hidden");
+}
+
 async function unpair() {
-  if (!confirm("Remove pairing credentials from this Mac?")) return;
-  await invoke("clear_credentials");
-  creds = null;
-  pendingBuild = null;
-  if (pollTimer) clearInterval(pollTimer);
-  showPair();
+  hideUnpairConfirm();
+  setActionStatus("Removing pairing…", "busy");
+  try {
+    await invoke("clear_credentials");
+    creds = null;
+    pendingBuild = null;
+    if (pollTimer) clearInterval(pollTimer);
+    setActionStatus("Unpaired.", "ok");
+    showPair();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : typeof e === "string" ? e : "Unpair failed";
+    setActionStatus(msg || "Unpair failed", "error");
+  }
 }
 
 pairBtn.addEventListener("click", () => void pair());
@@ -753,7 +772,9 @@ if (handoffPicker) {
     }
   });
 }
-settingsBtn.addEventListener("click", () => void unpair());
+settingsBtn.addEventListener("click", () => showUnpairConfirm());
+unpairConfirmBtn.addEventListener("click", () => void unpair());
+unpairCancelBtn.addEventListener("click", () => hideUnpairConfirm());
 ppSaveBtn.addEventListener("click", () => void savePpSettings());
 
 async function init() {

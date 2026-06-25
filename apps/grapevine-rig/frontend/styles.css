@@ -135,6 +135,32 @@ body {
   background: transparent;
 }
 
+.btn.danger {
+  background: #7f1d1d;
+  color: #fecaca;
+  border-color: #991b1b;
+}
+
+.unpair-confirm {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid #7f1d1d;
+  background: #450a0a;
+}
+
+.unpair-confirm p {
+  margin: 0 0 0.65rem;
+  font-size: 0.85rem;
+  color: #fecaca;
+}
+
+.unpair-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .rig-label {
   font-size: 0.85rem;
   margin: 0;
