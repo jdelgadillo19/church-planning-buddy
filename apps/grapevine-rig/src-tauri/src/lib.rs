@@ -386,11 +386,15 @@ fn system_node_path() -> Option<&'static str> {
     None
 }
 
-/// Tauri shell allowlist permits `node.exe` / `node` by name — not full `C:\...` paths.
-fn windows_node_on_path() -> Result<&'static str, String> {
+#[cfg(target_os = "windows")]
+fn windows_node_executable() -> Result<PathBuf, String> {
     if let Ok(path) = std::env::var("GRAPEVINE_NODE_PATH") {
         let trimmed = path.trim();
-        if !trimmed.is_empty() && !Path::new(trimmed).exists() {
+        if !trimmed.is_empty() {
+            let p = PathBuf::from(trimmed);
+            if p.exists() {
+                return Ok(p);
+            }
             return Err(format!(
                 "GRAPEVINE_NODE_PATH not found: {trimmed}. Install Node.js 20+ or fix the path."
             ));
@@ -403,15 +407,11 @@ fn windows_node_on_path() -> Result<&'static str, String> {
         {
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
-                if stdout.lines().any(|line| {
-                    let line = line.trim();
-                    !line.is_empty() && Path::new(line).exists()
-                }) {
-                    return Ok(if candidate == "node.exe" {
-                        "node.exe"
-                    } else {
-                        "node"
-                    });
+                if let Some(line) = stdout.lines().map(str::trim).find(|l| !l.is_empty()) {
+                    let p = PathBuf::from(line);
+                    if p.exists() {
+                        return Ok(p);
+                    }
                 }
             }
         }
@@ -421,11 +421,44 @@ fn windows_node_on_path() -> Result<&'static str, String> {
     )
 }
 
-/// Forward slashes avoid `C:` being parsed as a separate argv token on Windows.
-fn windows_script_arg(script: &Path) -> String {
-    script.to_string_lossy().replace('\\', "/")
+#[cfg(target_os = "windows")]
+async fn run_windows_node_worker(script: &Path, env: Vec<(String, String)>) -> Result<String, String> {
+    let node = windows_node_executable()?;
+    let script = script.to_path_buf();
+    let result = tokio::task::spawn_blocking(move || {
+        let mut cmd = std::process::Command::new(&node);
+        cmd.arg(&script);
+        for (key, value) in &env {
+            cmd.env(key, value);
+        }
+        cmd.stdout(std::process::Stdio::piped());
+        cmd.stderr(std::process::Stdio::piped());
+        cmd.output()
+            .map_err(|e| format!("Failed to start node worker on Windows: {e}"))
+    })
+    .await
+    .map_err(|e| format!("Worker task failed: {e}"))??;
+
+    let code = result.status.code().unwrap_or(1);
+    let stdout = String::from_utf8_lossy(&result.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&result.stderr).into_owned();
+    if code != 0 {
+        let mut msg = stderr.trim().to_string();
+        if msg.is_empty() {
+            msg = stdout.trim().to_string();
+        } else if !stdout.trim().is_empty() {
+            msg = format!("{msg}\n{}", stdout.trim());
+        }
+        return Err(if msg.is_empty() {
+            format!("Worker exited with code {code}")
+        } else {
+            msg
+        });
+    }
+    Ok(stdout.trim().to_string())
 }
 
+#[cfg(not(target_os = "windows"))]
 fn spawn_node_worker(
     app: &tauri::AppHandle,
     script: &Path,
@@ -437,46 +470,30 @@ fn spawn_node_worker(
     ),
     String,
 > {
-    #[cfg(target_os = "windows")]
-    {
-        let node = windows_node_on_path()?;
-        let script_str = windows_script_arg(script);
-        return app
-            .shell()
-            .command(node)
-            .args([script_str.as_str()])
-            .envs(env)
-            .spawn()
-            .map_err(|e| format!("Failed to start node worker on Windows: {e}"));
-    }
+    let script_arg = shell_quote(&script.to_string_lossy());
+    let zsh_cmd = format!("exec node {script_arg}");
 
-    #[cfg(not(target_os = "windows"))]
+    match app
+        .shell()
+        .command("/bin/zsh")
+        .args(["-l", "-c", &zsh_cmd])
+        .envs(env.clone())
+        .spawn()
     {
-        let script_arg = shell_quote(&script.to_string_lossy());
-        let zsh_cmd = format!("exec node {script_arg}");
-
-        match app
-            .shell()
-            .command("/bin/zsh")
-            .args(["-l", "-c", &zsh_cmd])
-            .envs(env.clone())
-            .spawn()
-        {
-            Ok(pair) => return Ok(pair),
-            Err(zsh_err) => {
-                if let Some(node) = system_node_path() {
-                    return app
-                        .shell()
-                        .command(node)
-                        .arg(script)
-                        .envs(env)
-                        .spawn()
-                        .map_err(|e| format!("Failed to start node worker ({node}): {e}"));
-                }
-                Err(format!(
-                    "Failed to start worker via login shell. Install Node.js (nvm or Homebrew) and try again. ({zsh_err})"
-                ))
+        Ok(pair) => return Ok(pair),
+        Err(zsh_err) => {
+            if let Some(node) = system_node_path() {
+                return app
+                    .shell()
+                    .command(node)
+                    .arg(script)
+                    .envs(env)
+                    .spawn()
+                    .map_err(|e| format!("Failed to start node worker ({node}): {e}"));
             }
+            Err(format!(
+                "Failed to start worker via login shell. Install Node.js (nvm or Homebrew) and try again. ({zsh_err})"
+            ))
         }
     }
 }
@@ -557,37 +574,46 @@ async fn run_node_worker_stdout(
     env.extend(extra_env);
 
     let script = resolve_worker_script(app, node_script)?;
-    let (mut rx, _child) = spawn_node_worker(app, &script, env)?;
 
-    let mut stdout = String::new();
-    let mut stderr = String::new();
-
-    while let Some(event) = rx.recv().await {
-        match event {
-            CommandEvent::Stdout(line) => stdout.push_str(&String::from_utf8_lossy(&line)),
-            CommandEvent::Stderr(line) => stderr.push_str(&String::from_utf8_lossy(&line)),
-            CommandEvent::Terminated(payload) => {
-                if payload.code.unwrap_or(1) != 0 {
-                    let mut msg = stderr.trim().to_string();
-                    if msg.is_empty() {
-                        msg = stdout.trim().to_string();
-                    } else if !stdout.trim().is_empty() {
-                        msg = format!("{msg}\n{}", stdout.trim());
-                    }
-                    return Err(if msg.is_empty() {
-                        format!("Worker exited with code {:?}", payload.code)
-                    } else {
-                        msg
-                    });
-                }
-                break;
-            }
-            CommandEvent::Error(err) => return Err(err),
-            _ => {}
-        }
+    #[cfg(target_os = "windows")]
+    {
+        return run_windows_node_worker(&script, env).await;
     }
 
-    Ok(stdout.trim().to_string())
+    #[cfg(not(target_os = "windows"))]
+    {
+        let (mut rx, _child) = spawn_node_worker(app, &script, env)?;
+
+        let mut stdout = String::new();
+        let mut stderr = String::new();
+
+        while let Some(event) = rx.recv().await {
+            match event {
+                CommandEvent::Stdout(line) => stdout.push_str(&String::from_utf8_lossy(&line)),
+                CommandEvent::Stderr(line) => stderr.push_str(&String::from_utf8_lossy(&line)),
+                CommandEvent::Terminated(payload) => {
+                    if payload.code.unwrap_or(1) != 0 {
+                        let mut msg = stderr.trim().to_string();
+                        if msg.is_empty() {
+                            msg = stdout.trim().to_string();
+                        } else if !stdout.trim().is_empty() {
+                            msg = format!("{msg}\n{}", stdout.trim());
+                        }
+                        return Err(if msg.is_empty() {
+                            format!("Worker exited with code {:?}", payload.code)
+                        } else {
+                            msg
+                        });
+                    }
+                    break;
+                }
+                CommandEvent::Error(err) => return Err(err),
+                _ => {}
+            }
+        }
+
+        Ok(stdout.trim().to_string())
+    }
 }
 
 async fn run_node_worker(
