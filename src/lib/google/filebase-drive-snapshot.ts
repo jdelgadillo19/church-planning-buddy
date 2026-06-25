@@ -1,6 +1,7 @@
 import type { drive_v3 } from "@/lib/google/api-types";
 import { SHARED_DRIVE_OPTS } from "./drive-files";
 import { driveDownloadFileBytes } from "./drive-download";
+import type { EnvSource } from "@/lib/config/worker-env";
 import { resolveFilebaseSnapshotsFolderId } from "./filebase-drive-folders";
 
 export type FilebaseDriveSnapshotFile = {
@@ -66,8 +67,11 @@ function parseSnapshotManifest(
  */
 export async function loadLatestFilebaseDriveSnapshot(
   drive: drive_v3.Drive,
+  env: EnvSource = process.env as EnvSource,
 ): Promise<FilebaseDriveSnapshot | null> {
-  const snapshotsFolderId = await resolveFilebaseSnapshotsFolderId(drive);
+  const snapshotsFolderId = await resolveFilebaseSnapshotsFolderId(drive, env, {
+    createIfMissing: false,
+  });
   if (!snapshotsFolderId) return null;
 
   const list = await drive.files.list({

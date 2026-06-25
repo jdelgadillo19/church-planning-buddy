@@ -1,5 +1,6 @@
 import type { drive_v3 } from "@/lib/google/api-types";
 import { SHARED_DRIVE_OPTS } from "./drive-files";
+import type { EnvSource } from "@/lib/config/worker-env";
 import {
   loadLatestFilebaseDriveSnapshot,
   type FilebaseDriveSnapshotFile,
@@ -119,10 +120,11 @@ export function normalizeFilebaseDriveIndex(index: FilebaseDriveIndex): Filebase
 export async function loadFilebaseDriveFileIndex(
   drive: drive_v3.Drive,
   filebaseRootId: string,
-  options?: { walkOnly?: boolean },
+  options?: { walkOnly?: boolean; env?: EnvSource },
 ): Promise<FilebaseDriveIndex | null> {
+  const env = options?.env ?? (process.env as EnvSource);
   if (!options?.walkOnly) {
-    const snapshot = await loadLatestFilebaseDriveSnapshot(drive);
+    const snapshot = await loadLatestFilebaseDriveSnapshot(drive, env);
     if (snapshot && snapshot.files.length > 0) {
       return {
         files: snapshot.files.map((f) => ({

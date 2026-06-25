@@ -3,7 +3,7 @@ import { envString, type EnvSource } from "@/lib/config/worker-env";
 import type { FilebaseDriveIndex } from "./filebase-drive-index";
 import { loadFilebaseDriveFileIndex, normalizeFilebaseDriveIndex } from "./filebase-drive-index";
 import { resolveFolderByPath } from "./grg-drive-folders";
-import { ensureChildFolder } from "./pp-drive-folders";
+import { ensureChildFolder, findChildFolder } from "./pp-drive-folders";
 
 /** When true, Shared Drive `Filebase/` is tried before legacy Computers backup. */
 export function shouldPreferSharedDriveFilebase(env: EnvSource = process.env as EnvSource): boolean {
@@ -62,9 +62,13 @@ export async function resolveFilebaseRootFolderId(
 export async function resolveFilebaseSnapshotsFolderId(
   drive: drive_v3.Drive,
   env: EnvSource = process.env as EnvSource,
+  options?: { createIfMissing?: boolean },
 ): Promise<string | null> {
   const rootId = await resolveFilebaseRootFolderId(drive, env);
   if (!rootId) return null;
+  if (options?.createIfMissing === false) {
+    return findChildFolder(drive, rootId, "snapshots");
+  }
   return ensureChildFolder(drive, rootId, "snapshots");
 }
 
@@ -90,15 +94,20 @@ export async function resolveFilebasePullSource(
   }
 
   for (const candidate of candidates) {
-    const index = await loadFilebaseDriveFileIndex(drive, candidate.rootId, {
-      walkOnly: candidate.walkOnly,
-    });
-    if (index && index.files.length > 0) {
-      return {
-        rootId: candidate.rootId,
-        index: normalizeFilebaseDriveIndex(index),
-        source: candidate.source,
-      };
+    try {
+      const index = await loadFilebaseDriveFileIndex(drive, candidate.rootId, {
+        walkOnly: candidate.walkOnly,
+        env,
+      });
+      if (index && index.files.length > 0) {
+        return {
+          rootId: candidate.rootId,
+          index: normalizeFilebaseDriveIndex(index),
+          source: candidate.source,
+        };
+      }
+    } catch {
+      continue;
     }
   }
 

@@ -31,6 +31,16 @@ export async function resolvePpNewFilesFolderId(drive: drive_v3.Drive): Promise<
   return id;
 }
 
+/** Find a child folder by exact name; returns null if missing (read-only). */
+export async function findChildFolder(
+  drive: drive_v3.Drive,
+  parentId: string,
+  name: string,
+): Promise<string | null> {
+  const matches = await listMatchingFolders(drive, name, parentId);
+  return matches[0]?.id ?? null;
+}
+
 /** Find or create a child folder by exact name under parent. */
 export async function ensureChildFolder(
   drive: drive_v3.Drive,
