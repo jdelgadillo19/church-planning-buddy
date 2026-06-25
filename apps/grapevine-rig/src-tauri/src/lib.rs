@@ -387,37 +387,76 @@ fn system_node_path() -> Option<&'static str> {
 }
 
 #[cfg(target_os = "windows")]
+fn is_usable_node_exe(path: &Path) -> bool {
+    if !path.is_file() {
+        return false;
+    }
+    match path.extension().and_then(|e| e.to_str()) {
+        Some(ext) => ext.eq_ignore_ascii_case("exe"),
+        None => false,
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn windows_standard_node_paths() -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    if let Ok(pf) = std::env::var("ProgramFiles") {
+        out.push(PathBuf::from(pf).join("nodejs").join("node.exe"));
+    }
+    if let Ok(pf86) = std::env::var("ProgramFiles(x86)") {
+        out.push(PathBuf::from(pf86).join("nodejs").join("node.exe"));
+    }
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        out.push(
+            PathBuf::from(local)
+                .join("Programs")
+                .join("node")
+                .join("node.exe"),
+        );
+    }
+    out
+}
+
+#[cfg(target_os = "windows")]
 fn windows_node_executable() -> Result<PathBuf, String> {
     if let Ok(path) = std::env::var("GRAPEVINE_NODE_PATH") {
         let trimmed = path.trim();
         if !trimmed.is_empty() {
             let p = PathBuf::from(trimmed);
-            if p.exists() {
+            if is_usable_node_exe(&p) {
                 return Ok(p);
             }
             return Err(format!(
-                "GRAPEVINE_NODE_PATH not found: {trimmed}. Install Node.js 20+ or fix the path."
+                "GRAPEVINE_NODE_PATH must point to node.exe (not a .cmd shim): {trimmed}"
             ));
         }
     }
-    for candidate in ["node.exe", "node"] {
-        if let Ok(output) = std::process::Command::new("where")
-            .arg(candidate)
-            .output()
-        {
-            if output.status.success() {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                if let Some(line) = stdout.lines().map(str::trim).find(|l| !l.is_empty()) {
-                    let p = PathBuf::from(line);
-                    if p.exists() {
-                        return Ok(p);
-                    }
+
+    for p in windows_standard_node_paths() {
+        if is_usable_node_exe(&p) {
+            return Ok(p);
+        }
+    }
+
+    if let Ok(output) = std::process::Command::new("where")
+        .arg("node.exe")
+        .output()
+    {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines().map(str::trim).filter(|l| !l.is_empty()) {
+                let p = PathBuf::from(line);
+                if is_usable_node_exe(&p) {
+                    return Ok(p);
                 }
             }
         }
     }
+
     Err(
-        "Node.js not found on PATH. Install Node.js 20+ and restart Grapevine Rig.".to_string(),
+        "Node.js not found. Install Node.js 20+ (node.exe in Program Files\\nodejs) and restart Grapevine Rig. \
+         Do not rely on npm's node.cmd shim — set GRAPEVINE_NODE_PATH to your node.exe if needed."
+            .to_string(),
     )
 }
 
@@ -425,6 +464,8 @@ fn windows_node_executable() -> Result<PathBuf, String> {
 async fn run_windows_node_worker(script: &Path, env: Vec<(String, String)>) -> Result<String, String> {
     let node = windows_node_executable()?;
     let script = script.to_path_buf();
+    let node_log = node.to_string_lossy().into_owned();
+    let script_log = script.to_string_lossy().into_owned();
     let output = tauri::async_runtime::spawn_blocking(move || {
         let mut cmd = std::process::Command::new(&node);
         cmd.arg(&script);
@@ -439,7 +480,9 @@ async fn run_windows_node_worker(script: &Path, env: Vec<(String, String)>) -> R
     .await
     .map_err(|e| format!("Worker task failed: {e}"))?;
 
-    let result = output?;
+    let result = output.map_err(|e| {
+        format!("Node worker failed (node={node_log}, script={script_log}): {e}")
+    })?;
     let code = result.status.code().unwrap_or(1);
     let stdout = String::from_utf8_lossy(&result.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&result.stderr).into_owned();
@@ -451,9 +494,9 @@ async fn run_windows_node_worker(script: &Path, env: Vec<(String, String)>) -> R
             msg = format!("{msg}\n{}", stdout.trim());
         }
         return Err(if msg.is_empty() {
-            format!("Worker exited with code {code}")
+            format!("Worker exited with code {code} (node={node_log}, script={script_log})")
         } else {
-            msg
+            format!("{msg}\n(node={node_log}, script={script_log})")
         });
     }
     Ok(stdout.trim().to_string())
