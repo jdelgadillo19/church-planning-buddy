@@ -93,24 +93,56 @@ export async function walkFilebaseDriveTree(
   return out;
 }
 
+/** Strip Computers-backup prefixes so paths match `Libraries/…` layout. */
+export function normalizeFilebaseRelativePath(relativePath: string): string {
+  let p = relativePath.replace(/\\/g, "/").replace(/^\/+/, "");
+  const lower = p.toLowerCase();
+  if (lower.startsWith("propresenter/")) {
+    p = p.slice("propresenter/".length);
+  }
+  return p;
+}
+
+export function normalizeFilebaseDriveIndex(index: FilebaseDriveIndex): FilebaseDriveIndex {
+  return {
+    ...index,
+    files: index.files.map((f) => ({
+      ...f,
+      relativePath: normalizeFilebaseRelativePath(f.relativePath),
+    })),
+  };
+}
+
 /**
  * Load filebase file index: prefer `Filebase/snapshots/*.json`, else walk live Drive tree.
  */
 export async function loadFilebaseDriveFileIndex(
   drive: drive_v3.Drive,
   filebaseRootId: string,
+  options?: { walkOnly?: boolean },
 ): Promise<FilebaseDriveIndex | null> {
-  const snapshot = await loadLatestFilebaseDriveSnapshot(drive);
-  if (snapshot && snapshot.files.length > 0) {
-    return {
-      files: snapshot.files,
-      source: "snapshot",
-      snapshotMetaPath: snapshot.driveMetaPath,
-    };
+  if (!options?.walkOnly) {
+    const snapshot = await loadLatestFilebaseDriveSnapshot(drive);
+    if (snapshot && snapshot.files.length > 0) {
+      return {
+        files: snapshot.files.map((f) => ({
+          ...f,
+          relativePath: normalizeFilebaseRelativePath(f.relativePath),
+        })),
+        source: "snapshot",
+        snapshotMetaPath: snapshot.driveMetaPath,
+      };
+    }
   }
 
   const walked = await walkFilebaseDriveTree(drive, filebaseRootId);
   if (walked.length === 0) return null;
 
-  return { files: walked, source: "walk" };
+  return {
+    files: walked.map((f) => ({
+      ...f,
+      relativePath: normalizeFilebaseRelativePath(f.relativePath),
+    })),
+    source: "walk",
+  };
 }

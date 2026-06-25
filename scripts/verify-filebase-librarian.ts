@@ -6,8 +6,7 @@ import { loadEnvLocal } from "./_load-env-local";
 import { getAuthedClients } from "../src/lib/google/auth";
 import { loadGoogleTokensForUser } from "../src/lib/google/token-store";
 import { googleConnected } from "../src/app/api/auth/google/_session";
-import { resolveFilebaseRootFolderId } from "../src/lib/google/filebase-drive-folders";
-import { loadFilebaseDriveFileIndex } from "../src/lib/google/filebase-drive-index";
+import { resolveFilebasePullSource, hasFilebaseDriveConfig } from "../src/lib/google/filebase-drive-folders";
 
 loadEnvLocal();
 
@@ -27,26 +26,28 @@ async function main() {
   }
 
   const { drive } = getAuthedClients(tokens!);
-  const rootId = await resolveFilebaseRootFolderId(drive);
-  if (!rootId) {
+
+  if (!hasFilebaseDriveConfig()) {
     console.error(
-      "!! Filebase root not resolved — set GV_DRIVE_LAYOUT=dual, GV_DRIVE_LAYOUT_ROOT_FOLDER_ID, PP_FILEBASE_FOLDER_PATH=Filebase",
+      "!! Filebase not configured — set GV_DRIVE_LAYOUT_ROOT_FOLDER_ID + PP_FILEBASE_FOLDER_PATH or PP_COMPUTER_FILEBASE_FOLDER_ID",
     );
     process.exit(1);
   }
-  console.log(`OK Filebase root: ${rootId}`);
 
-  const index = await loadFilebaseDriveFileIndex(drive, rootId);
-  if (!index || index.files.length === 0) {
-    console.error("!! No files under Filebase/ on Drive (snapshot or Libraries/ walk).");
+  const pullSource = await resolveFilebasePullSource(drive);
+  if (!pullSource) {
+    console.error(
+      "!! No files under Shared Drive Filebase/ or Computer backup — run M2 seed or confirm Envy Drive sync.",
+    );
     process.exit(1);
   }
 
-  console.log(`OK File index source=${index.source} files=${index.files.length}`);
-  if (index.snapshotMetaPath) {
-    console.log(`   snapshot: ${index.snapshotMetaPath}`);
+  console.log(`OK Filebase pull source: ${pullSource.source} root=${pullSource.rootId}`);
+  console.log(`OK File index source=${pullSource.index.source} files=${pullSource.index.files.length}`);
+  if (pullSource.index.snapshotMetaPath) {
+    console.log(`   snapshot: ${pullSource.index.snapshotMetaPath}`);
   }
-  const sample = index.files.slice(0, 3).map((f) => f.relativePath);
+  const sample = pullSource.index.files.slice(0, 3).map((f) => f.relativePath);
   console.log(`   sample paths: ${sample.join(", ")}`);
   console.log("\nLibrarian Filebase gate passed — Pull can resolve Drive file IDs.");
 }

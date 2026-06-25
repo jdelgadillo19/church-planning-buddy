@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
+import { loadWorkerEnv } from "@/lib/config/worker-env";
 import { buildFilebasePullZip } from "@/lib/google/filebase-pull";
 import { stageFilebasePullZip } from "@/lib/google/filebase-pull-store";
-import { loadFilebaseDriveFileIndex } from "@/lib/google/filebase-drive-index";
-import { resolveFilebaseRootFolderId } from "@/lib/google/filebase-drive-folders";
+import {
+  hasFilebaseDriveConfig,
+  resolveFilebasePullSource,
+} from "@/lib/google/filebase-drive-folders";
 import { loadOrgLibrarianDrive } from "@/lib/google/org-librarian-drive";
 import { getLatestSnapshotForOrg } from "@/lib/pp-platform/snapshots";
 import { libraryIndexFromSnapshot } from "@/lib/pp-platform/cloud-index";
@@ -44,7 +47,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "planId is required." }, { status: 400 });
     }
 
-    const librarian = await loadOrgLibrarianDrive(org.orgId);
+    const workerEnv = await loadWorkerEnv();
+
+    const librarian = await loadOrgLibrarianDrive(org.orgId, workerEnv);
     if (!librarian) {
       return NextResponse.json(
         {
@@ -81,30 +86,30 @@ export async function POST(req: Request) {
 
     const { drive } = librarian;
 
-    const filebaseRoot = await resolveFilebaseRootFolderId(drive);
-    if (!filebaseRoot) {
+    if (!hasFilebaseDriveConfig(workerEnv)) {
       return NextResponse.json(
         {
           ok: false,
           error:
-            "Filebase folder not configured. Set GV_DRIVE_LAYOUT_ROOT_FOLDER_ID + Filebase path or PP_FILEBASE_FOLDER_ID.",
+            "Filebase folder not configured. Set GV_DRIVE_LAYOUT_ROOT_FOLDER_ID + Filebase path, PP_FILEBASE_FOLDER_ID, or PP_COMPUTER_FILEBASE_FOLDER_ID.",
         },
         { status: 400 },
       );
     }
 
-    const driveIndex = await loadFilebaseDriveFileIndex(drive, filebaseRoot);
-    if (!driveIndex || driveIndex.files.length === 0) {
+    const pullSource = await resolveFilebasePullSource(drive, workerEnv);
+    if (!pullSource) {
       return NextResponse.json(
         {
           ok: false,
-          error: "No files found under Filebase/ on Google Drive.",
+          error:
+            "No files found on Google Drive under Shared Drive Filebase/ or the presentation Computer backup. Run M2 seed or confirm Envy Drive sync.",
         },
         { status: 400 },
       );
     }
 
-    const driveFileIndex = driveIndex.files;
+    const driveFileIndex = pullSource.index.files;
 
     const { zip, manifest: pullManifest } = await buildFilebasePullZip({
       drive,
@@ -114,8 +119,8 @@ export async function POST(req: Request) {
       snapshotFiles: driveFileIndex,
     });
 
-    if (driveIndex.snapshotMetaPath) {
-      pullManifest.snapshotMetaPath = driveIndex.snapshotMetaPath;
+    if (pullSource.index.snapshotMetaPath) {
+      pullManifest.snapshotMetaPath = pullSource.index.snapshotMetaPath;
     }
 
     if (pullManifest.requestedPaths.length === 0) {

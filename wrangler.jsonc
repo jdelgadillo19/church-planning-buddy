@@ -28,7 +28,14 @@
   },
   "vars": {
     "GOOGLE_REDIRECT_URI": "https://grapevineprep.com/api/auth/google/callback",
-    "PP_UNAVAILABLE_ON_HOSTED": "true"
+    "PP_UNAVAILABLE_ON_HOSTED": "true",
+    "GV_DRIVE_LAYOUT": "dual",
+    "GV_DRIVE_LAYOUT_ROOT_FOLDER_ID": "1FG1w8LXfoSTQfjKZxsAv7735F0IukvMw",
+    "PP_FILEBASE_FOLDER_PATH": "Filebase",
+    "PP_FILEBASE_FOLDER_ID": "1RmbbnIHryh8I_3wLLOj4g2SMJTRMIlcb",
+    "PP_COMPUTER_FILEBASE_FOLDER_ID": "1-1I9HY7af_a2FCRw8WmKceAuI50DLJlg",
+    "PP_LIBRARIAN_USER_ID": "2f90300d-47b8-4456-83a1-2f6ccf4a3813",
+    "PP_PLATFORM_ORG_ID": "a26ad903-6820-4093-a7d6-ab92fc62ce26"
   },
   "routes": [
     {

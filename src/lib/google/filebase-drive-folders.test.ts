@@ -28,7 +28,7 @@ withEnv(
     GV_DRIVE_LAYOUT_ROOT_FOLDER_ID: undefined,
   },
   () => {
-    if (shouldPreferSharedDriveFilebase()) {
+    if (shouldPreferSharedDriveFilebase(process.env as Record<string, string>)) {
       throw new Error("legacy layout without filebase env should not prefer shared");
     }
   },
@@ -40,7 +40,7 @@ withEnv(
     PP_COMPUTER_FILEBASE_FOLDER_ID: "legacy-id",
   },
   () => {
-    if (!shouldPreferSharedDriveFilebase()) {
+    if (!shouldPreferSharedDriveFilebase(process.env as Record<string, string>)) {
       throw new Error("dual layout should prefer shared Filebase/");
     }
   },
@@ -53,7 +53,7 @@ withEnv(
     PP_COMPUTER_FILEBASE_FOLDER_ID: "legacy-id",
   },
   () => {
-    if (!shouldPreferSharedDriveFilebase()) {
+    if (!shouldPreferSharedDriveFilebase(process.env as Record<string, string>)) {
       throw new Error("GV_DRIVE_LAYOUT_ROOT_FOLDER_ID should prefer shared Filebase/");
     }
   },
