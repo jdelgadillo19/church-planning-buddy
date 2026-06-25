@@ -39,6 +39,7 @@
     "filebase:seed-upload": "npx tsx scripts/filebase-seed-upload.ts",
     "filebase:verify-drive": "npx tsx scripts/verify-filebase-drive-snapshot.ts",
     "filebase:verify-librarian": "npx tsx scripts/verify-filebase-librarian.ts",
+    "filebase:upload-index-r2": "node scripts/upload-filebase-drive-index-r2.mjs",
     "prep:companion": "PP_ALLOW_WRITES=true PP_HOST=127.0.0.1 next dev -H 127.0.0.1",
     "operational:verify": "npx tsx scripts/verify-operational-readiness.ts",
     "prep:prepare": "node scripts/grapevine-prep-prepare.mjs",

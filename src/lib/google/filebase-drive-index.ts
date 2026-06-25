@@ -23,25 +23,38 @@ type DriveChild = {
   size?: string | null;
 };
 
-async function listChildren(drive: drive_v3.Drive, parentId: string): Promise<DriveChild[]> {
-  const escaped = parentId.replaceAll("'", "\\'");
-  const out: DriveChild[] = [];
-  let pageToken: string | undefined;
+type ListCorpora = "user" | "allDrives" | "auto";
 
-  do {
-    const list = await drive.files.list({
-      q: `'${escaped}' in parents and trashed=false`,
-      fields: "nextPageToken, files(id, name, mimeType, size)",
-      pageSize: 1000,
-      corpora: "allDrives",
-      ...SHARED_DRIVE_OPTS,
-      pageToken,
-    });
-    out.push(...(list.data.files ?? []));
-    pageToken = list.data.nextPageToken ?? undefined;
-  } while (pageToken);
+async function listChildren(
+  drive: drive_v3.Drive,
+  parentId: string,
+  corpora: ListCorpora = "auto",
+): Promise<DriveChild[]> {
+  const tryCorpora: Array<"user" | "allDrives"> =
+    corpora === "auto" ? ["user", "allDrives"] : [corpora];
 
-  return out;
+  for (const corpus of tryCorpora) {
+    const escaped = parentId.replaceAll("'", "\\'");
+    const out: DriveChild[] = [];
+    let pageToken: string | undefined;
+
+    do {
+      const list = await drive.files.list({
+        q: `'${escaped}' in parents and trashed=false`,
+        fields: "nextPageToken, files(id, name, mimeType, size)",
+        pageSize: 1000,
+        corpora: corpus,
+        ...SHARED_DRIVE_OPTS,
+        pageToken,
+      });
+      out.push(...(list.data.files ?? []));
+      pageToken = list.data.nextPageToken ?? undefined;
+    } while (pageToken);
+
+    if (out.length > 0) return out;
+  }
+
+  return [];
 }
 
 async function walkFolder(
@@ -49,13 +62,17 @@ async function walkFolder(
   parentId: string,
   prefix: string,
   out: FilebaseDriveIndexFile[],
+  corpora: ListCorpora,
+  maxFiles: number,
 ): Promise<void> {
-  const children = await listChildren(drive, parentId);
+  if (out.length >= maxFiles) return;
+  const children = await listChildren(drive, parentId, corpora);
   for (const child of children) {
+    if (out.length >= maxFiles) return;
     if (!child.id || !child.name) continue;
     const rel = `${prefix}/${child.name}`.replace(/\\/g, "/");
     if (child.mimeType === FOLDER_MIME) {
-      await walkFolder(drive, child.id, rel, out);
+      await walkFolder(drive, child.id, rel, out, corpora, maxFiles);
     } else {
       out.push({
         relativePath: rel,
@@ -72,16 +89,20 @@ async function walkFolder(
 export async function walkFilebaseDriveTree(
   drive: drive_v3.Drive,
   filebaseRootId: string,
+  options?: { listCorpora?: ListCorpora; maxFiles?: number },
 ): Promise<FilebaseDriveIndexFile[]> {
+  const corpora = options?.listCorpora ?? "auto";
+  const maxFiles = options?.maxFiles ?? 20_000;
   const out: FilebaseDriveIndexFile[] = [];
-  const top = await listChildren(drive, filebaseRootId);
+  const top = await listChildren(drive, filebaseRootId, corpora);
 
   for (const child of top) {
+    if (out.length >= maxFiles) break;
     if (!child.id || !child.name) continue;
     if (child.name.toLowerCase() === "snapshots") continue;
 
     if (child.mimeType === FOLDER_MIME) {
-      await walkFolder(drive, child.id, child.name, out);
+      await walkFolder(drive, child.id, child.name, out, corpora, maxFiles);
     } else {
       out.push({
         relativePath: child.name.replace(/\\/g, "/"),
@@ -120,7 +141,7 @@ export function normalizeFilebaseDriveIndex(index: FilebaseDriveIndex): Filebase
 export async function loadFilebaseDriveFileIndex(
   drive: drive_v3.Drive,
   filebaseRootId: string,
-  options?: { walkOnly?: boolean; env?: EnvSource },
+  options?: { walkOnly?: boolean; env?: EnvSource; listCorpora?: ListCorpora; maxFiles?: number },
 ): Promise<FilebaseDriveIndex | null> {
   const env = options?.env ?? (process.env as EnvSource);
   if (!options?.walkOnly) {
@@ -137,7 +158,10 @@ export async function loadFilebaseDriveFileIndex(
     }
   }
 
-  const walked = await walkFilebaseDriveTree(drive, filebaseRootId);
+  const walked = await walkFilebaseDriveTree(drive, filebaseRootId, {
+    listCorpora: options?.listCorpora,
+    maxFiles: options?.maxFiles,
+  });
   if (walked.length === 0) return null;
 
   return {

@@ -1,7 +1,10 @@
 /**
  * Verify Filebase on Drive using production librarian tokens (Supabase oauth_tokens).
- * Run: npm run filebase:verify-librarian
+ * Writes .data/filebase-drive-index.json for R2 upload.
+ * Run: npm run filebase:verify-librarian && npm run filebase:upload-index-r2
  */
+import fs from "node:fs/promises";
+import path from "node:path";
 import { loadEnvLocal } from "./_load-env-local";
 import { getAuthedClients } from "../src/lib/google/auth";
 import { loadGoogleTokensForUser } from "../src/lib/google/token-store";
@@ -34,7 +37,10 @@ async function main() {
     process.exit(1);
   }
 
-  const pullSource = await resolveFilebasePullSource(drive);
+  const pullSource = await resolveFilebasePullSource(drive, process.env as Record<string, string>, {
+    skipCache: true,
+    maxFiles: 25_000,
+  });
   if (!pullSource) {
     console.error(
       "!! No files under Shared Drive Filebase/ or Computer backup — run M2 seed or confirm Envy Drive sync.",
@@ -47,8 +53,28 @@ async function main() {
   if (pullSource.index.snapshotMetaPath) {
     console.log(`   snapshot: ${pullSource.index.snapshotMetaPath}`);
   }
+  const libs = pullSource.index.files.filter((f) =>
+    f.relativePath.replace(/\\/g, "/").startsWith("Libraries/"),
+  ).length;
+  console.log(`   Libraries/ paths: ${libs}`);
   const sample = pullSource.index.files.slice(0, 3).map((f) => f.relativePath);
   console.log(`   sample paths: ${sample.join(", ")}`);
+
+  const cachePath = path.join(process.cwd(), ".data/filebase-drive-index.json");
+  await fs.mkdir(path.dirname(cachePath), { recursive: true });
+  await fs.writeFile(
+    cachePath,
+    JSON.stringify({
+      files: pullSource.index.files,
+      indexSource: pullSource.index.source,
+      snapshotMetaPath: pullSource.index.snapshotMetaPath,
+      rootId: pullSource.rootId,
+      driveSource: pullSource.source,
+      updatedAt: new Date().toISOString(),
+    }),
+  );
+  console.log(`\nWrote ${cachePath}`);
+  console.log("Next: npm run filebase:upload-index-r2");
   console.log("\nLibrarian Filebase gate passed — Pull can resolve Drive file IDs.");
 }
 

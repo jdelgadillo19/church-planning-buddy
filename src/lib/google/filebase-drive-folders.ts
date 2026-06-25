@@ -2,6 +2,7 @@ import type { drive_v3 } from "@/lib/google/api-types";
 import { envString, type EnvSource } from "@/lib/config/worker-env";
 import type { FilebaseDriveIndex } from "./filebase-drive-index";
 import { loadFilebaseDriveFileIndex, normalizeFilebaseDriveIndex } from "./filebase-drive-index";
+import { loadStoredFilebaseDriveIndex } from "./filebase-drive-index-store";
 import { resolveFolderByPath } from "./grg-drive-folders";
 import { ensureChildFolder, findChildFolder } from "./pp-drive-folders";
 
@@ -79,18 +80,49 @@ export async function resolveFilebaseSnapshotsFolderId(
 export async function resolveFilebasePullSource(
   drive: drive_v3.Drive,
   env: EnvSource = process.env as EnvSource,
+  options?: { skipCache?: boolean; maxFiles?: number },
 ): Promise<{ rootId: string; index: FilebaseDriveIndex; source: "shared" | "computer" } | null> {
-  const candidates: Array<{ rootId: string; source: "shared" | "computer"; walkOnly: boolean }> =
-    [];
-
-  const shared = await resolveSharedDriveFilebaseRoot(drive, env);
-  if (shared) {
-    candidates.push({ rootId: shared, source: "shared", walkOnly: false });
+  if (!options?.skipCache) {
+    const cached = await loadStoredFilebaseDriveIndex();
+    if (cached?.files.length) {
+      return {
+        rootId: cached.rootId,
+        index: normalizeFilebaseDriveIndex({
+          files: cached.files,
+          source: cached.indexSource,
+          snapshotMetaPath: cached.snapshotMetaPath,
+        }),
+        source: cached.driveSource,
+      };
+    }
   }
 
+  const maxFiles = options?.maxFiles ?? 500;
+  const candidates: Array<{
+    rootId: string;
+    source: "shared" | "computer";
+    walkOnly: boolean;
+    listCorpora: "user" | "allDrives";
+  }> = [];
+
   const computer = envString(env, "PP_COMPUTER_FILEBASE_FOLDER_ID");
-  if (computer && computer !== shared) {
-    candidates.push({ rootId: computer, source: "computer", walkOnly: true });
+  if (computer) {
+    candidates.push({
+      rootId: computer,
+      source: "computer",
+      walkOnly: true,
+      listCorpora: "user",
+    });
+  }
+
+  const shared = await resolveSharedDriveFilebaseRoot(drive, env);
+  if (shared && shared !== computer) {
+    candidates.push({
+      rootId: shared,
+      source: "shared",
+      walkOnly: false,
+      listCorpora: "allDrives",
+    });
   }
 
   for (const candidate of candidates) {
@@ -98,6 +130,8 @@ export async function resolveFilebasePullSource(
       const index = await loadFilebaseDriveFileIndex(drive, candidate.rootId, {
         walkOnly: candidate.walkOnly,
         env,
+        listCorpora: candidate.listCorpora,
+        maxFiles,
       });
       if (index && index.files.length > 0) {
         return {
