@@ -425,7 +425,7 @@ fn windows_node_executable() -> Result<PathBuf, String> {
 async fn run_windows_node_worker(script: &Path, env: Vec<(String, String)>) -> Result<String, String> {
     let node = windows_node_executable()?;
     let script = script.to_path_buf();
-    let result = tokio::task::spawn_blocking(move || {
+    let output = tauri::async_runtime::spawn_blocking(move || {
         let mut cmd = std::process::Command::new(&node);
         cmd.arg(&script);
         for (key, value) in &env {
@@ -437,8 +437,9 @@ async fn run_windows_node_worker(script: &Path, env: Vec<(String, String)>) -> R
             .map_err(|e| format!("Failed to start node worker on Windows: {e}"))
     })
     .await
-    .map_err(|e| format!("Worker task failed: {e}"))??;
+    .map_err(|e| format!("Worker task failed: {e}"))?;
 
+    let result = output?;
     let code = result.status.code().unwrap_or(1);
     let stdout = String::from_utf8_lossy(&result.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&result.stderr).into_owned();
