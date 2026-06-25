@@ -387,6 +387,19 @@ fn system_node_path() -> Option<&'static str> {
 }
 
 #[cfg(target_os = "windows")]
+fn windows_path_for_node_argv(path: &Path) -> PathBuf {
+    let s = path.to_string_lossy();
+    let stripped = if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{rest}")
+    } else if let Some(rest) = s.strip_prefix(r"\\?\") {
+        rest.to_string()
+    } else {
+        s.into_owned()
+    };
+    PathBuf::from(stripped)
+}
+
+#[cfg(target_os = "windows")]
 fn is_usable_node_exe(path: &Path) -> bool {
     if !path.is_file() {
         return false;
@@ -462,8 +475,8 @@ fn windows_node_executable() -> Result<PathBuf, String> {
 
 #[cfg(target_os = "windows")]
 async fn run_windows_node_worker(script: &Path, env: Vec<(String, String)>) -> Result<String, String> {
-    let node = windows_node_executable()?;
-    let script = script.to_path_buf();
+    let node = windows_path_for_node_argv(&windows_node_executable()?);
+    let script = windows_path_for_node_argv(script);
     let node_log = node.to_string_lossy().into_owned();
     let script_log = script.to_string_lossy().into_owned();
     let output = tauri::async_runtime::spawn_blocking(move || {
