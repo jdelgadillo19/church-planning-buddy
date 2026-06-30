@@ -64,6 +64,11 @@ type Props = {
   filebasePullMessage?: string | null;
   filebasePullError?: string | null;
   canPullFilebase?: boolean;
+  onBuildInClient?: () => void;
+  buildInClientBusy?: boolean;
+  buildInClientMessage?: string | null;
+  buildInClientError?: string | null;
+  canBuildInClient?: boolean;
   ppConnected: boolean;
   ppAllowWrites: boolean;
   playlistConflict: PlaylistConflictInfo | null;
@@ -107,6 +112,11 @@ export function SlideDeckBuilderEditor({
   filebasePullMessage = null,
   filebasePullError = null,
   canPullFilebase = false,
+  onBuildInClient,
+  buildInClientBusy = false,
+  buildInClientMessage = null,
+  buildInClientError = null,
+  canBuildInClient = false,
   ppConnected,
   ppAllowWrites,
   playlistConflict,
@@ -261,6 +271,28 @@ export function SlideDeckBuilderEditor({
                   ) : null}
                   {filebasePullMessage ? (
                     <p className="text-xs text-emerald-800 dark:text-emerald-200">{filebasePullMessage}</p>
+                  ) : null}
+                </div>
+              ) : null}
+              {canBuildInClient && onBuildInClient ? (
+                <div className="flex flex-col gap-1">
+                  <button
+                    type="button"
+                    disabled={buildInClientBusy || createIssues.length > 0}
+                    onClick={onBuildInClient}
+                    className="h-11 w-fit rounded-xl bg-violet-700 px-4 text-sm font-semibold text-white hover:bg-violet-600 disabled:opacity-50 dark:bg-violet-600 dark:hover:bg-violet-500"
+                  >
+                    {buildInClientBusy ? "Starting Grapevine Client…" : "Build in Grapevine Client"}
+                  </button>
+                  <p className="text-xs text-sky-800 dark:text-sky-200">
+                    Opens Grapevine Client on this Mac, pulls filebase assets, and builds the ordered
+                    playlist in ProPresenter automatically.
+                  </p>
+                  {buildInClientError ? (
+                    <p className="text-xs text-red-700 dark:text-red-300">{buildInClientError}</p>
+                  ) : null}
+                  {buildInClientMessage ? (
+                    <p className="text-xs text-emerald-800 dark:text-emerald-200">{buildInClientMessage}</p>
                   ) : null}
                 </div>
               ) : null}

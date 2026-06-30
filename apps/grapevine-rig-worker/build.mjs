@@ -27,5 +27,9 @@ bundle(
   path.join(root, "apps/grapevine-rig-worker/src/handoff-worker.ts"),
   path.join(outDir, "handoff.mjs"),
 );
+bundle(
+  path.join(root, "apps/grapevine-rig-worker/src/remote-prep-worker.ts"),
+  path.join(outDir, "remote-prep.mjs"),
+);
 
-console.log("Built worker.mjs + scan.mjs + handoff.mjs");
+console.log("Built worker.mjs + scan.mjs + handoff.mjs + remote-prep.mjs");

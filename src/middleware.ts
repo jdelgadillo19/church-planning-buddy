@@ -9,6 +9,12 @@ import {
   isRigCorsApiPath,
   rigCorsPreflightResponse,
 } from "@/lib/http/rig-cors";
+import {
+  applyRemotePrepCors,
+  isRemotePrepClientApiPath,
+  remotePrepCorsPreflightResponse,
+} from "@/lib/remote-prep/client-cors";
+import { isRemotePrepClientBypassRequest } from "@/lib/remote-prep/middleware-bypass";
 import { isRigMachineBypassRequest } from "@/lib/pp-platform/rig-middleware-bypass";
 import { isGrapevineAuthEnabled } from "@/lib/supabase/config";
 
@@ -50,11 +56,13 @@ async function refreshSupabaseSession(request: NextRequest) {
 }
 
 function corsNext(request: NextRequest): NextResponse {
-  return applyRigCors(
-    NextResponse.next({
-      request: { headers: request.headers },
-    }),
-  );
+  const next = NextResponse.next({
+    request: { headers: request.headers },
+  });
+  if (isRemotePrepClientApiPath(request.nextUrl.pathname)) {
+    return applyRemotePrepCors(next);
+  }
+  return applyRigCors(next);
 }
 
 export async function middleware(request: NextRequest) {
@@ -62,6 +70,10 @@ export async function middleware(request: NextRequest) {
 
   if (isRigCorsApiPath(pathname) && request.method === "OPTIONS") {
     return rigCorsPreflightResponse();
+  }
+
+  if (isRemotePrepClientApiPath(pathname) && request.method === "OPTIONS") {
+    return remotePrepCorsPreflightResponse();
   }
 
   if (!isGrapevineAuthEnabled()) {
@@ -76,6 +88,11 @@ export async function middleware(request: NextRequest) {
 
   // Grapevine Rig app (pairing code exchange + rig-authenticated APIs).
   if (isRigMachineBypassRequest(request, pathname)) {
+    return corsNext(request);
+  }
+
+  // Grapevine Client remote prep worker (job token auth, no browser session).
+  if (isRemotePrepClientBypassRequest(request, pathname)) {
     return corsNext(request);
   }
 

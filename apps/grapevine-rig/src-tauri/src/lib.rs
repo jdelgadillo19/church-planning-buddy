@@ -2,14 +2,17 @@ use keyring::Entry;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use tauri::Emitter;
 use tauri::Manager;
 use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_shell::ShellExt;
+use tauri::RunEvent;
 
 const SERVICE: &str = "com.grapevineprep.rig";
 const ACCOUNT: &str = "rig-credentials";
 const PP_ACCOUNT: &str = "pp-settings";
 const PP_NOT_CONFIGURED_MSG: &str = "ProPresenter port is required. In ProPresenter → Settings → Network, turn Enable Network ON, enter the TCP/IP Port ID in Grapevine Client, then Save or Apply again.";
+const API_BASE_DEFAULT: &str = "https://grapevineprep.com";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -606,30 +609,73 @@ fn format_worker_success(stdout: &str) -> String {
     "Done.".to_string()
 }
 
-async fn run_node_worker_stdout(
+async fn run_remote_prep_worker(
     app: &tauri::AppHandle,
-    node_script: &str,
-    extra_env: Vec<(String, String)>,
+    job_id: String,
+    client_token: String,
     inline_pp: Option<PpSettings>,
 ) -> Result<String, String> {
-    let creds = load_credentials()?.ok_or("Not paired.")?;
-
-    let mut env: Vec<(String, String)> = vec![
-        ("RIG_ID".to_string(), creds.rig_id),
-        ("RIG_SECRET".to_string(), creds.rig_secret),
-        ("GRAPEVINE_PREP_URL".to_string(), creds.api_base_url),
-        ("PP_ALLOW_WRITES".to_string(), "true".to_string()),
-    ];
     let pp = if let Some(settings) = inline_pp {
-        write_pp_settings_file(&app, &settings)?;
+        write_pp_settings_file(app, &settings)?;
         settings
     } else {
-        load_pp_settings_for_app(&app)?.ok_or(PP_NOT_CONFIGURED_MSG.to_string())?
+        load_pp_settings_for_app(app)?.ok_or(PP_NOT_CONFIGURED_MSG.to_string())?
     };
-    env.extend(pp_settings_env(&pp));
-    env.extend(rig_worker_export_env(app)?);
-    env.extend(extra_env);
 
+    let mut env: Vec<(String, String)> = vec![
+        ("REMOTE_PREP_JOB_ID".to_string(), job_id),
+        ("REMOTE_PREP_CLIENT_TOKEN".to_string(), client_token),
+        ("GRAPEVINE_PREP_URL".to_string(), API_BASE_DEFAULT.to_string()),
+        ("PP_ALLOW_WRITES".to_string(), "true".to_string()),
+    ];
+    env.extend(pp_settings_env(&pp));
+    if let Ok(script) = app.path().resolve(
+        "open-propresenter.applescript",
+        tauri::path::BaseDirectory::Resource,
+    ) {
+        if script.exists() {
+            env.push((
+                "PP_OPEN_APPLESCRIPT_PATH".to_string(),
+                script.to_string_lossy().into_owned(),
+            ));
+        }
+    }
+
+    let stdout = run_node_worker_stdout_with_env(app, "remote-prep.mjs", env).await?;
+    Ok(parse_worker_stdout(&stdout)?)
+}
+
+fn parse_remote_prep_deeplink(raw: &str) -> Option<(String, String)> {
+    let trimmed = raw.trim();
+    if !trimmed.starts_with("grapevine://") {
+        return None;
+    }
+    let rest = trimmed.trim_start_matches("grapevine://");
+    let host = rest.split(['?', '/']).next()?.trim();
+    if host != "remote-prep" {
+        return None;
+    }
+    let query = rest.find('?').map(|i| &rest[i + 1..]).unwrap_or("");
+    let mut job_id = None;
+    let mut token = None;
+    for part in query.split('&') {
+        let mut kv = part.splitn(2, '=');
+        let key = kv.next()?.trim();
+        let value = kv.next()?.trim();
+        if key == "jobId" {
+            job_id = Some(value.to_string());
+        } else if key == "token" {
+            token = Some(value.to_string());
+        }
+    }
+    Some((job_id?, token?))
+}
+
+async fn run_node_worker_stdout_with_env(
+    app: &tauri::AppHandle,
+    node_script: &str,
+    env: Vec<(String, String)>,
+) -> Result<String, String> {
     let script = resolve_worker_script(app, node_script)?;
 
     #[cfg(target_os = "windows")]
@@ -673,6 +719,33 @@ async fn run_node_worker_stdout(
     }
 }
 
+async fn run_node_worker_stdout(
+    app: &tauri::AppHandle,
+    node_script: &str,
+    extra_env: Vec<(String, String)>,
+    inline_pp: Option<PpSettings>,
+) -> Result<String, String> {
+    let creds = load_credentials()?.ok_or("Not paired.")?;
+
+    let mut env: Vec<(String, String)> = vec![
+        ("RIG_ID".to_string(), creds.rig_id),
+        ("RIG_SECRET".to_string(), creds.rig_secret),
+        ("GRAPEVINE_PREP_URL".to_string(), creds.api_base_url),
+        ("PP_ALLOW_WRITES".to_string(), "true".to_string()),
+    ];
+    let pp = if let Some(settings) = inline_pp {
+        write_pp_settings_file(&app, &settings)?;
+        settings
+    } else {
+        load_pp_settings_for_app(&app)?.ok_or(PP_NOT_CONFIGURED_MSG.to_string())?
+    };
+    env.extend(pp_settings_env(&pp));
+    env.extend(rig_worker_export_env(app)?);
+    env.extend(extra_env);
+
+    run_node_worker_stdout_with_env(app, node_script, env).await
+}
+
 async fn run_node_worker(
     app: &tauri::AppHandle,
     node_script: &str,
@@ -682,6 +755,16 @@ async fn run_node_worker(
     Ok(parse_worker_stdout(
         &run_node_worker_stdout(app, node_script, extra_env, inline_pp).await?,
     )?)
+}
+
+#[tauri::command]
+async fn run_remote_prep(
+    app: tauri::AppHandle,
+    job_id: String,
+    client_token: String,
+    pp_settings: Option<PpSettings>,
+) -> Result<String, String> {
+    run_remote_prep_worker(&app, job_id, client_token, pp_settings).await
 }
 
 #[tauri::command]
@@ -808,7 +891,24 @@ pub fn run() {
             run_apply,
             run_scan,
             run_handoff,
+            run_remote_prep,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Grapevine Client");
+        .build(tauri::generate_context!())
+        .expect("error while running Grapevine Client")
+        .run(|app, event| {
+            if let RunEvent::Opened { urls } = event {
+                for url in urls {
+                    if let Some((job_id, token)) = parse_remote_prep_deeplink(url.as_str()) {
+                        let handle = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let message = match run_remote_prep_worker(&handle, job_id, token, None).await {
+                                Ok(msg) => msg,
+                                Err(err) => err,
+                            };
+                            let _ = handle.emit("remote-prep-status", message);
+                        });
+                    }
+                }
+            }
+        });
 }

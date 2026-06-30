@@ -154,6 +154,9 @@ export default function SlideDeckPage() {
   const [filebasePullBusy, setFilebasePullBusy] = useState(false);
   const [filebasePullMessage, setFilebasePullMessage] = useState<string | null>(null);
   const [filebasePullError, setFilebasePullError] = useState<string | null>(null);
+  const [buildInClientBusy, setBuildInClientBusy] = useState(false);
+  const [buildInClientMessage, setBuildInClientMessage] = useState<string | null>(null);
+  const [buildInClientError, setBuildInClientError] = useState<string | null>(null);
   const [missingFiles, setMissingFiles] = useState<MissingFileRef[]>([]);
   const [pendingRigHandoffs, setPendingRigHandoffs] = useState<
     Array<{ id: string; playlist_name: string; services_drive_url: string | null }>
@@ -730,6 +733,58 @@ export default function SlideDeckPage() {
     }
   }
 
+  async function startRemotePrepInClient() {
+    if (!planId.trim() || !orgId || !previewReady) return;
+    setBuildInClientBusy(true);
+    setBuildInClientError(null);
+    setBuildInClientMessage(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/remote-prep/jobs", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json",
+        },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          orgId,
+          planId: planId.trim(),
+          serviceTypeId: serviceTypeId.trim() || undefined,
+          librarySelections:
+            Object.keys(librarySelections).length > 0 ? librarySelections : undefined,
+        }),
+      });
+      const parsed = await readJsonOrText(res);
+      if (!res.ok) {
+        throw new Error(sanitizeErrorMessage(formatApiErrorBody(res.status, parsed)));
+      }
+      if (parsed.kind !== "json") {
+        throw new Error("Remote prep returned an unexpected response.");
+      }
+      const payload = parsed.json as {
+        ok?: boolean;
+        error?: string;
+        deepLink?: string;
+        playlistName?: string;
+      };
+      if (!payload.ok || !payload.deepLink) {
+        throw new Error(sanitizeErrorMessage(payload.error ?? "Remote prep job failed."));
+      }
+      setBuildInClientMessage(
+        `Opening Grapevine Client for "${payload.playlistName ?? "this service"}"…`,
+      );
+      window.location.href = payload.deepLink;
+    } catch (e) {
+      const message = sanitizeErrorMessage(
+        e instanceof Error ? e.message : "Could not start remote prep in Grapevine Client.",
+      );
+      setBuildInClientError(message);
+    } finally {
+      setBuildInClientBusy(false);
+    }
+  }
+
   async function pullFilebaseZip() {
     if (!planId.trim() || !orgId) return;
     setFilebasePullBusy(true);
@@ -1006,6 +1061,13 @@ export default function SlideDeckPage() {
         filebasePullMessage={filebasePullMessage}
         filebasePullError={filebasePullError}
         canPullFilebase={isHosted && previewReady && Boolean(orgId)}
+        onBuildInClient={() => void startRemotePrepInClient()}
+        buildInClientBusy={buildInClientBusy}
+        buildInClientMessage={buildInClientMessage}
+        buildInClientError={buildInClientError}
+        canBuildInClient={
+          isHosted && previewReady && Boolean(orgId) && Boolean(commitPlan) && createIssues.length === 0
+        }
         ppConnected={Boolean(ppStatus?.connected)}
         ppAllowWrites={Boolean(ppStatus?.allowWrites)}
         playlistConflict={playlistConflict}

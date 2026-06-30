@@ -579,9 +579,58 @@ async function pair() {
 function openRemotePrepWorkspace() {
   window.open(`${API_BASE_DEFAULT}/slide-deck`, "_blank", "noopener,noreferrer");
   setActionStatus(
-    "Opened Grapevine slide deck. Create Presentation there, then use Download on a prep machine with ProPresenter connected.",
+    "Opened Grapevine slide deck. Use Build in Grapevine Client on the web after Create Presentation.",
     "idle",
   );
+}
+
+function parseRemotePrepDeepLink(url) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "grapevine:") return null;
+    if (parsed.hostname !== "remote-prep") return null;
+    const jobId = parsed.searchParams.get("jobId")?.trim();
+    const token = parsed.searchParams.get("token")?.trim();
+    if (!jobId || !token) return null;
+    return { jobId, token };
+  } catch {
+    return null;
+  }
+}
+
+async function runRemotePrep(jobId, token) {
+  if (busy) {
+    setActionStatus("Still working on the previous action…", "busy");
+    return;
+  }
+  const ppSettings = getPpSettingsOrExplain();
+  if (!ppSettings) return;
+
+  setWorking(true);
+  setBadge("busy", "Remote prep");
+  setActionStatus("Pulling filebase, reconciling assets, and building playlist…", "busy");
+
+  try {
+    const output = await invoke("run_remote_prep", {
+      jobId,
+      clientToken: token,
+      ppSettings,
+    });
+    setActionStatus(output || "Remote prep completed.", "ok");
+    setBadge("ready", "Remote prep done");
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Remote prep failed";
+    setActionStatus(msg, "error");
+    setBadge("idle", "Remote prep failed");
+  } finally {
+    setWorking(false);
+  }
+}
+
+function handleRemotePrepDeepLink(url) {
+  const parsed = parseRemotePrepDeepLink(url);
+  if (!parsed) return;
+  void runRemotePrep(parsed.jobId, parsed.token);
 }
 
 async function applyBuild() {
@@ -802,6 +851,21 @@ unpairCancelBtn.addEventListener("click", () => hideUnpairConfirm());
 ppSaveBtn.addEventListener("click", () => void savePpSettings());
 
 async function init() {
+  try {
+    const listen = window.__TAURI__?.event?.listen;
+    if (listen) {
+      await listen("remote-prep-status", (event) => {
+        const message = typeof event.payload === "string" ? event.payload : String(event.payload ?? "");
+        if (message) {
+          const tone = /failed|error|required/i.test(message) ? "error" : "ok";
+          setActionStatus(message, tone);
+          setBadge(tone === "ok" ? "ready" : "idle", tone === "ok" ? "Remote prep done" : "Remote prep");
+        }
+      });
+    }
+  } catch {
+    /* optional */
+  }
   try {
     const version = await invoke("app_version");
     const versionEl = document.getElementById("app-version");
