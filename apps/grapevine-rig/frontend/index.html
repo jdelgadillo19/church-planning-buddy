@@ -3,21 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Grapevine Rig</title>
+    <title>Grapevine Client</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <div id="app">
       <header class="header">
         <div>
-          <h1>Grapevine Rig</h1>
+          <h1>Grapevine Client</h1>
           <p id="app-version" class="app-version"></p>
         </div>
-        <span id="status-badge" class="badge badge-idle">Not paired</span>
+        <span id="status-badge" class="badge badge-idle">Remote prep</span>
       </header>
 
       <section id="pair-screen" class="panel hidden">
+        <p class="section-kicker">Advanced presentation rig setup</p>
         <p class="lede">
+          Pair only the sanctuary presentation rig. Remote prep workstations do not need pairing.
           Enter the 8-character code from grapevineprep.com (org settings → Add presentation rig).
         </p>
         <label class="field">
@@ -28,12 +30,24 @@
           <span>Display name</span>
           <input id="pair-name" type="text" placeholder="Sanctuary Mac" />
         </label>
-        <button id="pair-btn" type="button" class="btn primary">Pair this Mac</button>
+        <button id="pair-btn" type="button" class="btn primary">Pair as presentation rig</button>
         <p id="pair-error" class="error hidden"></p>
       </section>
 
       <section id="main-screen" class="panel hidden">
         <p id="rig-label" class="rig-label"></p>
+
+        <div id="remote-prep-card" class="build-card remote-prep-card">
+          <p class="section-kicker">Remote prep workstation</p>
+          <p class="build-title">Prepare a service in local ProPresenter</p>
+          <p class="build-summary">
+            Open the slide deck to pick a service and create a presentation. After you pull filebase
+            files on the web, return here to build the ordered playlist in local ProPresenter.
+          </p>
+          <button id="remote-open-btn" type="button" class="btn primary">
+            Open Grapevine slide deck
+          </button>
+        </div>
 
         <div id="build-card" class="build-card hidden">
           <p id="build-title" class="build-title">Build ready</p>
@@ -50,7 +64,9 @@
           <div id="impl-review" class="impl-review hidden"></div>
           <button id="apply-btn" type="button" class="btn primary">Apply Slide Deck</button>
         </div>
-        <p id="no-build" class="muted">No pending builds. Waiting for planner to send a deck…</p>
+        <p id="no-build" class="muted">
+          Presentation rig apply queue is available after this computer is paired as the rig.
+        </p>
 
         <div id="handoff-card" class="build-card hidden">
           <p id="handoff-title" class="build-title">Handoff ready</p>
@@ -62,7 +78,7 @@
           <button id="handoff-import-btn" type="button" class="btn primary">Import handoff</button>
           <button id="handoff-skip-btn" type="button" class="btn ghost">Skip</button>
         </div>
-        <p id="no-handoff" class="muted hidden">No pending complete handoffs.</p>
+        <p id="no-handoff" class="muted hidden">No pending complete handoffs for this rig.</p>
 
         <details class="details">
           <summary>What changed?</summary>
@@ -70,7 +86,7 @@
         </details>
 
         <details class="details pp-settings" open>
-          <summary>ProPresenter settings</summary>
+          <summary>Advanced: Presentation rig settings</summary>
           <p class="hint">
             ProPresenter → Settings → Network: turn <strong>Enable Network</strong> ON. Enter the
             <strong>TCP/IP Port ID</strong> below (yours is likely <strong>64509</strong>). Transport:

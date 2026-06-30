@@ -14,12 +14,12 @@ execSync("npm run rig:worker:build", { stdio: "inherit", cwd: root });
 
 fs.mkdirSync(resources, { recursive: true });
 fs.mkdirSync(binDir, { recursive: true });
-for (const file of ["worker.mjs", "scan.mjs"]) {
+for (const file of ["worker.mjs", "scan.mjs", "handoff.mjs"]) {
   fs.copyFileSync(path.join(dist, file), path.join(resources, file));
 }
 
 const applescript = path.join(root, "scripts/propresenter/export-playlist.applescript");
 fs.copyFileSync(applescript, path.join(resources, "export-playlist.applescript"));
 
-console.log("Prepared Grapevine Rig resources (worker.mjs, scan.mjs, export-playlist.applescript).");
+console.log("Prepared Grapevine Client resources (worker.mjs, scan.mjs, handoff.mjs, export-playlist.applescript).");
 console.log("CI/pkg step should place sidecar binaries in src-tauri/bin/.");

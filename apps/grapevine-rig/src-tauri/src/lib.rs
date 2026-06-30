@@ -9,7 +9,7 @@ use tauri_plugin_shell::ShellExt;
 const SERVICE: &str = "com.grapevineprep.rig";
 const ACCOUNT: &str = "rig-credentials";
 const PP_ACCOUNT: &str = "pp-settings";
-const PP_NOT_CONFIGURED_MSG: &str = "ProPresenter port is required. In ProPresenter → Settings → Network, turn Enable Network ON, enter the TCP/IP Port ID in Grapevine Rig, then Save or Apply again.";
+const PP_NOT_CONFIGURED_MSG: &str = "ProPresenter port is required. In ProPresenter → Settings → Network, turn Enable Network ON, enter the TCP/IP Port ID in Grapevine Client, then Save or Apply again.";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -120,7 +120,7 @@ async fn export_playlist_via_osascript(
 
     if !script.exists() {
         return Err(
-            "ProPresenter export script missing from app bundle. Reinstall Grapevine Rig."
+            "ProPresenter export script missing from app bundle. Reinstall Grapevine Client."
                 .to_string(),
         );
     }
@@ -467,7 +467,7 @@ fn windows_node_executable() -> Result<PathBuf, String> {
     }
 
     Err(
-        "Node.js not found. Install Node.js 20+ (node.exe in Program Files\\nodejs) and restart Grapevine Rig. \
+        "Node.js not found. Install Node.js 20+ (node.exe in Program Files\\nodejs) and restart Grapevine Client. \
          Do not rely on npm's node.cmd shim — set GRAPEVINE_NODE_PATH to your node.exe if needed."
             .to_string(),
     )
@@ -810,5 +810,5 @@ pub fn run() {
             run_handoff,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Grapevine Rig");
+        .expect("error while running Grapevine Client");
 }

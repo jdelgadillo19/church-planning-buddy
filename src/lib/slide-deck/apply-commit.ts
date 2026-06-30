@@ -39,7 +39,7 @@ export type ApplyCommitInput = {
   librarySelections?: Record<string, string>;
 };
 
-function resolveLibraryItemForRow(
+export function resolveLibraryItemForRow(
   row: MockCommitPlaylistRow,
   libraryIndex: PpLibraryItemRef[],
   librarySelections?: Record<string, string>,

@@ -8,13 +8,18 @@ import {
 } from "@/lib/google/filebase-drive-folders";
 import { loadOrgLibrarianDrive } from "@/lib/google/org-librarian-drive";
 import { getLatestSnapshotForOrg } from "@/lib/pp-platform/snapshots";
-import { libraryIndexFromSnapshot } from "@/lib/pp-platform/cloud-index";
+import {
+  libraryIndexFromSnapshot,
+  resolveTemplateFromSnapshot,
+  templateItemsFromSnapshot,
+} from "@/lib/pp-platform/cloud-index";
 import { resolveUserOrg } from "@/lib/pp-platform/org-context";
 import { createClient } from "@/lib/supabase/server";
 import { isGrapevineAuthEnabled } from "@/lib/supabase/config";
 import { loadPlanServiceOrder } from "@/lib/pco/plan-service-order";
 import { buildSlideDeckManifest } from "@/lib/slide-deck/manifest";
 import { buildMockCommitPlan } from "@/lib/slide-deck/mock-commit";
+import { unresolvedAmbiguousRows } from "@/lib/slide-deck/commit-guards";
 
 /** POST — selective filebase zip for remote prep (M4). */
 export async function POST(req: Request) {
@@ -35,6 +40,7 @@ export async function POST(req: Request) {
       orgId?: string;
       planId?: string;
       serviceTypeId?: string;
+      librarySelections?: Record<string, string>;
     };
 
     const org = await resolveUserOrg(supabase, user.id, body.orgId?.trim());
@@ -73,16 +79,39 @@ export async function POST(req: Request) {
       planId,
       serviceTypeId: body.serviceTypeId,
     });
-    const manifest = buildSlideDeckManifest({ plan });
+
+    const template = resolveTemplateFromSnapshot(snapshot.index_json);
+    const templateItems = templateItemsFromSnapshot(snapshot.index_json);
+    const manifest = buildSlideDeckManifest({
+      plan,
+      templateSourceFound: template.sourceFound,
+      templateSourcePlaylistId: template.sourcePlaylistId,
+      templateSourcePlaylistPath: template.sourcePlaylistPath,
+      templateItems,
+      propresenterConnected: true,
+    });
     const cloudLibrary = libraryIndexFromSnapshot(snapshot.index_json);
 
     const commitPlan = buildMockCommitPlan({
       manifest,
-      templateItems: [],
+      templateItems,
       libraryIndex: cloudLibrary,
-      propresenterConnected: false,
+      propresenterConnected: true,
       useCloudIndex: true,
     });
+
+    const librarySelections = body.librarySelections ?? {};
+    const unresolved = unresolvedAmbiguousRows(commitPlan, librarySelections);
+    if (unresolved.length > 0) {
+      const labels = unresolved.map((r) => r.name).join(", ");
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Resolve library variants before pulling: ${labels}`,
+        },
+        { status: 400 },
+      );
+    }
 
     const { drive } = librarian;
 
@@ -116,7 +145,9 @@ export async function POST(req: Request) {
       commitPlan,
       manifest,
       cloudLibraryIndex: cloudLibrary,
+      templateItems,
       snapshotFiles: driveFileIndex,
+      librarySelections,
     });
 
     if (pullSource.index.snapshotMetaPath) {

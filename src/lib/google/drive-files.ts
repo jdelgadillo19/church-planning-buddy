@@ -1,3 +1,4 @@
+import { gunzipSync } from "node:zlib";
 import type { GoogleTokens } from "@/app/api/auth/google/_session";
 import type { drive_v3 } from "@/lib/google/api-types";
 import {
@@ -671,9 +672,12 @@ export async function exportGoogleDocPdf(drive: drive_v3.Drive, fileId: string):
       { responseType: "arraybuffer" },
     );
     const data = downloaded.data as ArrayBuffer | Buffer;
-    if (data instanceof ArrayBuffer) return Buffer.from(data);
-    if (Buffer.isBuffer(data)) return data;
-    throw new Error("Drive download did not return PDF bytes.");
+    const buf = data instanceof ArrayBuffer ? Buffer.from(data) : data;
+    if (!Buffer.isBuffer(buf)) {
+      throw new Error("Drive download did not return PDF bytes.");
+    }
+    // Drive may serve gzip-encoded bytes that gaxios leaves compressed for arraybuffer.
+    return buf.length >= 2 && buf[0] === 0x1f && buf[1] === 0x8b ? gunzipSync(buf) : buf;
   }
 
   if (mime !== "application/vnd.google-apps.document") {

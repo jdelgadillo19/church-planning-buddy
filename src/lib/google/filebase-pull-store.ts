@@ -28,7 +28,14 @@ export async function stageFilebasePullZip(input: {
     const key = pullObjectKey(input.orgId, pullId);
     const createdAt = Date.now();
 
-    await bucket.put(key, new Uint8Array(input.zip), {
+    // Pass a view over the existing bytes instead of `new Uint8Array(zip)`,
+    // which would copy the entire zip and double peak memory on the Worker.
+    const zipView = new Uint8Array(
+      input.zip.buffer,
+      input.zip.byteOffset,
+      input.zip.byteLength,
+    );
+    await bucket.put(key, zipView, {
       httpMetadata: { contentType: "application/zip" },
       customMetadata: {
         planId: input.planId,
@@ -42,7 +49,13 @@ export async function stageFilebasePullZip(input: {
 
     const qs = new URLSearchParams({ id: pullId, orgId: input.orgId });
     return { pullId, downloadUrl: `/api/filebase/pull/download?${qs.toString()}` };
-  } catch {
+  } catch (e) {
+    console.error("stageFilebasePullZip failed", {
+      orgId: input.orgId,
+      planId: input.planId,
+      zipBytes: input.zip.byteLength,
+      error: e instanceof Error ? e.message : String(e),
+    });
     return null;
   }
 }

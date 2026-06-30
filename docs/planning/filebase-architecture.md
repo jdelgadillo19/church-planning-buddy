@@ -247,6 +247,10 @@ Resolution steps (implementation target: `src/lib/google/filebase-pull.ts`):
 4. Output: pull manifest — same shape as `import-marker.json` `files[]` with `path`, `sha256`, `driveFileId`.
 5. **Completeness validation:** fail closed if any required file missing or hash mismatch before zip is offered or Gameday marks ready.
 
+### Deferred: workstation baseline parity
+
+Imported slides may show invalid ProPresenter actions on remote workstations when those actions point at rig-specific configuration (for example, a lyrics slide action that switches the `Stage` screen to a `Song` layout instead of an `Announcement` layout). This is expected until the remote workstation has a one-time baseline setup matching the presentation rig's screens, stage layouts, macros, and output behavior. Do not solve this in selective pull; track it as a separate setup/readiness requirement for Grapevine Prep workstations.
+
 ---
 
 ## Two indexes (do not conflate)

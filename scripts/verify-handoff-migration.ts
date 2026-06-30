@@ -20,6 +20,7 @@ const HANDOFF_COLUMNS = [
   "replace_on_rig",
   "admin_approved_for_rig",
   "version_label",
+  "playlist_file_mtime",
 ] as const;
 
 async function main() {

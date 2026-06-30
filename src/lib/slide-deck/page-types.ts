@@ -19,6 +19,7 @@ export type SlideDeckHandoffSummary = Pick<
   | "replace_on_rig"
   | "admin_approved_for_rig"
   | "rig_handoff_status"
+  | "playlist_file_mtime"
 >;
 
 export type HandoffAuthorsMap = Record<string, HandoffAuthorLabel>;

@@ -23,14 +23,20 @@ function handoffRank(status: string | null | undefined): number {
   return 0;
 }
 
-/** Most-complete first, then newest. */
+function handoffRecencyMs(row: SlideDeckSubmissionRow): number {
+  const raw = row.playlist_file_mtime ?? row.updated_at ?? row.created_at;
+  const t = Date.parse(raw);
+  return Number.isFinite(t) ? t : 0;
+}
+
+/** Most-complete first, then newest by file mtime (fallback updated_at). */
 export function sortHandoffsForDiscovery(
   handoffs: SlideDeckSubmissionRow[],
 ): SlideDeckSubmissionRow[] {
   return [...handoffs].sort((a, b) => {
     const byStatus = handoffRank(b.handoff_status) - handoffRank(a.handoff_status);
     if (byStatus !== 0) return byStatus;
-    return Date.parse(b.created_at) - Date.parse(a.created_at);
+    return handoffRecencyMs(b) - handoffRecencyMs(a);
   });
 }
 

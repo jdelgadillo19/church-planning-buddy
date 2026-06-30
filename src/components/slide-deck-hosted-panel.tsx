@@ -193,19 +193,6 @@ export function SlideDeckHostedPanel({
 
   return (
     <>
-      <section className="flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
-        <h3 className="font-medium">Remote prep on this Mac</h3>
-        <p className="text-xs opacity-90">
-          Create and review here. For Download and Upload, run{" "}
-          <code className="rounded bg-amber-100 px-1 dark:bg-amber-900">npm run prep:companion</code>{" "}
-          in the repo and open{" "}
-          <a href="http://127.0.0.1:3000/slide-deck" className="underline">
-            http://127.0.0.1:3000/slide-deck
-          </a>
-          .
-        </p>
-      </section>
-
       <SlideDeckRigAdmin
         orgId={orgId}
         isAdmin={isAdmin}

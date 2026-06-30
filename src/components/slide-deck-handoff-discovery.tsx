@@ -133,6 +133,17 @@ export function SlideDeckHandoffDiscovery({
       )}
 
       {selected.handoff_status === "complete" &&
+      selected.rig_handoff_status === "synced" ? (
+        <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-100">
+          <p className="font-medium">Received by presentation rig</p>
+          <p className="mt-1 text-xs opacity-90">
+            The sanctuary rig imported this handoff package. Confirm in ProPresenter before
+            service.
+          </p>
+        </div>
+      ) : null}
+
+      {selected.handoff_status === "complete" &&
       selected.rig_handoff_status === "awaiting_approval" &&
       isAdmin &&
       onApproveForRig ? (

@@ -50,6 +50,7 @@ Whole-filebase **Computers** mirror sync caused past production failures (startu
    ```
 
 3. Verify `Filebase/Libraries`, `Filebase/Playlists`, and `Filebase/snapshots/` on Shared drive match rig inventory (metadata + hashes, not blind full copy).
+4. Confirm M2 gate: `npm run filebase:verify-drive` (from machine with Owner Google tokens in `.data/google-tokens.json`).
 
 ---
 

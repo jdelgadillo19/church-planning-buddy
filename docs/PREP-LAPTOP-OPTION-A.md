@@ -1,20 +1,19 @@
-# Prep laptop — Option A (grapevineprep.com + local ProPresenter)
+# Prep laptop — Grapevine Prep desktop app
 
-**Your setup:** Same Mac runs ProPresenter and a browser. You use **grapevineprep.com** for planning; a **local companion** on this machine for Download and Upload.
+**Volunteer setup:** Install **Grapevine Prep** from [grapevineprep.com/login](https://grapevineprep.com/login) (Windows or macOS). No terminal required.
 
-Cloudflare cannot reach `127.0.0.1` ProPresenter, so Download/Upload **cannot** run on grapevineprep.com alone. The companion is a local dev server on this laptop only.
+**Legacy dev path:** `npm run prep:companion` → http://127.0.0.1:3000/slide-deck (developers only).
+
+Cloudflare cannot reach `127.0.0.1` ProPresenter, so Download/Upload **cannot** run on grapevineprep.com alone. Use the **Grapevine Prep** app on a laptop with ProPresenter installed.
 
 ---
 
-## One-time on this Mac
+## One-time on prep laptop
 
-1. Clone/update `church-planning-buddy` and `npm install`.
-2. Copy `.env.local` (or use the repo’s existing one) with:
-   - Supabase + PCO + Google (same as prod)
-   - `PP_HOST=127.0.0.1`, `PP_PORT=<your TCP port>`, `PP_TRANSPORT=tcp`
-   - `PP_ALLOW_WRITES=true`
+1. Install **Grapevine Prep** from grapevineprep.com (or build with `npm run prep:build`).
+2. Install **Node.js 20+** (required for the embedded local server).
 3. ProPresenter → Settings → Network → **Enable Network** ON.
-4. Sign in to Supabase on **both** grapevineprep.com and `http://127.0.0.1:3000` (add `http://127.0.0.1:3000/auth/callback` in Supabase redirect URLs if needed).
+4. Sign in on **both** grapevineprep.com and Grapevine Prep (same church account).
 
 ---
 
@@ -24,61 +23,39 @@ Cloudflare cannot reach `127.0.0.1` ProPresenter, so Download/Upload **cannot** 
 
 1. Open https://grapevineprep.com/slide-deck and sign in.
 2. Pick the **weekend**.
-3. Check **Weekend presentations** (green/yellow handoffs) or **Build fresh**.
-4. Click **Create Presentation** — fix missing songs / library picks.
-5. Optional: **Pull filebase files** (needs Filebase seeded on Drive).
-6. Leave this tab open for reference; you do **not** Download here.
+3. Check **Weekend presentations** or **Build fresh**.
+4. **Create Presentation** — fix missing songs / library picks.
+5. Optional: **Pull filebase files**.
+6. Do **not** Download here.
 
-### Part 2 — Prep companion (this Mac)
+### Part 2 — Grapevine Prep
 
-1. In Terminal, from `church-planning-buddy`:
+1. Open **Grapevine Prep**.
+2. Pick the **same weekend**.
+3. **Create Presentation** again.
+4. **Download presentation** → confirm playlist in ProPresenter.
+5. Edit in ProPresenter.
+6. **Upload complete** or **Upload incomplete**.
 
-   ```bash
-   npm run prep:companion
-   ```
+### Part 3 — Verify on web
 
-2. Open **http://127.0.0.1:3000/slide-deck** and sign in (same church account).
-3. Pick the **same weekend**.
-4. **Create Presentation** again (same cloud index; quick).
-5. **3. Download presentation** → confirm playlist in ProPresenter.
-6. Edit in ProPresenter.
-7. **Open upload tool** → **Upload complete** or **Upload incomplete**.
+1. Refresh grapevineprep.com slide-deck.
+2. **Weekend presentations** shows your upload.
+3. Admin: sign off for rig delivery when complete.
 
-### Part 3 — Verify (still on grapevineprep.com)
-
-1. Refresh grapevineprep.com slide-deck for that weekend.
-2. **Weekend presentations** should show your upload (green or yellow).
-3. Hosted panel may show **Pending rig handoffs** when Services publish is configured.
+Full chain: [`OPERATIONAL-WALKTHROUGH.md`](./OPERATIONAL-WALKTHROUGH.md).
 
 ---
 
-## Quick checks
+## Quick checks (developers)
 
 | Command | Purpose |
 |---------|---------|
-| `npm run pp:diagnose` | ProPresenter reachable from this Mac |
-| `npm run pp:inspect-index` | Cloud filebase index (template + library counts) |
-| `npm run pp:index-upload` | Refresh cloud index from this Mac's ProPresenter |
-| `npm run handoff:verify-migration` | Handoff DB columns exist |
-| `npx tsx src/lib/slide-deck/handoff.test.ts` | Handoff sort logic |
+| `npm run operational:verify` | Env readiness |
+| `npm run pp:inspect-index` | Cloud filebase index |
+| `npm run handoff:verify-migration` | Handoff DB columns |
 
 ### "Sundays Template was not found in the filebase"
 
-Create Presentation uses the **cloud index** on grapevineprep.com and (after the hosted fix) can use **local ProPresenter** on the prep companion.
-
-1. Run `npm run pp:inspect-index` — if library items are **0** or template `sourceFound: false`, refresh the index:
-   - **From this Mac:** `npm run pp:index-upload` (ProPresenter running, same template name as `PP_TEMPLATE_PLAYLIST_NAME`)
-   - **From sanctuary rig:** Grapevine Rig → **Scan now**
-2. Restart `npm run prep:companion` after pulling code changes so local PP is detected.
-3. Confirm `PP_TEMPLATE_PLAYLIST_NAME` matches the playlist in ProPresenter (default: `Sundays Template`).
-
----
-
-## Deferred until presentation rig
-
-- **Scan now** (fresher index)
-- **filebase:seed-upload**
-- **Import handoff** on Grapevine Rig
-- **Send to rig → Apply**
-
-Uploads from the prep laptop are stored in Supabase (and Drive when configured) until the rig imports them.
+1. Run `npm run pp:inspect-index` — if library items are **0**, refresh index from sanctuary rig **Scan now**.
+2. Confirm `PP_TEMPLATE_PLAYLIST_NAME` matches ProPresenter.

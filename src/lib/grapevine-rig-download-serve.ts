@@ -64,7 +64,7 @@ export async function serveRigDownload(platform: RigDownloadPlatform): Promise<R
   }
 
   return new Response(
-    "Grapevine Rig installer is not available yet. Try again after the next rig release, or contact your admin.",
+    "Grapevine Client installer is not available yet. Try again after the next client release, or contact your admin.",
     { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } },
   );
 }

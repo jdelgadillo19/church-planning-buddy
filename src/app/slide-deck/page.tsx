@@ -5,7 +5,7 @@ import { GoogleConnectionCard } from "@/components/google-connection-card";
 import { SlideDeckBuilderEditor } from "@/components/slide-deck-builder-editor";
 import { SlideDeckHandoffDiscovery } from "@/components/slide-deck-handoff-discovery";
 import { SlideDeckHostedPanel } from "@/components/slide-deck-hosted-panel";
-import { PrepDownloadLinks } from "@/components/prep-download-links";
+import { ClientDownloadLinks } from "@/components/client-download-links";
 import { SlideDeckUploadTool } from "@/components/slide-deck-upload-tool";
 import { ToolShell } from "@/components/tool-shell";
 import { missingSongRows, unresolvedAmbiguousRows } from "@/components/slide-deck-library-match";
@@ -748,6 +748,8 @@ export default function SlideDeckPage() {
           orgId,
           planId: planId.trim(),
           serviceTypeId: serviceTypeId.trim() || undefined,
+          librarySelections:
+            Object.keys(librarySelections).length > 0 ? librarySelections : undefined,
         }),
       });
       const contentType = res.headers.get("content-type") ?? "";
@@ -863,15 +865,15 @@ export default function SlideDeckPage() {
           <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100">
             <p>
               Browser planner mode — preview, handoffs, and <strong>Send to presentation rig</strong>{" "}
-              work here. Download and upload need the Grapevine Prep desktop app on a laptop with
+              work here. Download and upload need <strong>Grapevine Client</strong> on a laptop with
               ProPresenter.
             </p>
           </div>
-          <PrepDownloadLinks compact />
+          <ClientDownloadLinks compact />
         </div>
       ) : deviceMode === "local_prep" || deviceMode === "dev_local" ? (
         <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-950 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-100">
-          <strong>Grapevine Prep</strong> — continue Download and Upload here. Use the same weekend
+          <strong>Grapevine Client</strong> — continue Download and Upload here. Use the same weekend
           you chose on grapevineprep.com, then Create Presentation again before downloading.
         </div>
       ) : null}

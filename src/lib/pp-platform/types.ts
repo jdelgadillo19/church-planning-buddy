@@ -50,6 +50,7 @@ export type SlideDeckSubmissionRow = {
   replace_on_rig: boolean;
   admin_approved_for_rig: boolean;
   version_label: string | null;
+  playlist_file_mtime: string | null;
   commit_plan: MockCommitPlan;
   library_selections: Record<string, string>;
   manifest: SlideDeckManifest | null;

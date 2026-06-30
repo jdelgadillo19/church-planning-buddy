@@ -1,3 +1,4 @@
+import type { HandoffStatus } from "@/lib/pp-platform/types";
 import { randomUUID } from "node:crypto";
 import type { drive_v3 } from "@/lib/google/api-types";
 import type { UploadedDriveFile } from "@/lib/google/drive-upload";
@@ -162,7 +163,7 @@ export async function publishHandoffPackage(
 
   const importMarker: SlideDeckImportMarker & {
     handoffId: string;
-    submissionStatus: "complete";
+    submissionStatus: HandoffStatus;
     replaceOnRig?: boolean;
     versionLabel?: string | null;
     adminApprovedForRig?: boolean;
@@ -179,7 +180,7 @@ export async function publishHandoffPackage(
     files: playlistFiles,
     newFiles: [],
     handoffId: handoff.id,
-    submissionStatus: "complete",
+    submissionStatus: handoff.handoff_status ?? "complete",
     replaceOnRig: handoff.replace_on_rig,
     versionLabel: handoff.version_label,
     adminApprovedForRig: handoff.admin_approved_for_rig,

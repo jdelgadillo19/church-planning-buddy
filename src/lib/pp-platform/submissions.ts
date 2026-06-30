@@ -47,6 +47,7 @@ export type CreateSubmissionInput = ServiceScope & {
   replaceOnRig?: boolean;
   adminApprovedForRig?: boolean;
   versionLabel?: string | null;
+  playlistFileMtime?: string | null;
 };
 
 export async function createSlideDeckSubmission(
@@ -74,6 +75,7 @@ export async function createSlideDeckSubmission(
       replace_on_rig: input.replaceOnRig ?? false,
       admin_approved_for_rig: input.adminApprovedForRig ?? false,
       version_label: input.versionLabel ?? null,
+      playlist_file_mtime: input.playlistFileMtime ?? null,
       rig_handoff_status:
         input.rigHandoffStatus !== undefined
           ? input.rigHandoffStatus

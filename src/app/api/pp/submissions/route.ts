@@ -129,6 +129,7 @@ export async function POST(req: Request) {
       presentationInstanceId?: string;
       proplaylistBase64?: string;
       proplaylistFileName?: string;
+      playlistFileMtime?: string;
       uploadSource?: "byo" | "grapevine";
       replaceOnRig?: boolean;
       adminApprovedForRig?: boolean;
@@ -223,10 +224,15 @@ export async function POST(req: Request) {
       replaceOnRig: body.replaceOnRig ?? false,
       adminApprovedForRig,
       versionLabel,
+      playlistFileMtime: body.playlistFileMtime?.trim() || null,
     });
 
     let servicesHandoff = null;
-    if (submission.handoff_status === "complete") {
+    const hasProplaylist = Boolean(body.proplaylistBase64?.trim());
+    if (
+      (submission.handoff_status === "complete" || submission.handoff_status === "incomplete") &&
+      hasProplaylist
+    ) {
       let drive;
       let proplaylistBytes: Buffer | undefined;
       const librarian = await loadOrgLibrarianDrive(org.orgId);

@@ -1,6 +1,6 @@
 const invoke = window.__TAURI__?.core?.invoke;
 if (!invoke) {
-  throw new Error("Grapevine Rig must run inside the Tauri app.");
+  throw new Error("Grapevine Client must run inside the Tauri app.");
 }
 
 const API_BASE_DEFAULT = "https://grapevineprep.com";
@@ -50,6 +50,7 @@ const ppTransport = $("pp-transport");
 const ppBundleRoot = $("pp-bundle-root");
 const ppSaveBtn = $("pp-save-btn");
 const ppSettingsStatus = $("pp-settings-status");
+const remoteOpenBtn = $("remote-open-btn");
 
 let creds = null;
 let pendingBuild = null;
@@ -158,16 +159,27 @@ async function apiFetch(path, init) {
 
 function showPair() {
   pairScreen.classList.remove("hidden");
-  mainScreen.classList.add("hidden");
+  mainScreen.classList.remove("hidden");
   hideUnpairConfirm();
-  setBadge("idle", "Not paired");
+  rigLabel.textContent = "Remote prep workstation · not paired as presentation rig";
+  noBuild.classList.remove("hidden");
+  noHandoff.classList.add("hidden");
+  scanBtn.classList.add("hidden");
+  settingsBtn.classList.add("hidden");
+  renderBuild();
+  setBadge("idle", "Remote prep");
+  handoffCard.classList.add("hidden");
+  noHandoff.classList.add("hidden");
+  void loadPpSettings();
 }
 
 function showMain() {
   pairScreen.classList.add("hidden");
   mainScreen.classList.remove("hidden");
-  rigLabel.textContent = `${creds.displayName} · ${creds.rigId.slice(0, 8)}…`;
-  setBadge("ready", "Paired");
+  rigLabel.textContent = `Presentation rig · ${creds.displayName} · ${creds.rigId.slice(0, 8)}…`;
+  scanBtn.classList.remove("hidden");
+  settingsBtn.classList.remove("hidden");
+  setBadge("ready", "Rig paired");
   void loadPpSettings();
 }
 
@@ -223,6 +235,7 @@ function setWorking(working) {
   applyBtn.disabled = working;
   scanBtn.disabled = working;
   ppSaveBtn.disabled = working;
+  if (remoteOpenBtn) remoteOpenBtn.disabled = working;
 }
 
 async function savePpSettings() {
@@ -559,8 +572,16 @@ async function pair() {
     pairError.classList.remove("hidden");
   } finally {
     pairBtn.disabled = false;
-    pairBtn.textContent = "Pair this Mac";
+    pairBtn.textContent = "Pair as presentation rig";
   }
+}
+
+function openRemotePrepWorkspace() {
+  window.open(`${API_BASE_DEFAULT}/slide-deck`, "_blank", "noopener,noreferrer");
+  setActionStatus(
+    "Opened Grapevine slide deck. Create Presentation there, then use Download on a prep machine with ProPresenter connected.",
+    "idle",
+  );
 }
 
 async function applyBuild() {
@@ -756,6 +777,9 @@ async function unpair() {
 }
 
 pairBtn.addEventListener("click", () => void pair());
+if (remoteOpenBtn) {
+  remoteOpenBtn.addEventListener("click", () => openRemotePrepWorkspace());
+}
 applyBtn.addEventListener("click", () => void applyBuild());
 conflictOverwriteBtn.addEventListener("click", () => void conflictOverwrite());
 conflictViewBtn.addEventListener("click", () => conflictView());

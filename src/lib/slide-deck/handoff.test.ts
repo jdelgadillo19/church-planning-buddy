@@ -22,6 +22,7 @@ function handoff(partial: Partial<SlideDeckSubmissionRow> & { id: string }): Sli
     replace_on_rig: false,
     admin_approved_for_rig: false,
     version_label: null,
+    playlist_file_mtime: partial.playlist_file_mtime ?? null,
     commit_plan: partial.commit_plan as SlideDeckSubmissionRow["commit_plan"],
     library_selections: {},
     manifest: null,
@@ -46,12 +47,20 @@ const completeOld = handoff({
 const completeNew = handoff({
   id: "c",
   handoff_status: "complete",
-  created_at: "2026-06-14T10:00:00Z",
+  created_at: "2026-06-10T10:00:00Z",
+  playlist_file_mtime: "2026-06-14T12:00:00Z",
+  commit_plan: { playlistName: "x" } as SlideDeckSubmissionRow["commit_plan"],
+});
+const completeNewerFile = handoff({
+  id: "d",
+  handoff_status: "complete",
+  created_at: "2026-06-08T10:00:00Z",
+  playlist_file_mtime: "2026-06-15T08:00:00Z",
   commit_plan: { playlistName: "x" } as SlideDeckSubmissionRow["commit_plan"],
 });
 
-const sorted = sortHandoffsForDiscovery([incomplete, completeOld, completeNew]);
-assert.equal(sorted[0]?.id, "c", "newest complete first");
-assert.equal(defaultHandoffSelection(sorted)?.id, "c");
+const sorted = sortHandoffsForDiscovery([incomplete, completeOld, completeNew, completeNewerFile]);
+assert.equal(sorted[0]?.id, "d", "newest file mtime complete first");
+assert.equal(defaultHandoffSelection(sorted)?.id, "d");
 
 console.log("handoff.test.ts ok");
