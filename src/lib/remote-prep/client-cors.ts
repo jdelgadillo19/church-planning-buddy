@@ -13,7 +13,7 @@ export function isRemotePrepClientApiPath(pathname: string): boolean {
 }
 
 export function remotePrepCorsPreflightResponse(): NextResponse {
-  return applyRemotePrepCors(new NextResponse(null, { status: 204 }));
+  return applyRemotePrepCors(new NextResponse(null, { status: 204 })) as NextResponse;
 }
 
 export function applyRemotePrepCors(response: Response): Response {

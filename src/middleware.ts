@@ -60,7 +60,7 @@ function corsNext(request: NextRequest): NextResponse {
     request: { headers: request.headers },
   });
   if (isRemotePrepClientApiPath(request.nextUrl.pathname)) {
-    return applyRemotePrepCors(next);
+    return applyRemotePrepCors(next) as NextResponse;
   }
   return applyRigCors(next);
 }
