@@ -2,10 +2,12 @@ use keyring::Entry;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use tauri::Emitter;
 use tauri::Manager;
 use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_shell::ShellExt;
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+use tauri::Emitter;
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 use tauri::RunEvent;
 
 const SERVICE: &str = "com.grapevineprep.rig";
@@ -645,6 +647,7 @@ async fn run_remote_prep_worker(
     Ok(parse_worker_stdout(&stdout)?)
 }
 
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 fn parse_remote_prep_deeplink(raw: &str) -> Option<(String, String)> {
     let trimmed = raw.trim();
     if !trimmed.starts_with("grapevine://") {
@@ -895,11 +898,14 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while running Grapevine Client")
-        .run(|app, event| {
-            if let RunEvent::Opened { urls } = event {
+        .run(move |_app, _event| {
+            // grapevine:// deep links arrive via RunEvent::Opened, which only
+            // exists on macOS/iOS in Tauri 2. Gate it so Windows still compiles.
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            if let RunEvent::Opened { urls } = _event {
                 for url in urls {
                     if let Some((job_id, token)) = parse_remote_prep_deeplink(url.as_str()) {
-                        let handle = app.clone();
+                        let handle = _app.clone();
                         tauri::async_runtime::spawn(async move {
                             let message = match run_remote_prep_worker(&handle, job_id, token, None).await {
                                 Ok(msg) => msg,
