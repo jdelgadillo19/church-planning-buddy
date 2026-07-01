@@ -4,11 +4,13 @@ export const DEFAULT_PP_TEMPLATE_PLAYLIST_NAME = "Sundays Template";
 /** Prefix for generated playlist names — combined with plan date as YYYY.MM.DD. */
 export const DEFAULT_PP_PLAYLIST_NAME_PREFIX = "SUN";
 
+type EnvWithStringValues = Partial<Record<string, string | undefined>>;
+
 /**
  * Legacy mode: duplicate "Sundays Template" and inherit template slots.
  * Default false — playlists are assembled from PCO plan items matched to the library.
  */
-export function useTemplatePlaylistAssembly(env: NodeJS.ProcessEnv = process.env): boolean {
+export function useTemplatePlaylistAssembly(env: EnvWithStringValues = process.env): boolean {
   return env.PP_USE_TEMPLATE_PLAYLIST?.trim().toLowerCase() === "true";
 }
 
