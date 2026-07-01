@@ -342,6 +342,7 @@ export function SlideDeckBuilderEditor({
               conflict={playlistConflict}
               showItems={showConflictItems}
               applyLoading={applyLoading}
+              operationLocked={operationLocked}
               onOverwrite={onConfirmOverwrite}
               onView={onViewConflict}
               onCancel={onCancelConflict}
@@ -370,6 +371,7 @@ function ConflictPanel({
   conflict,
   showItems,
   applyLoading,
+  operationLocked,
   onOverwrite,
   onView,
   onCancel,
@@ -377,6 +379,7 @@ function ConflictPanel({
   conflict: PlaylistConflictInfo;
   showItems: boolean;
   applyLoading: boolean;
+  operationLocked: boolean;
   onOverwrite: () => void;
   onView: () => void;
   onCancel: () => void;
