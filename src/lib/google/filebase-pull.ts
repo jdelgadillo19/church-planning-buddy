@@ -473,6 +473,7 @@ export async function buildFilebasePullZip(input: {
       }
     }
     entries.push({ path: rel, data: bytes });
+  }
 
   const resolvedMedia = resolveMediaPathsForReferences([...mediaReferences], input.snapshotFiles);
   const mediaMaxFileBytes =
