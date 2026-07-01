@@ -43,6 +43,12 @@ function connectionHint(config: ProPresenterConfig, detail?: string): string {
   );
 }
 
+function isConnectionFailure(message: string): boolean {
+  return /ECONNREFUSED|fetch failed|Failed to connect|AbortError|ETIMEDOUT|TCP timeout|TCP closed/i.test(
+    message,
+  );
+}
+
 async function ppHttpRequest<T>(
   rel: string,
   method: string,
@@ -134,12 +140,19 @@ export async function ppRequest<T = PpJson>(
       }
     }
   } catch (e) {
-    if (e instanceof ProPresenterApiError) throw e;
+    if (e instanceof ProPresenterApiError) {
+      if (isConnectionFailure(e.message)) {
+        throw new ProPresenterApiError(connectionHint(config, e.message), {
+          status: e.status,
+          path: rel,
+          body: e.body,
+        });
+      }
+      throw e;
+    }
     const err = e as Error & { cause?: { code?: string; message?: string } };
     const msg = [err.message, err.cause?.message, err.cause?.code].filter(Boolean).join(" | ");
-    const isConn =
-      /ECONNREFUSED|fetch failed|Failed to connect|AbortError|ETIMEDOUT/i.test(msg);
-    if (isConn) {
+    if (isConnectionFailure(msg)) {
       throw new ProPresenterApiError(connectionHint(config, msg), { path: rel });
     }
     throw new ProPresenterApiError(msg, { path: rel });

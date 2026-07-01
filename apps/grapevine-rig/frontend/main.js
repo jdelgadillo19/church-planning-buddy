@@ -136,6 +136,12 @@ function setPpStatus(text, tone = "idle") {
   ppSettingsStatus.className = `hint pp-settings-status-${tone}`;
 }
 
+function isErrorStatusMessage(message) {
+  return /failed|error|required|cannot reach|ECONNREFUSED|refused|timeout|ETIMEDOUT|not configured|did not become reachable|not found|no items to write|cannot apply/i.test(
+    message,
+  );
+}
+
 function rigAuth() {
   return `Rig ${creds.rigId}:${creds.rigSecret}`;
 }
@@ -857,7 +863,7 @@ async function init() {
       await listen("remote-prep-status", (event) => {
         const message = typeof event.payload === "string" ? event.payload : String(event.payload ?? "");
         if (message) {
-          const tone = /failed|error|required/i.test(message) ? "error" : "ok";
+          const tone = isErrorStatusMessage(message) ? "error" : "ok";
           setActionStatus(message, tone);
           setBadge(tone === "ok" ? "ready" : "idle", tone === "ok" ? "Remote prep done" : "Remote prep");
         }

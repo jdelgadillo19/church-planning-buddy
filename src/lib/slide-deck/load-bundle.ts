@@ -9,7 +9,7 @@ import { loadProPresenterConfig } from "@/lib/propresenter/config";
 import { loadSongLibraryIndex } from "@/lib/propresenter/library-read";
 import { getPlaylistItems } from "@/lib/propresenter/playlist-read";
 import { findPlaylistByName } from "@/lib/propresenter/playlists-read";
-import { resolveTemplatePlaylistName } from "@/lib/config/slide-deck";
+import { resolveTemplatePlaylistName, useTemplatePlaylistAssembly } from "@/lib/config/slide-deck";
 import type { ApplyCommitResult } from "./apply-commit";
 import {
   applyResultFromLiveSnapshot,
@@ -82,19 +82,22 @@ export async function loadSlideDeckBundle(
   let templateSourcePlaylistPath: string | undefined;
   let templateItems: Awaited<ReturnType<typeof getPlaylistItems>> = [];
   let libraryIndex: Awaited<ReturnType<typeof loadSongLibraryIndex>> = [];
+  const useTemplateAssembly = useTemplatePlaylistAssembly();
 
   try {
     await ppPing(loadProPresenterConfig());
     propresenterConnected = true;
 
-    const templateName = resolveTemplatePlaylistName();
-    const found = await findPlaylistByName(templateName);
-    templateSourceFound = found !== null;
-    templateSourcePlaylistId = found?.id;
-    templateSourcePlaylistPath = found?.path ?? found?.name;
+    if (useTemplateAssembly) {
+      const templateName = resolveTemplatePlaylistName();
+      const found = await findPlaylistByName(templateName);
+      templateSourceFound = found !== null;
+      templateSourcePlaylistId = found?.id;
+      templateSourcePlaylistPath = found?.path ?? found?.name;
 
-    if (found?.id) {
-      templateItems = await getPlaylistItems(found.id);
+      if (found?.id) {
+        templateItems = await getPlaylistItems(found.id);
+      }
     }
 
     libraryIndex = await loadSongLibraryIndex();
@@ -112,6 +115,7 @@ export async function loadSlideDeckBundle(
     templateSourcePlaylistPath,
     propresenterConnected,
     templateItems,
+    useTemplateAssembly,
   });
 
   const commitPlan = buildMockCommitPlan({
@@ -119,6 +123,7 @@ export async function loadSlideDeckBundle(
     templateItems,
     libraryIndex,
     propresenterConnected,
+    useTemplateAssembly,
   });
 
   let applyResult = input.applyResult;

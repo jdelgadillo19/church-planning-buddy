@@ -1,8 +1,16 @@
-/** ProPresenter playlist duplicated each Sunday (read-only reference in Phase 1). */
+/** ProPresenter playlist duplicated each Sunday (legacy template assembly only). */
 export const DEFAULT_PP_TEMPLATE_PLAYLIST_NAME = "Sundays Template";
 
 /** Prefix for generated playlist names — combined with plan date as YYYY.MM.DD. */
 export const DEFAULT_PP_PLAYLIST_NAME_PREFIX = "SUN";
+
+/**
+ * Legacy mode: duplicate "Sundays Template" and inherit template slots.
+ * Default false — playlists are assembled from PCO plan items matched to the library.
+ */
+export function useTemplatePlaylistAssembly(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.PP_USE_TEMPLATE_PLAYLIST?.trim().toLowerCase() === "true";
+}
 
 export function resolveTemplatePlaylistName(override?: string): string {
   return (

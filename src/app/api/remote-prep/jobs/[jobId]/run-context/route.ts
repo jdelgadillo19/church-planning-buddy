@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server";
+import {
+  libraryIndexFromSnapshot,
+} from "@/lib/pp-platform/cloud-index";
+import { getLatestSnapshotForOrg } from "@/lib/pp-platform/snapshots";
 import { parseRemotePrepAuthorization } from "@/lib/remote-prep/auth";
 import { applyRemotePrepCors } from "@/lib/remote-prep/client-cors";
 import { authenticateRemotePrepJob } from "@/lib/remote-prep/jobs";
@@ -23,6 +27,18 @@ export async function GET(req: Request, context: RouteContext) {
       );
     }
 
+    const snapshot = await getLatestSnapshotForOrg(job.org_id);
+    if (!snapshot?.index_json) {
+      return applyRemotePrepCors(
+        NextResponse.json(
+          { ok: false, error: "No library index snapshot — run Scan now on the presentation rig." },
+          { status: 400 },
+        ),
+      );
+    }
+
+    const libraryIndex = libraryIndexFromSnapshot(snapshot.index_json);
+
     const origin = new URL(req.url).origin;
     return applyRemotePrepCors(
       NextResponse.json({
@@ -39,6 +55,10 @@ export async function GET(req: Request, context: RouteContext) {
           pullFileName: job.pull_file_name,
           pullManifest: job.pull_manifest,
           expiresAt: job.expires_at,
+        },
+        applyContext: {
+          libraryIndex,
+          libraryItemCount: libraryIndex.length,
         },
         apiBaseUrl: origin,
         pullDownloadPath: `/api/remote-prep/jobs/${job.id}/pull`,

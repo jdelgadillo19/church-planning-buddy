@@ -1,4 +1,5 @@
 import { classifyPcoForPlaylist } from "./pco-exclusions";
+import { useTemplatePlaylistAssembly } from "@/lib/config/slide-deck";
 import type {
   ManifestElement,
   ManifestElementRole,
@@ -24,8 +25,10 @@ export function classifyServiceOrderItem(
   item: ServiceOrderItem,
   order: number,
   templateCorrespondence?: TemplateCorrespondence,
+  opts?: { useTemplateAssembly?: boolean },
 ): ManifestElement {
-  const decision = classifyPcoForPlaylist(item);
+  const useTemplate = opts?.useTemplateAssembly ?? useTemplatePlaylistAssembly();
+  const decision = classifyPcoForPlaylist(item, { useTemplateAssembly: useTemplate });
 
   const element: ManifestElement = {
     order,
@@ -38,18 +41,21 @@ export function classifyServiceOrderItem(
     skipReason: decision.include ? undefined : decision.reason,
     notes: decision.include ? undefined : decision.detail,
     templateCorrespondence:
-      !decision.include && decision.reason === "template_covered"
+      useTemplate && !decision.include && decision.reason === "template_covered"
         ? templateCorrespondence
         : undefined,
   };
 
-  if (decision.include && item.song) {
-    element.key = item.song.key || undefined;
-    element.artist = item.song.artist || undefined;
+  if (decision.include) {
     element.propresenterSearchHint = item.title;
+    if (item.song) {
+      element.key = item.song.key || undefined;
+      element.artist = item.song.artist || undefined;
+    }
   }
 
   if (
+    useTemplate &&
     !decision.include &&
     decision.reason === "template_covered" &&
     templateCorrespondence?.status === "matched" &&

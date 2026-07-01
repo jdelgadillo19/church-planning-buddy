@@ -12,7 +12,7 @@ import { remotePrepAuthorization } from "@/lib/remote-prep/auth";
 import { extractFilebaseZipToBundle, summarizeExtract } from "@/lib/remote-prep/extract-to-bundle";
 import { extractStoreZip } from "@/lib/zip/extract-store-zip";
 import { applyCommitPlan } from "@/lib/slide-deck/apply-commit";
-import { resolveApplyContextFromClientPlan } from "@/lib/slide-deck/resolve-apply-context";
+import { resolveApplyContextFromCloudSnapshot } from "@/lib/slide-deck/resolve-apply-context";
 import { PlaylistConflictError } from "@/lib/propresenter/playlist-write";
 import { ppPing } from "@/lib/propresenter/client";
 import { loadProPresenterConfig } from "@/lib/propresenter/config";
@@ -62,17 +62,51 @@ function sleep(ms: number) {
 
 async function openProPresenter() {
   const script = process.env.PP_OPEN_APPLESCRIPT_PATH?.trim();
-  if (!script) return;
-  try {
-    await fs.access(script);
-  } catch {
-    return;
+  if (script) {
+    try {
+      await fs.access(script);
+      await execFileAsync("/usr/bin/osascript", [script]);
+      return;
+    } catch {
+      // Fall through to the system app launcher below.
+    }
   }
-  await execFileAsync("/usr/bin/osascript", [script]);
+
+  if (process.platform === "darwin") {
+    await execFileAsync("/usr/bin/open", ["-a", "ProPresenter"]);
+  }
 }
 
 function logResult(payload: Record<string, unknown>) {
   console.log(JSON.stringify(payload));
+}
+
+function connectionStillWarming(message: string) {
+  return /ECONNREFUSED|Cannot reach ProPresenter|TCP timeout|TCP closed|fetch failed|Failed to connect|AbortError|ETIMEDOUT/i.test(
+    message,
+  );
+}
+
+async function waitForProPresenterReady(config: ReturnType<typeof loadProPresenterConfig>) {
+  const deadline = Date.now() + 60_000;
+  let lastError = "";
+
+  while (Date.now() < deadline) {
+    try {
+      await ppPing(config);
+      return;
+    } catch (e) {
+      lastError = e instanceof Error ? e.message : String(e);
+      if (!connectionStillWarming(lastError)) {
+        throw e;
+      }
+      await sleep(2_000);
+    }
+  }
+
+  throw new Error(
+    `ProPresenter did not become reachable after 60 seconds. ${lastError || "Open ProPresenter and confirm Settings > Network > Enable Network is ON."}`,
+  );
 }
 
 async function main() {
@@ -89,8 +123,18 @@ async function main() {
       librarySelections: Record<string, string>;
       pullManifest: import("@/lib/google/filebase-pull").FilebasePullManifest;
     };
+    applyContext: {
+      libraryIndex: import("@/lib/propresenter/library-read").PpLibraryItemRef[];
+      libraryItemCount: number;
+    };
     pullDownloadPath: string;
   };
+
+  if (!ctx.applyContext?.libraryIndex) {
+    throw new Error(
+      "Remote prep server response is missing cloud library index. Deploy the latest grapevineprep.com build and retry.",
+    );
+  }
 
   const zipRes = await fetch(`${apiBase()}${ctx.pullDownloadPath}`, {
     headers: { Authorization: jobAuth().header },
@@ -114,16 +158,16 @@ async function main() {
   });
 
   await openProPresenter();
-  await sleep(2500);
 
   const config = loadProPresenterConfig();
   if (!config.allowWrites) {
     throw new Error("PP_ALLOW_WRITES=true is required for remote prep.");
   }
-  await ppPing(config);
+  await waitForProPresenterReady(config);
 
-  const { commitPlan, templateItems, libraryIndex } = await resolveApplyContextFromClientPlan(
+  const { commitPlan, templateItems, libraryIndex } = resolveApplyContextFromCloudSnapshot(
     ctx.job.commitPlan,
+    ctx.applyContext.libraryIndex,
   );
 
   const applyResult = await applyCommitPlan({

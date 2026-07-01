@@ -1,4 +1,4 @@
-import { matchLibraryItem, type LibraryMatchResult, type PpLibraryItemRef } from "@/lib/propresenter/library-read";
+import { useTemplatePlaylistAssembly } from "@/lib/config/slide-deck";
 import type { PpPlaylistItemRef } from "@/lib/propresenter/playlist-read";
 import type { ManifestElement, SlideDeckManifest } from "./types";
 import {
@@ -78,40 +78,58 @@ export type BuildMockCommitInput = {
     stale: boolean;
   };
   playlistConflict?: MockCommitPlan["playlistConflict"];
+  /** Override legacy template assembly (default: env PP_USE_TEMPLATE_PLAYLIST). */
+  useTemplateAssembly?: boolean;
 };
 
 function buildOperations(
   manifest: SlideDeckManifest,
   playlistPreview: MockCommitPlaylistRow[],
+  useTemplateAssembly: boolean,
 ): MockCommitOperation[] {
   const ops: MockCommitOperation[] = [];
   let step = 1;
 
-  const templateReady = manifest.template.sourceFound === true && manifest.template.sourcePlaylistId;
+  const templateReady =
+    useTemplateAssembly &&
+    manifest.template.sourceFound === true &&
+    manifest.template.sourcePlaylistId;
 
-  ops.push({
-    step: step++,
-    action: "duplicate_playlist",
-    label: `Duplicate "${manifest.template.sourcePlaylistName}"`,
-    detail: templateReady
-      ? `Source playlist ${manifest.template.sourcePlaylistId}`
-      : "Template playlist not found — would fail.",
-    apiMethod: "POST",
-    apiPath: "v1/playlists (duplicate — endpoint TBD at write phase)",
-    status: templateReady ? "planned" : "missing_prerequisite",
-  });
+  if (useTemplateAssembly) {
+    ops.push({
+      step: step++,
+      action: "duplicate_playlist",
+      label: `Duplicate "${manifest.template.sourcePlaylistName}"`,
+      detail: templateReady
+        ? `Source playlist ${manifest.template.sourcePlaylistId}`
+        : "Template playlist not found — would fail.",
+      apiMethod: "POST",
+      apiPath: "v1/playlists (duplicate — endpoint TBD at write phase)",
+      status: templateReady ? "planned" : "missing_prerequisite",
+    });
 
-  ops.push({
-    step: step++,
-    action: "rename_playlist",
-    label: `Rename duplicated playlist → "${manifest.playlistName}"`,
-    apiMethod: "PUT",
-    apiPath: "v1/playlist/{newPlaylistId}",
-    status: templateReady ? "planned" : "missing_prerequisite",
-  });
+    ops.push({
+      step: step++,
+      action: "rename_playlist",
+      label: `Rename duplicated playlist → "${manifest.playlistName}"`,
+      apiMethod: "PUT",
+      apiPath: "v1/playlist/{newPlaylistId}",
+      status: templateReady ? "planned" : "missing_prerequisite",
+    });
+  } else {
+    ops.push({
+      step: step++,
+      action: "add_to_playlist",
+      label: `Create playlist "${manifest.playlistName}" from PCO plan`,
+      detail: `${playlistPreview.length} library item(s) in service order.`,
+      apiMethod: "POST",
+      apiPath: "v1/playlists + v1/playlist/{id}",
+      status: playlistPreview.length > 0 ? "planned" : "blocked",
+    });
+  }
 
   for (const row of playlistPreview) {
-    if (row.kind === "template_inherit" && row.pcoCorrespondence) {
+    if (useTemplateAssembly && row.kind === "template_inherit" && row.pcoCorrespondence) {
       ops.push({
         step: step++,
         action: "template_slot",
@@ -121,7 +139,7 @@ function buildOperations(
       });
       continue;
     }
-    if (row.kind === "template_inherit") {
+    if (useTemplateAssembly && row.kind === "template_inherit") {
       continue;
     }
     ops.push({
@@ -241,6 +259,8 @@ function collectCorrespondences(manifest: SlideDeckManifest): MockCommitPlan["co
 }
 
 export function buildMockCommitPlan(input: BuildMockCommitInput): MockCommitPlan {
+  const useTemplateAssembly = input.useTemplateAssembly ?? useTemplatePlaylistAssembly();
+  const effectiveTemplateItems = useTemplateAssembly ? input.templateItems : [];
   const songs = input.manifest.elements.filter((e) => e.playlistIntent === "include");
   const warnings: string[] = [];
 
@@ -264,27 +284,30 @@ export function buildMockCommitPlan(input: BuildMockCommitInput): MockCommitPlan
       "No ProPresenter connection or cloud index — library matches and template items unavailable.",
     );
   }
-  if (input.manifest.template.sourceFound === false) {
+  if (useTemplateAssembly && input.manifest.template.sourceFound === false) {
     warnings.push(
       `Template playlist "${input.manifest.template.sourcePlaylistName}" was not found.`,
     );
   }
   if (
-    input.templateItems.length === 0 &&
+    useTemplateAssembly &&
+    effectiveTemplateItems.length === 0 &&
     (input.propresenterConnected || input.useCloudIndex) &&
     input.manifest.template.sourceFound !== false
   ) {
     warnings.push("Could not read template playlist items.");
   }
 
-  const welcomeCorrespondence = input.manifest.elements.find((e) =>
-    /^welcome$/i.test(e.pcoTitle),
-  )?.templateCorrespondence;
-  if (welcomeCorrespondence?.status === "not_found") {
-    warnings.push(`PCO "Welcome" has no matching ProPresenter template item.`);
-  }
-  if (welcomeCorrespondence?.status === "ambiguous") {
-    warnings.push(`PCO "Welcome" matches multiple template items: ${welcomeCorrespondence.note}`);
+  if (useTemplateAssembly) {
+    const welcomeCorrespondence = input.manifest.elements.find((e) =>
+      /^welcome$/i.test(e.pcoTitle),
+    )?.templateCorrespondence;
+    if (welcomeCorrespondence?.status === "not_found") {
+      warnings.push(`PCO "Welcome" has no matching ProPresenter template item.`);
+    }
+    if (welcomeCorrespondence?.status === "ambiguous") {
+      warnings.push(`PCO "Welcome" matches multiple template items: ${welcomeCorrespondence.note}`);
+    }
   }
 
   const needsPick = input.libraryIndex.length
@@ -315,7 +338,7 @@ export function buildMockCommitPlan(input: BuildMockCommitInput): MockCommitPlan
 
   const playlistPreview = buildPlaylistPreview(
     input.manifest,
-    input.templateItems,
+    effectiveTemplateItems,
     input.libraryIndex,
   );
 
@@ -333,8 +356,8 @@ export function buildMockCommitPlan(input: BuildMockCommitInput): MockCommitPlan
     serviceDate: input.manifest.serviceDate,
     serviceDateFormatted: input.manifest.serviceDateFormatted,
     templateSource: input.manifest.template.sourcePlaylistName,
-    templateItemCount: input.templateItems.length,
-    operations: buildOperations(input.manifest, playlistPreview),
+    templateItemCount: effectiveTemplateItems.length,
+    operations: buildOperations(input.manifest, playlistPreview, useTemplateAssembly),
     playlistPreview,
     correspondences: collectCorrespondences(input.manifest),
     warnings,

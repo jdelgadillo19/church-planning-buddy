@@ -1,4 +1,5 @@
 import { loadWorkerEnv } from "@/lib/config/worker-env";
+import { useTemplatePlaylistAssembly } from "@/lib/config/slide-deck";
 import { buildFilebasePullZip, type FilebasePullManifest } from "@/lib/google/filebase-pull";
 import { stageFilebasePullZip } from "@/lib/google/filebase-pull-store";
 import {
@@ -37,6 +38,7 @@ export async function prepareFilebasePullForPlan(input: {
 
   const librarySelections = input.librarySelections ?? {};
   const workerEnv = await loadWorkerEnv();
+  const useTemplateAssembly = useTemplatePlaylistAssembly(workerEnv);
 
   const librarian = await loadOrgLibrarianDrive(input.orgId, workerEnv);
   if (!librarian) {
@@ -55,8 +57,12 @@ export async function prepareFilebasePullForPlan(input: {
     serviceTypeId: input.serviceTypeId,
   });
 
-  const template = resolveTemplateFromSnapshot(snapshot.index_json);
-  const templateItems = templateItemsFromSnapshot(snapshot.index_json);
+  const template = useTemplateAssembly
+    ? resolveTemplateFromSnapshot(snapshot.index_json)
+    : { sourceFound: false, itemCount: 0 };
+  const templateItems = useTemplateAssembly
+    ? templateItemsFromSnapshot(snapshot.index_json)
+    : [];
   const manifest = buildSlideDeckManifest({
     plan,
     templateSourceFound: template.sourceFound,
@@ -64,6 +70,7 @@ export async function prepareFilebasePullForPlan(input: {
     templateSourcePlaylistPath: template.sourcePlaylistPath,
     templateItems,
     propresenterConnected: true,
+    useTemplateAssembly,
   });
   const cloudLibrary = libraryIndexFromSnapshot(snapshot.index_json);
 
@@ -73,6 +80,7 @@ export async function prepareFilebasePullForPlan(input: {
     libraryIndex: cloudLibrary,
     propresenterConnected: true,
     useCloudIndex: true,
+    useTemplateAssembly,
   });
 
   const unresolved = unresolvedAmbiguousRows(commitPlan, librarySelections);

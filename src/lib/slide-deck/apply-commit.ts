@@ -11,6 +11,7 @@ import {
   type PlaylistResolution,
   type PpWritePlaylistItem,
 } from "@/lib/propresenter/playlist-write";
+import { matchLibraryItem } from "@/lib/propresenter/library-read";
 import { getPlaylistItems } from "@/lib/propresenter/playlist-read";
 import { loadProPresenterConfig } from "@/lib/propresenter/config";
 import {
@@ -75,16 +76,33 @@ export function buildWriteItemsFromPreview(input: ApplyCommitInput): {
 
   for (const row of input.commitPlan.playlistPreview) {
     if (row.kind === "template_inherit") {
-      const templateRef = findTemplateItemForName(input.templateItems, row.name);
-      if (!templateRef) {
-        const msg = `Template item "${row.name}" not found in source template — skipped.`;
-        if (!partial) {
-          throw new Error(`Cannot apply: ${msg}`);
-        }
-        warnings.push(msg);
+      const templateRef =
+        input.templateItems.length > 0
+          ? findTemplateItemForName(input.templateItems, row.name)
+          : undefined;
+      if (templateRef) {
+        items.push(templateItemToWritePayload(templateRef, items.length));
         continue;
       }
-      items.push(templateItemToWritePayload(templateRef, items.length));
+
+      const libraryFallback = resolveLibraryItemForRow(
+        row,
+        input.libraryIndex,
+        input.librarySelections,
+      );
+      const byNameMatch = matchLibraryItem(row.pcoTitle ?? row.name, input.libraryIndex);
+      const byName =
+        libraryFallback ?? (byNameMatch.status === "found" ? byNameMatch.item : undefined);
+      if (byName) {
+        items.push(libraryItemToWritePayload(byName, items.length));
+        continue;
+      }
+
+      const msg = `Service item "${row.name}" not found in library — skipped.`;
+      if (!partial) {
+        throw new Error(`Cannot apply: ${msg}`);
+      }
+      warnings.push(msg);
       continue;
     }
 

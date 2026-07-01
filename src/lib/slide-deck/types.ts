@@ -66,7 +66,7 @@ export type ManifestElement = {
 export type TemplatePlaylistPlan = {
   sourcePlaylistName: string;
   targetPlaylistName: string;
-  plannedAction: "duplicate_and_rename";
+  plannedAction: "duplicate_and_rename" | "create_from_plan";
   /** Read-only check when ProPresenter is connected. */
   sourceFound: boolean | null;
   sourcePlaylistId?: string;

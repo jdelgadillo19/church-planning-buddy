@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { loadWorkerEnv } from "@/lib/config/worker-env";
+import { useTemplatePlaylistAssembly } from "@/lib/config/slide-deck";
 import { buildFilebasePullZip } from "@/lib/google/filebase-pull";
 import { stageFilebasePullZip } from "@/lib/google/filebase-pull-store";
 import {
@@ -54,6 +55,7 @@ export async function POST(req: Request) {
     }
 
     const workerEnv = await loadWorkerEnv();
+    const useTemplateAssembly = useTemplatePlaylistAssembly(workerEnv);
 
     const librarian = await loadOrgLibrarianDrive(org.orgId, workerEnv);
     if (!librarian) {
@@ -80,8 +82,12 @@ export async function POST(req: Request) {
       serviceTypeId: body.serviceTypeId,
     });
 
-    const template = resolveTemplateFromSnapshot(snapshot.index_json);
-    const templateItems = templateItemsFromSnapshot(snapshot.index_json);
+    const template = useTemplateAssembly
+      ? resolveTemplateFromSnapshot(snapshot.index_json)
+      : { sourceFound: false, itemCount: 0 };
+    const templateItems = useTemplateAssembly
+      ? templateItemsFromSnapshot(snapshot.index_json)
+      : [];
     const manifest = buildSlideDeckManifest({
       plan,
       templateSourceFound: template.sourceFound,
@@ -89,6 +95,7 @@ export async function POST(req: Request) {
       templateSourcePlaylistPath: template.sourcePlaylistPath,
       templateItems,
       propresenterConnected: true,
+      useTemplateAssembly,
     });
     const cloudLibrary = libraryIndexFromSnapshot(snapshot.index_json);
 
@@ -98,6 +105,7 @@ export async function POST(req: Request) {
       libraryIndex: cloudLibrary,
       propresenterConnected: true,
       useCloudIndex: true,
+      useTemplateAssembly,
     });
 
     const librarySelections = body.librarySelections ?? {};

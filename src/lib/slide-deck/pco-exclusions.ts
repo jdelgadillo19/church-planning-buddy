@@ -1,4 +1,8 @@
-import { resolveSkipTitleExact, resolveSkipTitlePatterns } from "@/lib/config/slide-deck";
+import {
+  resolveSkipTitleExact,
+  resolveSkipTitlePatterns,
+  useTemplatePlaylistAssembly,
+} from "@/lib/config/slide-deck";
 import { isWorshipSongPlanItem } from "@/lib/pco/plan-item-filters";
 import type { ServiceOrderItem } from "./types";
 
@@ -48,7 +52,11 @@ function envExactTitles(): Set<string> {
   return new Set(resolveSkipTitleExact().map((t) => t.trim().toLowerCase()).filter(Boolean));
 }
 
-export function classifyPcoForPlaylist(item: ServiceOrderItem): PcoExclusionResult {
+export function classifyPcoForPlaylist(
+  item: ServiceOrderItem,
+  opts?: { useTemplateAssembly?: boolean },
+): PcoExclusionResult {
+  const useTemplate = opts?.useTemplateAssembly ?? useTemplatePlaylistAssembly();
   const itemType = item.itemType.trim().toLowerCase() || "item";
   const title = item.title.trim() || "(Untitled)";
 
@@ -90,6 +98,9 @@ export function classifyPcoForPlaylist(item: ServiceOrderItem): PcoExclusionResu
   }
 
   if (matchesAnyPattern(title, TEMPLATE_COVERED_TITLE_PATTERNS)) {
+    if (!useTemplate) {
+      return { include: true, reason: "worship_song" };
+    }
     return {
       include: false,
       reason: "template_covered",
@@ -98,11 +109,18 @@ export function classifyPcoForPlaylist(item: ServiceOrderItem): PcoExclusionResu
   }
 
   if (itemType === "media") {
+    if (!useTemplate) {
+      return { include: true, reason: "worship_song" };
+    }
     return {
       include: false,
       reason: "media_not_in_deck",
       detail: "Media item — not added to deck in MVP (template covers flow).",
     };
+  }
+
+  if (!useTemplate) {
+    return { include: true, reason: "worship_song" };
   }
 
   return {

@@ -8,7 +8,7 @@ import { loadSongLibraryIndex } from "@/lib/propresenter/library-read";
 import { getPlaylistItems } from "@/lib/propresenter/playlist-read";
 import { getExistingPlaylistSummary } from "@/lib/propresenter/playlist-write";
 import { findPlaylistByName } from "@/lib/propresenter/playlists-read";
-import { resolveTemplatePlaylistName } from "@/lib/config/slide-deck";
+import { resolveTemplatePlaylistName, useTemplatePlaylistAssembly } from "@/lib/config/slide-deck";
 import { isProPresenterUnavailableOnHosted } from "@/lib/propresenter/hosted";
 import { buildPlaylistNameFromPlanDate } from "@/lib/slide-deck/playlist-name";
 import {
@@ -40,20 +40,23 @@ export async function POST(req: Request) {
     let templateSourcePlaylistPath: string | undefined;
     let templateItems: Awaited<ReturnType<typeof getPlaylistItems>> = [];
     let libraryIndex: Awaited<ReturnType<typeof loadSongLibraryIndex>> = [];
+    const useTemplateAssembly = useTemplatePlaylistAssembly();
 
     if (!isProPresenterUnavailableOnHosted()) {
       try {
         await ppPing(loadProPresenterConfig());
         propresenterConnected = true;
 
-        const templateName = resolveTemplatePlaylistName();
-        const found = await findPlaylistByName(templateName);
-        templateSourceFound = found !== null;
-        templateSourcePlaylistId = found?.id;
-        templateSourcePlaylistPath = found?.path ?? found?.name;
+        if (useTemplateAssembly) {
+          const templateName = resolveTemplatePlaylistName();
+          const found = await findPlaylistByName(templateName);
+          templateSourceFound = found !== null;
+          templateSourcePlaylistId = found?.id;
+          templateSourcePlaylistPath = found?.path ?? found?.name;
 
-        if (found?.id) {
-          templateItems = await getPlaylistItems(found.id);
+          if (found?.id) {
+            templateItems = await getPlaylistItems(found.id);
+          }
         }
 
         libraryIndex = await loadSongLibraryIndex();
@@ -92,11 +95,13 @@ export async function POST(req: Request) {
             };
             useCloudIndex = true;
             libraryIndex = libraryIndexFromSnapshot(snapshot.index_json);
-            templateItems = templateItemsFromSnapshot(snapshot.index_json);
-            const template = resolveTemplateFromSnapshot(snapshot.index_json);
-            templateSourceFound = template.sourceFound;
-            templateSourcePlaylistId = template.sourcePlaylistId;
-            templateSourcePlaylistPath = template.sourcePlaylistPath;
+            if (useTemplateAssembly) {
+              templateItems = templateItemsFromSnapshot(snapshot.index_json);
+              const template = resolveTemplateFromSnapshot(snapshot.index_json);
+              templateSourceFound = template.sourceFound;
+              templateSourcePlaylistId = template.sourcePlaylistId;
+              templateSourcePlaylistPath = template.sourcePlaylistPath;
+            }
           }
         }
       }
@@ -109,6 +114,7 @@ export async function POST(req: Request) {
       templateSourcePlaylistPath,
       propresenterConnected: propresenterConnected || useCloudIndex,
       templateItems,
+      useTemplateAssembly,
     });
 
     const targetName = buildPlaylistNameFromPlanDate(plan.dateRaw);
@@ -133,6 +139,7 @@ export async function POST(req: Request) {
       useCloudIndex,
       indexMeta,
       playlistConflict,
+      useTemplateAssembly,
     });
 
     return NextResponse.json({

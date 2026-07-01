@@ -1,6 +1,6 @@
 [package]
 name = "grapevine-rig"
-version = "0.2.17"
+version = "0.2.18"
 description = "Grapevine Client — ProPresenter prep and rig tools"
 authors = ["Grapevine Prep"]
 edition = "2021"

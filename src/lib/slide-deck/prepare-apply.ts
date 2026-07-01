@@ -4,7 +4,7 @@ import { loadProPresenterConfig } from "@/lib/propresenter/config";
 import { loadSongLibraryIndex } from "@/lib/propresenter/library-read";
 import { getPlaylistItems } from "@/lib/propresenter/playlist-read";
 import { findPlaylistByName } from "@/lib/propresenter/playlists-read";
-import { resolveTemplatePlaylistName } from "@/lib/config/slide-deck";
+import { resolveTemplatePlaylistName, useTemplatePlaylistAssembly } from "@/lib/config/slide-deck";
 import { buildSlideDeckManifest } from "./manifest";
 import { buildMockCommitPlan } from "./mock-commit";
 import type { MockCommitPlan } from "./mock-commit";
@@ -31,22 +31,34 @@ export async function prepareSlideDeckApply(input: {
   const config = loadProPresenterConfig();
   await ppPing(config);
 
-  const templateName = resolveTemplatePlaylistName();
-  const found = await findPlaylistByName(templateName);
-  if (!found?.id) {
-    throw new Error(`Template playlist "${templateName}" not found in ProPresenter.`);
+  const useTemplateAssembly = useTemplatePlaylistAssembly();
+  let templateItems: PpPlaylistItemRef[] = [];
+  let templateSourceFound: boolean | null = null;
+  let templateSourcePlaylistId: string | undefined;
+  let templateSourcePlaylistPath: string | undefined;
+
+  if (useTemplateAssembly) {
+    const templateName = resolveTemplatePlaylistName();
+    const found = await findPlaylistByName(templateName);
+    if (!found?.id) {
+      throw new Error(`Template playlist "${templateName}" not found in ProPresenter.`);
+    }
+    templateSourceFound = true;
+    templateSourcePlaylistId = found.id;
+    templateSourcePlaylistPath = found.path ?? found.name;
+    templateItems = await getPlaylistItems(found.id);
   }
 
-  const templateItems = await getPlaylistItems(found.id);
   const libraryIndex = await loadSongLibraryIndex();
 
   const manifest = buildSlideDeckManifest({
     plan,
-    templateSourceFound: true,
-    templateSourcePlaylistId: found.id,
-    templateSourcePlaylistPath: found.path ?? found.name,
+    templateSourceFound,
+    templateSourcePlaylistId,
+    templateSourcePlaylistPath,
     propresenterConnected: true,
     templateItems,
+    useTemplateAssembly,
   });
 
   const commitPlan = buildMockCommitPlan({
@@ -54,6 +66,7 @@ export async function prepareSlideDeckApply(input: {
     templateItems,
     libraryIndex,
     propresenterConnected: true,
+    useTemplateAssembly,
   });
 
   return { commitPlan, manifest, templateItems, libraryIndex };
