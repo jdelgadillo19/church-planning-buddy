@@ -134,7 +134,7 @@ export async function pickVerifiedLibraryMatch(
   config: ProPresenterConfig,
 ) {
   const match = matchLibraryItem(searchName, libraryIndex);
-  if (match.status === "found") {
+  if (match.status === "found" && match.item) {
     if (await presentationExists(match.item.id, config)) return match.item;
     return undefined;
   }
