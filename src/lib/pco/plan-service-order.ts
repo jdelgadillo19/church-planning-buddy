@@ -9,6 +9,7 @@ import { formatPlanDateLikeSample } from "./format-date";
 import { formatPitchKey, keyFromItemAttribute } from "./format-key";
 import { formatArrangementDisplayName } from "./arrangement-display";
 import type { PcoItemTime, ServiceOrderItem, ServiceOrderPlan, ServiceOrderSong } from "@/lib/slide-deck/types";
+import { applyServiceSectionTimes } from "./plan-service-section-time";
 
 type PcoItem = {
   id: string;
@@ -281,11 +282,13 @@ export async function loadPlanServiceOrder(input: {
     items.push(base);
   }
 
+  const itemsWithSectionTimes = applyServiceSectionTimes(items);
+
   return {
     planId,
     serviceTypeId,
     dateRaw: String(dateRaw),
     dateFormatted,
-    items,
+    items: itemsWithSectionTimes,
   };
 }

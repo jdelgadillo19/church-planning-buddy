@@ -1,6 +1,7 @@
 import { buildPlaylistNameFromPlanDate } from "./playlist-name";
 import { buildSlideDeckManifest } from "./manifest";
 import { classifyPcoForPlaylist } from "./pco-exclusions";
+import { applyServiceSectionTimes } from "@/lib/pco/plan-service-section-time";
 import type { ServiceOrderPlan } from "./types";
 
 function assert(cond: unknown, msg: string): asserts cond {
@@ -57,6 +58,22 @@ function assert(cond: unknown, msg: string): asserts cond {
     ],
   };
 
+  const planWithSectionTimes: ServiceOrderPlan = {
+    ...plan,
+    items: applyServiceSectionTimes(plan.items),
+  };
+
+  const manifestWithPreOpener = buildSlideDeckManifest({
+    plan: planWithSectionTimes,
+    templateSourceFound: true,
+    templateSourcePlaylistId: "abc-123",
+  });
+
+  const openerIncluded = manifestWithPreOpener.elements.find(
+    (e) => e.pcoTitle === "Service Opener Video",
+  );
+  assert(openerIncluded?.playlistIntent === "include", "pre-timed opener included in manifest");
+
   const manifest = buildSlideDeckManifest({
     plan,
     templateSourceFound: true,
@@ -77,7 +94,7 @@ function assert(cond: unknown, msg: string): asserts cond {
   );
 
   const opener = manifest.elements.find((e) => e.pcoTitle === "Service Opener Video");
-  assert(opener?.skipReason === "non_worship_song", "opener skipped");
+  assert(opener?.skipReason === "non_worship_song", "opener skipped without pre timing");
 
   const welcome = classifyPcoForPlaylist({
     itemId: "w",
