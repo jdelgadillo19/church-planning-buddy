@@ -64,7 +64,7 @@ export function remapLibrarySelectionsToLive(
     const cloudCandidate = row?.libraryMatch?.candidates?.find((c) => c.id === selectedId);
     const searchName = cloudCandidate?.name ?? label;
     const match = matchLibraryItem(searchName, liveIndex);
-    if (match.status === "found") {
+    if (match.status === "found" && match.item) {
       out[position] = match.item.id;
       continue;
     }
