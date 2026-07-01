@@ -22,7 +22,6 @@ import {
 } from "@/lib/slide-deck/playlist-match";
 import type { MergeConflict } from "@/lib/slide-deck/plan-merge";
 import {
-  blockingCreateIssues,
   evaluateCreatePresentationReadiness,
   type CreatePresentationIssue,
 } from "@/lib/slide-deck/commit-guards";
@@ -1065,13 +1064,7 @@ export default function SlideDeckPage() {
         buildInClientBusy={buildInClientBusy}
         buildInClientMessage={buildInClientMessage}
         buildInClientError={buildInClientError}
-        canBuildInClient={
-          isHosted &&
-          previewReady &&
-          Boolean(orgId) &&
-          Boolean(commitPlan) &&
-          blockingCreateIssues(createIssues).length === 0
-        }
+        canBuildInClient={isHosted && previewReady && Boolean(orgId) && Boolean(commitPlan)}
         ppConnected={Boolean(ppStatus?.connected)}
         ppAllowWrites={Boolean(ppStatus?.allowWrites)}
         playlistConflict={playlistConflict}

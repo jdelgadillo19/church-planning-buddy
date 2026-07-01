@@ -302,6 +302,11 @@ export function SlideDeckBuilderEditor({
                   >
                     {buildInClientBusy ? "Starting Grapevine Client…" : "Build in Grapevine Client"}
                   </button>
+                  {blockingIssues.length > 0 ? (
+                    <p className="text-xs text-amber-800 dark:text-amber-200">
+                      Resolve the items above (e.g. pick a library variant) before building.
+                    </p>
+                  ) : null}
                   <p className="text-xs text-sky-800 dark:text-sky-200">
                     Opens Grapevine Client on this Mac, pulls filebase assets, and builds the ordered
                     playlist in ProPresenter automatically.

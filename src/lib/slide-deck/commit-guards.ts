@@ -30,13 +30,27 @@ export type CreatePresentationIssue = {
 
 /** Issues that block Send, Download, and Build in Client. Missing library items are warnings only. */
 export function isBlockingCreateIssue(issue: CreatePresentationIssue): boolean {
-  return (
-    issue.kind === "ambiguous_song" || issue.kind === "template" || issue.kind === "sermon"
-  );
+  return issue.kind === "ambiguous_song" || issue.kind === "template";
 }
 
 export function blockingCreateIssues(issues: CreatePresentationIssue[]): CreatePresentationIssue[] {
   return issues.filter(isBlockingCreateIssue);
+}
+
+/** Warnings that must never be promoted to blocking issues (titles may contain Welcome, Sermon, etc.). */
+function isNonBlockingPlanWarning(w: string): boolean {
+  return (
+    /have no library match/i.test(w) ||
+    /will be skipped/i.test(w) ||
+    /need a library variant/i.test(w) ||
+    /not in the current filebase|cloud index/i.test(w) ||
+    /library index from/i.test(w) ||
+    /Index from .+ has no library entries/i.test(w) ||
+    /No ProPresenter connection or cloud index/i.test(w) ||
+    /already exists in ProPresenter/i.test(w) ||
+    /^PCO ".+" has no matching ProPresenter template item/i.test(w) ||
+    /^PCO ".+" matches multiple template items/i.test(w)
+  );
 }
 
 export function templateAndSermonIssues(
@@ -53,13 +67,20 @@ export function templateAndSermonIssues(
   if (!commitPlan) return issues;
 
   for (const w of commitPlan.warnings) {
+    if (isNonBlockingPlanWarning(w)) {
+      issues.push({ kind: "warning", message: w });
+      continue;
+    }
     if (/template playlist/i.test(w) || /Could not read template/i.test(w)) {
       issues.push({ kind: "template", message: w });
-    } else if (/Welcome|sermon|message/i.test(w) || /template item/i.test(w)) {
-      issues.push({ kind: "sermon", message: w });
-    } else if (/not in the current filebase|cloud index/i.test(w)) {
-      issues.push({ kind: "warning", message: w });
+      continue;
     }
+    if (/template item/i.test(w)) {
+      issues.push({ kind: "warning", message: w });
+      continue;
+    }
+    // Unclassified plan warnings are informational only — do not block build.
+    issues.push({ kind: "warning", message: w });
   }
 
   const blockedOps = commitPlan.operations.filter((o) => o.status === "missing_prerequisite");
