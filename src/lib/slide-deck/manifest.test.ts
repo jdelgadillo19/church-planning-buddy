@@ -65,11 +65,16 @@ function assert(cond: unknown, msg: string): asserts cond {
 
   assert(manifest.dryRun === true, "dry run");
   assert(manifest.playlistName === "SUN 2026.05.31", "target name");
-  assert(manifest.summary.playlistSongCount === 1, "one worship song");
-  assert(manifest.summary.skippedCount === 5, "five skipped");
+  assert(manifest.summary.playlistSongCount === 2, "Way Maker + Welcome in direct assembly");
+  assert(manifest.summary.skippedCount === 4, "four skipped");
 
   const included = manifest.elements.filter((e) => e.playlistIntent === "include");
-  assert(included.length === 1 && included[0]?.pcoTitle === "Way Maker", "Way Maker included");
+  assert(
+    included.length === 2 &&
+      included.some((e) => e.pcoTitle === "Way Maker") &&
+      included.some((e) => e.pcoTitle === "Welcome"),
+    "Way Maker and Welcome included",
+  );
 
   const opener = manifest.elements.find((e) => e.pcoTitle === "Service Opener Video");
   assert(opener?.skipReason === "non_worship_song", "opener skipped");
@@ -80,7 +85,34 @@ function assert(cond: unknown, msg: string): asserts cond {
     title: "Welcome",
     sequence: 1,
   });
-  assert(!welcome.include && welcome.reason === "template_covered", "welcome template covered");
+  assert(welcome.include, "welcome included in direct assembly");
+
+  const preOpener = classifyPcoForPlaylist({
+    itemId: "pre1",
+    itemType: "song",
+    title: "Service Opener Video",
+    sequence: 1,
+    time: "pre",
+  });
+  assert(preOpener.include, "pre-service opener included when time=pre");
+
+  const duringOpener = classifyPcoForPlaylist({
+    itemId: "d1",
+    itemType: "song",
+    title: "Service Opener Video",
+    sequence: 1,
+    time: "during",
+  });
+  assert(!duringOpener.include && duringOpener.reason === "non_worship_song", "during opener still skipped");
+
+  const postSlide = classifyPcoForPlaylist({
+    itemId: "p1",
+    itemType: "item",
+    title: "Post Service Loop",
+    sequence: 1,
+    time: "post",
+  });
+  assert(postSlide.include, "post-service item included when time=post");
 }
 
 console.log("slide-deck/manifest.test.ts: ok");

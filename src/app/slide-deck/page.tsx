@@ -8,7 +8,7 @@ import { SlideDeckHostedPanel } from "@/components/slide-deck-hosted-panel";
 import { ClientDownloadLinks } from "@/components/client-download-links";
 import { SlideDeckUploadTool } from "@/components/slide-deck-upload-tool";
 import { ToolShell } from "@/components/tool-shell";
-import { missingSongRows, unresolvedAmbiguousRows } from "@/components/slide-deck-library-match";
+import { unresolvedAmbiguousRows } from "@/components/slide-deck-library-match";
 import { usePcoServicePlanSelection } from "@/hooks/use-pco-service-plan-selection";
 import { downloadBlob } from "@/lib/download-blob";
 import type { FilebasePullManifest } from "@/lib/google/filebase-pull";
@@ -22,6 +22,7 @@ import {
 } from "@/lib/slide-deck/playlist-match";
 import type { MergeConflict } from "@/lib/slide-deck/plan-merge";
 import {
+  blockingCreateIssues,
   evaluateCreatePresentationReadiness,
   type CreatePresentationIssue,
 } from "@/lib/slide-deck/commit-guards";
@@ -189,7 +190,6 @@ export default function SlideDeckPage() {
     uploadScan?.expectedPlaylistName ??
     (selectedPlan?.sortDate ? buildPlaylistNameFromPlanDate(selectedPlan.sortDate) : "");
 
-  const missingLibraryRows = useMemo(() => missingSongRows(commitPlan), [commitPlan]);
   const unresolvedLibraryRows = useMemo(
     () => unresolvedAmbiguousRows(commitPlan, librarySelections),
     [commitPlan, librarySelections],
@@ -424,8 +424,8 @@ export default function SlideDeckPage() {
 
   async function submitDraft() {
     if (!commitPlan || !planId.trim()) return;
-    if (missingLibraryRows.length > 0 || unresolvedLibraryRows.length > 0) {
-      setError("Resolve library matches before submitting a merge draft.");
+    if (unresolvedLibraryRows.length > 0) {
+      setError("Resolve ambiguous library matches before submitting a merge draft.");
       return;
     }
     setSubmitBusy(true);
@@ -1066,7 +1066,11 @@ export default function SlideDeckPage() {
         buildInClientMessage={buildInClientMessage}
         buildInClientError={buildInClientError}
         canBuildInClient={
-          isHosted && previewReady && Boolean(orgId) && Boolean(commitPlan) && createIssues.length === 0
+          isHosted &&
+          previewReady &&
+          Boolean(orgId) &&
+          Boolean(commitPlan) &&
+          blockingCreateIssues(createIssues).length === 0
         }
         ppConnected={Boolean(ppStatus?.connected)}
         ppAllowWrites={Boolean(ppStatus?.allowWrites)}

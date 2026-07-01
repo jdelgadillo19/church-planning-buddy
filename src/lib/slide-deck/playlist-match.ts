@@ -23,7 +23,9 @@ export function expectedNamesFromWriteItems(
 }
 
 export function allowPartialApply(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.PP_ALLOW_PARTIAL_APPLY === "true";
+  const raw = env.PP_ALLOW_PARTIAL_APPLY?.trim().toLowerCase();
+  if (raw === "false") return false;
+  return true;
 }
 
 export type PlaylistMatchResult = {

@@ -8,7 +8,7 @@ import {
 import { formatPlanDateLikeSample } from "./format-date";
 import { formatPitchKey, keyFromItemAttribute } from "./format-key";
 import { formatArrangementDisplayName } from "./arrangement-display";
-import type { ServiceOrderItem, ServiceOrderPlan, ServiceOrderSong } from "@/lib/slide-deck/types";
+import type { PcoItemTime, ServiceOrderItem, ServiceOrderPlan, ServiceOrderSong } from "@/lib/slide-deck/types";
 
 type PcoItem = {
   id: string;
@@ -19,6 +19,7 @@ type PcoItem = {
     position?: number | null;
     sequence?: number | null;
     description?: string | null;
+    time?: string | null;
   };
   relationships?: {
     song?: { data?: { id: string } | null };
@@ -51,6 +52,37 @@ type PcoArrangement = {
 
 function itemSequence(item: PcoItem): number {
   return item.attributes?.sequence ?? item.attributes?.position ?? 0;
+}
+
+function normalizePcoItemTime(raw: string | null | undefined): PcoItemTime {
+  const value = raw?.trim().toLowerCase();
+  if (value === "pre" || value === "post" || value === "during") return value;
+  return "during";
+}
+
+type PcoItemsPage = {
+  data?: PcoItem[];
+  included?: Array<PcoSong | PcoKey | PcoArrangement>;
+  links?: { next?: string | null };
+};
+
+async function fetchAllPlanItems(itemsUrl: string, auth: string): Promise<PcoItemsPage> {
+  const allData: PcoItem[] = [];
+  const includedByKey = new Map<string, PcoSong | PcoKey | PcoArrangement>();
+
+  let url: string | null = `${itemsUrl}${itemsUrl.includes("?") ? "&" : "?"}per_page=100`;
+
+  while (url) {
+    const json = (await pcoGetJsonOrThrow(url, auth)) as PcoItemsPage;
+    allData.push(...(json.data ?? []));
+    for (const row of json.included ?? []) {
+      if (!row?.id || !row.type) continue;
+      includedByKey.set(`${row.type}:${row.id}`, row);
+    }
+    url = json.links?.next ?? null;
+  }
+
+  return { data: allData, included: [...includedByKey.values()] };
 }
 
 async function resolveServiceTypeId(planId: number, auth: string, serviceTypeId: number | null) {
@@ -198,18 +230,13 @@ export async function loadPlanServiceOrder(input: {
   const dateFormatted = formatPlanDateLikeSample(dateRaw);
 
   const itemsUrl = `https://api.planningcenteronline.com/services/v2/service_types/${serviceTypeId}/plans/${planId}/items?include=song,key,arrangement`;
-  const itemsResp = await pcoGetJson(itemsUrl, auth);
-  if (!itemsResp.res.ok) {
-    if (itemsResp.parsed.kind === "json") {
-      throw new Error(formatPcoError(itemsResp.res.status, itemsResp.parsed.json));
-    }
-    throw new Error(`Planning Center request failed (${itemsResp.res.status})`);
+  let itemsJson: PcoItemsPage;
+  try {
+    itemsJson = await fetchAllPlanItems(itemsUrl, auth);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Planning Center request failed";
+    throw new Error(message);
   }
-
-  const itemsJson =
-    itemsResp.parsed.kind === "json"
-      ? (itemsResp.parsed.json as { data?: PcoItem[]; included?: Array<PcoSong | PcoKey | PcoArrangement> })
-      : { data: [], included: [] };
 
   const rawItems = Array.isArray(itemsJson.data) ? itemsJson.data : [];
   const included = Array.isArray(itemsJson.included) ? itemsJson.included : [];
@@ -235,6 +262,7 @@ export async function loadPlanServiceOrder(input: {
       itemType,
       title,
       sequence: itemSequence(item),
+      time: normalizePcoItemTime(item.attributes?.time),
       description: item.attributes?.description?.trim() || undefined,
     };
 

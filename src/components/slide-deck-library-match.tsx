@@ -90,17 +90,18 @@ export function SlideDeckMissingSongs({
   if (rows.length === 0) return null;
 
   return (
-    <section className="flex flex-col gap-3 rounded-lg border border-red-300 bg-red-50/80 p-4 dark:border-red-800 dark:bg-red-950/30">
+    <section className="flex flex-col gap-3 rounded-lg border border-amber-300 bg-amber-50/80 p-4 dark:border-amber-800 dark:bg-amber-950/30">
       <div>
-        <h3 className="text-sm font-medium text-red-950 dark:text-red-100">
-          Songs missing from ProPresenter library
+        <h3 className="text-sm font-medium text-amber-950 dark:text-amber-100">
+          Elements missing from ProPresenter library
         </h3>
-        <p className="mt-1 text-xs text-red-900/90 dark:text-red-100/80">
-          Add these songs in ProPresenter on the presentation rig, click <strong>Scan now</strong> in
-          Grapevine Rig, then refresh this preview before submitting or sending.
+        <p className="mt-1 text-xs text-amber-900/90 dark:text-amber-100/80">
+          These plan items have no library match and will be skipped when building the playlist.
+          Add matching presentations in ProPresenter and run <strong>Scan now</strong> on the rig
+          to include them next time.
         </p>
       </div>
-      <ul className="list-disc space-y-1 pl-5 text-sm text-red-900 dark:text-red-100">
+      <ul className="list-disc space-y-1 pl-5 text-sm text-amber-950 dark:text-amber-100">
         {rows.map((row) => (
           <li key={row.position}>{row.pcoTitle ?? row.name}</li>
         ))}

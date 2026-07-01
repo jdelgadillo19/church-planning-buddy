@@ -41,8 +41,7 @@ const templateItems = [{ id: "tpl-1", name: "WELCOME", index: 0 }];
 const libraryIndex = [{ id: "lib-1", name: "(EN) Draw Me Close", path: "" }];
 
 {
-  const prev = process.env.PP_ALLOW_PARTIAL_APPLY;
-  delete process.env.PP_ALLOW_PARTIAL_APPLY;
+  process.env.PP_ALLOW_PARTIAL_APPLY = "false";
   let threw = false;
   try {
     buildWriteItemsFromPreview({ commitPlan, templateItems, libraryIndex });
@@ -52,23 +51,24 @@ const libraryIndex = [{ id: "lib-1", name: "(EN) Draw Me Close", path: "" }];
     assert(msg.includes("What A God"), `expected song name in error, got: ${msg}`);
     assert(msg.includes("no library match"), `expected reason in error, got: ${msg}`);
   } finally {
-    if (prev !== undefined) process.env.PP_ALLOW_PARTIAL_APPLY = prev;
+    delete process.env.PP_ALLOW_PARTIAL_APPLY;
   }
-  assert(threw, "should throw when song has no library match");
+  assert(threw, "should throw when song has no library match and partial apply disabled");
 }
 
 {
-  process.env.PP_ALLOW_PARTIAL_APPLY = "true";
+  const prev = process.env.PP_ALLOW_PARTIAL_APPLY;
+  delete process.env.PP_ALLOW_PARTIAL_APPLY;
   const { items, warnings } = buildWriteItemsFromPreview({
     commitPlan,
     templateItems,
     libraryIndex,
   });
-  assert(items.length === 2, `partial apply should write 2 items, got ${items.length}`);
+  assert(items.length === 2, `partial apply should write 2 items by default, got ${items.length}`);
   const expected = expectedNamesFromWriteItems(items);
   assert(expected.length === 2, "verify should target 2 written names");
   assert(warnings.some((w) => w.includes("What A God")), "should warn about skipped song");
-  delete process.env.PP_ALLOW_PARTIAL_APPLY;
+  if (prev !== undefined) process.env.PP_ALLOW_PARTIAL_APPLY = prev;
 }
 
 console.log("apply-commit.test.ts: ok");

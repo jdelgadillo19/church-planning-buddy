@@ -141,8 +141,7 @@ export function SlideDeckHostedPanel({
   const ambiguousRows = ambiguousSongRows(commitPlan);
   const unresolvedRows = unresolvedAmbiguousRows(commitPlan, librarySelections);
   const missingRows = missingSongRows(commitPlan);
-  const sendBlocked =
-    !commitPlan || unresolvedRows.length > 0 || missingRows.length > 0;
+  const sendBlocked = !commitPlan || unresolvedRows.length > 0;
   const draftCount = submissions.length;
 
   const completedBuilds = builds
@@ -400,8 +399,9 @@ export function SlideDeckHostedPanel({
 
       <div className="flex flex-col gap-2">
         {missingRows.length > 0 ? (
-          <p className="text-xs text-red-900 dark:text-red-100">
-            Resolve {missingRows.length} missing song(s) above before submitting or sending.
+          <p className="text-xs text-amber-900 dark:text-amber-100">
+            {missingRows.length} element(s) not in the filebase will be skipped when building.
+            Add them to ProPresenter and re-scan to include them.
           </p>
         ) : null}
         {unresolvedRows.length > 0 ? (

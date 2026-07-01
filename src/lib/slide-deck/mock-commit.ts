@@ -337,7 +337,7 @@ export function buildMockCommitPlan(input: BuildMockCommitInput): MockCommitPlan
 
   if (unmatched.length > 0 && input.libraryIndex.length > 0) {
     warnings.push(
-      `${unmatched.length} song(s) have no library match: ${unmatched.map((s) => s.pcoTitle).join(", ")}`,
+      `${unmatched.length} element(s) have no library match (will be skipped): ${unmatched.map((s) => s.pcoTitle).join(", ")}`,
     );
   }
 

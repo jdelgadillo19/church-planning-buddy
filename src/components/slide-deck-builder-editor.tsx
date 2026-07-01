@@ -6,9 +6,14 @@ import {
   LibraryMatchPicker,
   missingSongRows,
   SlideDeckLibraryDisambiguation,
+  SlideDeckMissingSongs,
   unresolvedAmbiguousRows,
 } from "@/components/slide-deck-library-match";
 import type { CreatePresentationIssue } from "@/lib/slide-deck/commit-guards";
+import {
+  blockingCreateIssues,
+  isBlockingCreateIssue,
+} from "@/lib/slide-deck/commit-guards";
 import type { MockCommitPlan, MockCommitOperation } from "@/lib/slide-deck/mock-commit";
 import type { SlideDeckManifest, ManifestElement } from "@/lib/slide-deck/types";
 import {
@@ -128,7 +133,10 @@ export function SlideDeckBuilderEditor({
   const missingRows = missingSongRows(commitPlan);
   const ambiguousRows = ambiguousSongRows(commitPlan);
   const unresolvedRows = unresolvedAmbiguousRows(commitPlan, librarySelections);
-  const createReady = missingRows.length === 0 && unresolvedRows.length === 0 && createIssues.length === 0;
+  const blockingIssues = blockingCreateIssues(createIssues);
+  const warningIssues = createIssues.filter((i) => !isBlockingCreateIssue(i));
+  const createReady =
+    unresolvedRows.length === 0 && blockingIssues.length === 0;
 
   return (
     <section className="flex flex-col gap-6 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
@@ -161,19 +169,29 @@ export function SlideDeckBuilderEditor({
         serviceTypeHint="Change only if you need a different scoped service type."
       />
 
-      {createIssues.length > 0 ? (
+      {blockingIssues.length > 0 ? (
         <ul
           className={`list-disc space-y-1 rounded-lg border pl-5 py-3 text-sm ${
-            createIssues.every((i) => i.kind === "ambiguous_song")
+            blockingIssues.every((i) => i.kind === "ambiguous_song")
               ? "border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
               : "border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200"
           }`}
         >
-          {createIssues.map((issue, i) => (
+          {blockingIssues.map((issue, i) => (
             <li key={`${issue.kind}-${i}`}>{issue.message}</li>
           ))}
         </ul>
       ) : null}
+
+      {warningIssues.length > 0 ? (
+        <ul className="list-disc space-y-1 rounded-lg border border-amber-300 bg-amber-50 pl-5 py-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+          {warningIssues.map((issue, i) => (
+            <li key={`warn-${i}`}>{issue.message}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      {missingRows.length > 0 ? <SlideDeckMissingSongs rows={missingRows} /> : null}
 
       {previewReady && ambiguousRows.length > 0 ? (
         <SlideDeckLibraryDisambiguation
@@ -278,7 +296,7 @@ export function SlideDeckBuilderEditor({
                 <div className="flex flex-col gap-1">
                   <button
                     type="button"
-                    disabled={buildInClientBusy || createIssues.length > 0}
+                    disabled={buildInClientBusy || blockingIssues.length > 0}
                     onClick={onBuildInClient}
                     className="h-11 w-fit rounded-xl bg-violet-700 px-4 text-sm font-semibold text-white hover:bg-violet-600 disabled:opacity-50 dark:bg-violet-600 dark:hover:bg-violet-500"
                   >

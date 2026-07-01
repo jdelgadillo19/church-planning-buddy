@@ -29,11 +29,16 @@ export type ServiceOrderSong = {
   arrangementId?: string;
 };
 
+/** PCO plan item timing — pre-service, during service, or post-service. */
+export type PcoItemTime = "pre" | "during" | "post";
+
 export type ServiceOrderItem = {
   itemId: string;
   itemType: string;
   title: string;
   sequence: number;
+  /** When the item runs relative to the service (from PCO). */
+  time?: PcoItemTime;
   description?: string;
   song?: ServiceOrderSong;
 };

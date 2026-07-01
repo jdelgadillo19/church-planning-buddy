@@ -28,6 +28,17 @@ export type CreatePresentationIssue = {
   message: string;
 };
 
+/** Issues that block Send, Download, and Build in Client. Missing library items are warnings only. */
+export function isBlockingCreateIssue(issue: CreatePresentationIssue): boolean {
+  return (
+    issue.kind === "ambiguous_song" || issue.kind === "template" || issue.kind === "sermon"
+  );
+}
+
+export function blockingCreateIssues(issues: CreatePresentationIssue[]): CreatePresentationIssue[] {
+  return issues.filter(isBlockingCreateIssue);
+}
+
 export function templateAndSermonIssues(
   manifest: SlideDeckManifest | null,
   commitPlan: MockCommitPlan | null,
@@ -71,8 +82,8 @@ export function evaluateCreatePresentationReadiness(
 
   for (const row of missingSongRows(commitPlan)) {
     issues.push({
-      kind: "missing_song",
-      message: `Song not in filebase: ${row.pcoTitle ?? row.name}`,
+      kind: "warning",
+      message: `Not in filebase (will be skipped): ${row.pcoTitle ?? row.name}`,
     });
   }
 
@@ -85,7 +96,7 @@ export function evaluateCreatePresentationReadiness(
 
   issues.push(...templateAndSermonIssues(manifest, commitPlan));
 
-  return { ready: issues.length === 0, issues };
+  return { ready: blockingCreateIssues(issues).length === 0, issues };
 }
 
 export function assertCommitPlanReadyForQueue(
@@ -94,5 +105,6 @@ export function assertCommitPlanReadyForQueue(
 ): void {
   const { ready, issues } = evaluateCreatePresentationReadiness(commitPlan, null, librarySelections);
   if (ready) return;
-  throw new Error(issues.map((i) => i.message).join(" "));
+  const blocking = blockingCreateIssues(issues);
+  throw new Error(blocking.map((i) => i.message).join(" "));
 }

@@ -30,6 +30,17 @@ const DEFAULT_SKIP_TITLE_PATTERNS: RegExp[] = [
   /^Playlist$/i,
 ];
 
+/** Ops-only titles — skipped even under pre/post service sections. */
+const OPS_ONLY_TITLE_PATTERNS: RegExp[] = [
+  /^Get Ready Guide$/i,
+  /^Learning Resources$/i,
+  /^Playlist$/i,
+];
+
+function isPreOrPostService(item: ServiceOrderItem): boolean {
+  return item.time === "pre" || item.time === "post";
+}
+
 export type PcoExclusionResult =
   | { include: true; reason: "worship_song" }
   | { include: false; reason: Exclude<PcoExclusionReason, "worship_song">; detail: string };
@@ -59,6 +70,7 @@ export function classifyPcoForPlaylist(
   const useTemplate = opts?.useTemplateAssembly ?? useTemplatePlaylistAssembly();
   const itemType = item.itemType.trim().toLowerCase() || "item";
   const title = item.title.trim() || "(Untitled)";
+  const preOrPost = isPreOrPostService(item);
 
   if (itemType === "header" || itemType === "note") {
     return {
@@ -69,7 +81,7 @@ export function classifyPcoForPlaylist(
   }
 
   if (itemType === "song") {
-    if (!isWorshipSongPlanItem(itemType, title)) {
+    if (!isWorshipSongPlanItem(itemType, title) && !preOrPost) {
       return {
         include: false,
         reason: "non_worship_song",
@@ -86,6 +98,18 @@ export function classifyPcoForPlaylist(
       reason: "ops_meta",
       detail: "Planning / ops item — not part of the Sunday deck.",
     };
+  }
+
+  if (preOrPost) {
+    const prePostSkips = [...OPS_ONLY_TITLE_PATTERNS, ...envTitlePatterns()];
+    if (matchesAnyPattern(title, prePostSkips)) {
+      return {
+        include: false,
+        reason: "ops_meta",
+        detail: "Operator or meta cue — handled outside playlist assembly.",
+      };
+    }
+    return { include: true, reason: "worship_song" };
   }
 
   const allPatterns = [...DEFAULT_SKIP_TITLE_PATTERNS, ...envTitlePatterns()];
