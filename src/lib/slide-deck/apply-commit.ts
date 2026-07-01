@@ -56,7 +56,7 @@ export function resolveLibraryItemForRow(
       return row.libraryMatch.item;
     }
     if (row.libraryMatch?.status === "ambiguous") {
-      return row.libraryMatch.candidates?.find((c) => c.id === overrideId);
+      return row.libraryMatch.candidates?.find((c: PpLibraryItemRef) => c.id === overrideId);
     }
   }
   if (row.libraryMatch?.status === "found" && row.libraryMatch.item) {

@@ -1,4 +1,9 @@
 import { useTemplatePlaylistAssembly } from "@/lib/config/slide-deck";
+import {
+  matchLibraryItem,
+  type LibraryMatchResult,
+  type PpLibraryItemRef,
+} from "@/lib/propresenter/library-read";
 import type { PpPlaylistItemRef } from "@/lib/propresenter/playlist-read";
 import type { ManifestElement, SlideDeckManifest } from "./types";
 import {
