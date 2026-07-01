@@ -2,10 +2,10 @@ use keyring::Entry;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use tauri::Manager;
 use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_shell::ShellExt;
-#[cfg(any(target_os = "macos", target_os = "ios"))]
 use tauri::Emitter;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use tauri::RunEvent;
@@ -15,6 +15,58 @@ const ACCOUNT: &str = "rig-credentials";
 const PP_ACCOUNT: &str = "pp-settings";
 const PP_NOT_CONFIGURED_MSG: &str = "ProPresenter port is required. In ProPresenter → Settings → Network, turn Enable Network ON, enter the TCP/IP Port ID in Grapevine Client, then Save or Apply again.";
 const API_BASE_DEFAULT: &str = "https://grapevineprep.com";
+
+struct RemotePrepActive {
+    job_id: String,
+    client_token: String,
+    child: tauri_plugin_shell::process::CommandChild,
+}
+
+struct RemotePrepState {
+    active: Mutex<Option<RemotePrepActive>>,
+}
+
+impl Default for RemotePrepState {
+    fn default() -> Self {
+        Self {
+            active: Mutex::new(None),
+        }
+    }
+}
+
+fn remote_prep_auth_header(job_id: &str, token: &str) -> String {
+    format!("RemotePrep {job_id}:{token}")
+}
+
+fn patch_remote_prep_cancelled(job_id: &str, token: &str) {
+    let url = format!("{API_BASE_DEFAULT}/api/remote-prep/jobs/{job_id}");
+    let auth = remote_prep_auth_header(job_id, token);
+    let _ = ureq::patch(&url)
+        .set("Authorization", &auth)
+        .set("Content-Type", "application/json")
+        .send_string(r#"{"status":"cancelled"}"#);
+}
+
+fn clear_remote_prep_active(app: &tauri::AppHandle) {
+    if let Some(state) = app.try_state::<RemotePrepState>() {
+        if let Ok(mut guard) = state.active.lock() {
+            *guard = None;
+        }
+    }
+}
+
+fn handle_remote_prep_stderr_line(app: &tauri::AppHandle, line: &str) {
+    let trimmed = line.trim();
+    if let Some(json) = trimmed.strip_prefix("remote-prep-progress ") {
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(json) {
+            let _ = app.emit("remote-prep-progress", value);
+        }
+        return;
+    }
+    if let Some(version) = trimmed.strip_prefix("remote-prep-worker ") {
+        let _ = app.emit("remote-prep-status", version.trim());
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -567,6 +619,13 @@ fn parse_worker_stdout(stdout: &str) -> Result<String, String> {
             let payload = serde_json::to_string(&value).map_err(|e| e.to_string())?;
             return Err(format!("CONFLICT:{payload}"));
         }
+        if value.get("cancelled").and_then(|v| v.as_bool()) == Some(true) {
+            let message = value
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("Remote prep cancelled.");
+            return Ok(message.to_string());
+        }
         if value.get("ok").and_then(|v| v.as_bool()) == Some(false) {
             let message = value
                 .get("message")
@@ -625,8 +684,8 @@ async fn run_remote_prep_worker(
     };
 
     let mut env: Vec<(String, String)> = vec![
-        ("REMOTE_PREP_JOB_ID".to_string(), job_id),
-        ("REMOTE_PREP_CLIENT_TOKEN".to_string(), client_token),
+        ("REMOTE_PREP_JOB_ID".to_string(), job_id.clone()),
+        ("REMOTE_PREP_CLIENT_TOKEN".to_string(), client_token.clone()),
         ("GRAPEVINE_PREP_URL".to_string(), API_BASE_DEFAULT.to_string()),
         ("PP_ALLOW_WRITES".to_string(), "true".to_string()),
     ];
@@ -643,8 +702,76 @@ async fn run_remote_prep_worker(
         }
     }
 
-    let stdout = run_node_worker_stdout_with_env(app, "remote-prep.mjs", env).await?;
+    let stdout = run_remote_prep_node_worker_stdout(app, &job_id, &client_token, env).await?;
     Ok(parse_worker_stdout(&stdout)?)
+}
+
+async fn run_remote_prep_node_worker_stdout(
+    app: &tauri::AppHandle,
+    job_id: &str,
+    client_token: &str,
+    env: Vec<(String, String)>,
+) -> Result<String, String> {
+    let script = resolve_worker_script(app, "remote-prep.mjs")?;
+
+    #[cfg(target_os = "windows")]
+    {
+        return run_windows_node_worker(&script, env).await;
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let (mut rx, child) = spawn_node_worker(app, &script, env)?;
+        {
+            let state = app.state::<RemotePrepState>();
+            let mut guard = state.active.lock().map_err(|e| e.to_string())?;
+            *guard = Some(RemotePrepActive {
+                job_id: job_id.to_string(),
+                client_token: client_token.to_string(),
+                child,
+            });
+        }
+
+        let mut stdout = String::new();
+        let mut stderr = String::new();
+
+        while let Some(event) = rx.recv().await {
+            match event {
+                CommandEvent::Stdout(line) => stdout.push_str(&String::from_utf8_lossy(&line)),
+                CommandEvent::Stderr(line) => {
+                    let chunk = String::from_utf8_lossy(&line);
+                    for part in chunk.lines() {
+                        handle_remote_prep_stderr_line(app, part);
+                    }
+                    stderr.push_str(&chunk);
+                }
+                CommandEvent::Terminated(payload) => {
+                    clear_remote_prep_active(app);
+                    if payload.code.unwrap_or(1) != 0 {
+                        let mut msg = stderr.trim().to_string();
+                        if msg.is_empty() {
+                            msg = stdout.trim().to_string();
+                        } else if !stdout.trim().is_empty() {
+                            msg = format!("{msg}\n{}", stdout.trim());
+                        }
+                        return Err(if msg.is_empty() {
+                            format!("Worker exited with code {:?}", payload.code)
+                        } else {
+                            msg
+                        });
+                    }
+                    break;
+                }
+                CommandEvent::Error(err) => {
+                    clear_remote_prep_active(app);
+                    return Err(err);
+                }
+                _ => {}
+            }
+        }
+
+        Ok(stdout.trim().to_string())
+    }
 }
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -771,6 +898,31 @@ async fn run_remote_prep(
 }
 
 #[tauri::command]
+async fn cancel_remote_prep(app: tauri::AppHandle) -> Result<String, String> {
+    let state = app.state::<RemotePrepState>();
+    let active = {
+        let mut guard = state.active.lock().map_err(|e| e.to_string())?;
+        guard.take()
+    };
+
+    let Some(active) = active else {
+        return Ok("No remote prep job is running.".to_string());
+    };
+
+    let _ = active.child.kill();
+    patch_remote_prep_cancelled(&active.job_id, &active.client_token);
+    let _ = app.emit(
+        "remote-prep-progress",
+        serde_json::json!({
+            "stage": "cancelled",
+            "label": "Cancelled",
+            "percent": 0,
+        }),
+    );
+    Ok("Remote prep cancelled.".to_string())
+}
+
+#[tauri::command]
 async fn run_apply(
     app: tauri::AppHandle,
     build_id: String,
@@ -883,6 +1035,7 @@ fn app_version() -> String {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .manage(RemotePrepState::default())
         .invoke_handler(tauri::generate_handler![
             save_credentials,
             load_credentials,
@@ -895,6 +1048,7 @@ pub fn run() {
             run_scan,
             run_handoff,
             run_remote_prep,
+            cancel_remote_prep,
         ])
         .build(tauri::generate_context!())
         .expect("error while running Grapevine Client")

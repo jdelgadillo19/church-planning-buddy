@@ -145,6 +145,18 @@
         <p id="action-status" class="action-status"></p>
       </section>
     </div>
+    <div id="remote-prep-modal" class="remote-prep-modal hidden" aria-hidden="true">
+      <div class="remote-prep-modal-card" role="dialog" aria-modal="true" aria-labelledby="remote-prep-modal-title">
+        <h2 id="remote-prep-modal-title">Remote prep</h2>
+        <p id="remote-prep-modal-label" class="remote-prep-modal-label">Starting…</p>
+        <p id="remote-prep-modal-detail" class="remote-prep-modal-detail hidden"></p>
+        <div class="remote-prep-progress-track">
+          <div id="remote-prep-progress-bar" class="remote-prep-progress-bar"></div>
+        </div>
+        <p id="remote-prep-modal-percent" class="remote-prep-modal-percent">0%</p>
+        <button id="remote-prep-cancel-btn" type="button" class="btn ghost remote-prep-cancel-btn">Cancel</button>
+      </div>
+    </div>
     <script src="main.js"></script>
   </body>
 </html>

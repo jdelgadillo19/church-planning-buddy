@@ -51,6 +51,13 @@ const ppBundleRoot = $("pp-bundle-root");
 const ppSaveBtn = $("pp-save-btn");
 const ppSettingsStatus = $("pp-settings-status");
 const remoteOpenBtn = $("remote-open-btn");
+const appRoot = $("app");
+const remotePrepModal = $("remote-prep-modal");
+const remotePrepModalLabel = $("remote-prep-modal-label");
+const remotePrepModalDetail = $("remote-prep-modal-detail");
+const remotePrepProgressBar = $("remote-prep-progress-bar");
+const remotePrepModalPercent = $("remote-prep-modal-percent");
+const remotePrepCancelBtn = $("remote-prep-cancel-btn");
 
 let creds = null;
 let pendingBuild = null;
@@ -61,6 +68,7 @@ let editedImplPlan = null;
 let playlistConflict = null;
 let pollTimer = null;
 let busy = false;
+let remotePrepActive = false;
 
 function parsePlaylistConflictFromText(text) {
   if (!text) return null;
@@ -582,6 +590,57 @@ async function pair() {
   }
 }
 
+function showRemotePrepModal(progress) {
+  if (!remotePrepModal) return;
+  remotePrepActive = true;
+  remotePrepModal.classList.remove("hidden");
+  remotePrepModal.setAttribute("aria-hidden", "false");
+  if (appRoot) appRoot.classList.add("app-locked");
+  updateRemotePrepModal(progress);
+}
+
+function hideRemotePrepModal() {
+  remotePrepActive = false;
+  if (remotePrepModal) {
+    remotePrepModal.classList.add("hidden");
+    remotePrepModal.setAttribute("aria-hidden", "true");
+  }
+  if (appRoot) appRoot.classList.remove("app-locked");
+}
+
+function updateRemotePrepModal(progress) {
+  const label = progress?.label ?? "Working…";
+  const percent = Number.isFinite(progress?.percent) ? Math.max(0, Math.min(100, progress.percent)) : 0;
+  const detail = progress?.detail?.trim() ?? "";
+  if (remotePrepModalLabel) remotePrepModalLabel.textContent = label;
+  if (remotePrepProgressBar) remotePrepProgressBar.style.width = `${percent}%`;
+  if (remotePrepModalPercent) remotePrepModalPercent.textContent = `${percent}%`;
+  if (remotePrepModalDetail) {
+    if (detail) {
+      remotePrepModalDetail.textContent = detail;
+      remotePrepModalDetail.classList.remove("hidden");
+    } else {
+      remotePrepModalDetail.textContent = "";
+      remotePrepModalDetail.classList.add("hidden");
+    }
+  }
+}
+
+async function cancelRemotePrep() {
+  if (!remotePrepActive) return;
+  setActionStatus("Cancelling remote prep…", "busy");
+  try {
+    await invoke("cancel_remote_prep");
+    hideRemotePrepModal();
+    setWorking(false);
+    setActionStatus("Remote prep cancelled.", "idle");
+    setBadge("idle", "Remote prep");
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Cancel failed";
+    setActionStatus(msg, "error");
+  }
+}
+
 function openRemotePrepWorkspace() {
   window.open(`${API_BASE_DEFAULT}/slide-deck`, "_blank", "noopener,noreferrer");
   setActionStatus(
@@ -614,6 +673,7 @@ async function runRemotePrep(jobId, token) {
 
   setWorking(true);
   setBadge("busy", "Remote prep");
+  showRemotePrepModal({ label: "Preparing service plan", percent: 5 });
   setActionStatus("Pulling filebase, reconciling assets, and building playlist…", "busy");
 
   try {
@@ -622,14 +682,17 @@ async function runRemotePrep(jobId, token) {
       clientToken: token,
       ppSettings,
     });
+    hideRemotePrepModal();
     setActionStatus(output || "Remote prep completed.", "ok");
     setBadge("ready", "Remote prep done");
   } catch (e) {
+    hideRemotePrepModal();
     const msg = e instanceof Error ? e.message : "Remote prep failed";
     setActionStatus(msg, "error");
     setBadge("idle", "Remote prep failed");
   } finally {
     setWorking(false);
+    remotePrepActive = false;
   }
 }
 
@@ -855,11 +918,26 @@ settingsBtn.addEventListener("click", () => showUnpairConfirm());
 unpairConfirmBtn.addEventListener("click", () => void unpair());
 unpairCancelBtn.addEventListener("click", () => hideUnpairConfirm());
 ppSaveBtn.addEventListener("click", () => void savePpSettings());
+if (remotePrepCancelBtn) {
+  remotePrepCancelBtn.addEventListener("click", () => void cancelRemotePrep());
+}
 
 async function init() {
   try {
     const listen = window.__TAURI__?.event?.listen;
     if (listen) {
+      await listen("remote-prep-progress", (event) => {
+        const payload = event.payload;
+        if (payload && typeof payload === "object") {
+          if (remotePrepActive) {
+            updateRemotePrepModal(payload);
+          } else {
+            showRemotePrepModal(payload);
+            setWorking(true);
+            setBadge("busy", "Remote prep");
+          }
+        }
+      });
       await listen("remote-prep-status", (event) => {
         const message = typeof event.payload === "string" ? event.payload : String(event.payload ?? "");
         if (message) {

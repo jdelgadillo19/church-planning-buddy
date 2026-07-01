@@ -5,6 +5,7 @@ import type { SlideDeckManifest } from "@/lib/slide-deck/types";
 import type { PpLibraryItemRef } from "@/lib/propresenter/library-read";
 import type { PpPlaylistItemRef } from "@/lib/propresenter/playlist-read";
 import { buildStoreZip, sha256Hex, type ZipEntry } from "@/lib/zip/buffer-zip";
+import { normalizePresentationFonts } from "@/lib/propresenter/pro-font-normalize";
 import { driveDownloadFileBytes } from "./drive-download";
 
 export type FilebasePullManifest = {
@@ -20,6 +21,11 @@ export type FilebasePullManifest = {
   missingPaths: string[];
   fileCount: number;
   snapshotMetaPath?: string;
+  fontNormalization?: Array<{
+    path: string;
+    changed: boolean;
+    dominantFont: string | null;
+  }>;
 };
 
 type SnapshotFileRef = {
@@ -439,6 +445,7 @@ export async function buildFilebasePullZip(input: {
   const entries: ZipEntry[] = [];
   const missing: string[] = [];
   const mediaReferences = new Set<string>();
+  const fontNormalization: NonNullable<FilebasePullManifest["fontNormalization"]> = [];
 
   for (const rel of requested) {
     const meta = byPath.get(rel);
@@ -446,18 +453,26 @@ export async function buildFilebasePullZip(input: {
       missing.push(rel);
       continue;
     }
-    const bytes = await driveDownloadFileBytes(input.drive, meta.driveFileId);
+    let bytes = await driveDownloadFileBytes(input.drive, meta.driveFileId);
     if (meta.sha256 && sha256Hex(bytes) !== meta.sha256) {
       missing.push(`${rel} (sha256 mismatch)`);
       continue;
     }
-    entries.push({ path: rel, data: bytes });
     if (rel.toLowerCase().endsWith(".pro")) {
+      const normalized = normalizePresentationFonts(bytes);
+      if (normalized.changed) {
+        fontNormalization.push({
+          path: rel,
+          changed: true,
+          dominantFont: normalized.report.dominantFont,
+        });
+        bytes = normalized.bytes;
+      }
       for (const mediaRef of extractMediaReferencesFromPresentation(bytes)) {
         mediaReferences.add(mediaRef);
       }
     }
-  }
+    entries.push({ path: rel, data: bytes });
 
   const resolvedMedia = resolveMediaPathsForReferences([...mediaReferences], input.snapshotFiles);
   const mediaMaxFileBytes =
@@ -519,6 +534,7 @@ export async function buildFilebasePullZip(input: {
       skippedMediaPaths,
       missingPaths: missing,
       fileCount: entries.length,
+      ...(fontNormalization.length > 0 ? { fontNormalization } : {}),
     },
   };
 }

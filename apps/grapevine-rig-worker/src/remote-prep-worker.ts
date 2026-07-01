@@ -16,12 +16,17 @@ import { applyCommitPlan } from "@/lib/slide-deck/apply-commit";
 import { PlaylistConflictError } from "@/lib/propresenter/playlist-write";
 import { isProPresenterApiError, ppPing } from "@/lib/propresenter/client";
 import { loadProPresenterConfig } from "@/lib/propresenter/config";
+import {
+  buildRemotePrepProgress,
+  RemotePrepCancelledError,
+  type RemotePrepProgressStage,
+} from "@/lib/remote-prep/progress";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
 
 const execFileAsync = promisify(execFile);
-const REMOTE_PREP_WORKER_VERSION = "0.2.21";
+const REMOTE_PREP_WORKER_VERSION = "0.2.22";
 
 function apiBase() {
   return (process.env.GRAPEVINE_PREP_URL?.trim() || "https://grapevineprep.com").replace(/\/$/, "");
@@ -108,6 +113,31 @@ function logResult(payload: Record<string, unknown>) {
   console.log(JSON.stringify(payload));
 }
 
+async function patchProgress(stage: RemotePrepProgressStage, detail?: string) {
+  const progress = buildRemotePrepProgress(stage, detail);
+  console.error(`remote-prep-progress ${JSON.stringify(progress)}`);
+  const { jobId } = jobAuth();
+  await apiFetch(`/api/remote-prep/jobs/${jobId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ progress }),
+  });
+}
+
+async function isCancelRequested(): Promise<boolean> {
+  const { jobId } = jobAuth();
+  const data = (await apiFetch(`/api/remote-prep/jobs/${jobId}`)) as {
+    cancelRequested?: boolean;
+    status?: string;
+  };
+  return Boolean(data.cancelRequested) || data.status === "cancelled";
+}
+
+async function throwIfCancelled() {
+  if (await isCancelRequested()) {
+    throw new RemotePrepCancelledError();
+  }
+}
+
 function connectionStillWarming(message: string) {
   return /ECONNREFUSED|Cannot reach ProPresenter|TCP timeout|TCP closed|fetch failed|Failed to connect|AbortError|ETIMEDOUT/i.test(
     message,
@@ -140,10 +170,14 @@ async function main() {
   const { jobId } = jobAuth();
   console.error(`remote-prep-worker ${REMOTE_PREP_WORKER_VERSION}`);
 
+  await patchProgress("prepare");
   await apiFetch(`/api/remote-prep/jobs/${jobId}`, {
     method: "PATCH",
     body: JSON.stringify({ status: "running" }),
   });
+
+  await throwIfCancelled();
+  await patchProgress("resolve_library");
 
   const ctx = (await apiFetch(`/api/remote-prep/jobs/${jobId}/run-context`)) as {
     job: {
@@ -164,6 +198,9 @@ async function main() {
     );
   }
 
+  await throwIfCancelled();
+  await patchProgress("download");
+
   const zipRes = await fetch(`${apiBase()}${ctx.pullDownloadPath}`, {
     headers: { Authorization: jobAuth().header },
   });
@@ -180,10 +217,17 @@ async function main() {
       "ProPresenter library folder is required. Set it in Grapevine Client → Advanced settings, then Save.",
     );
   }
+
+  await throwIfCancelled();
+  await patchProgress("extract", `${entries.length} file(s)`);
+
   const extracted = await extractFilebaseZipToBundle({
     zipBytes,
     bundleRoot,
   });
+
+  await throwIfCancelled();
+  await patchProgress("open_pp");
 
   await restartProPresenterAfterExtract();
 
@@ -193,11 +237,20 @@ async function main() {
   }
   await waitForProPresenterReady(config);
 
+  await patchProgress("index_library");
+
   const ready = await waitForLiveLibraryReady({
     commitPlan: ctx.job.commitPlan,
     librarySelections: ctx.job.librarySelections,
     config,
+    shouldCancel: isCancelRequested,
+    onPoll: async (detail) => {
+      await patchProgress("index_library", detail);
+    },
   });
+
+  await throwIfCancelled();
+  await patchProgress("build_playlist");
 
   const applyResult = await applyCommitPlan({
     commitPlan: ready.commitPlan,
@@ -233,6 +286,14 @@ main().catch(async (e) => {
   const message = formatWorkerError(e);
   try {
     const { jobId } = jobAuth();
+    if (e instanceof RemotePrepCancelledError) {
+      await apiFetch(`/api/remote-prep/jobs/${jobId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: "cancelled" }),
+      });
+      logResult({ ok: false, cancelled: true, message: "Remote prep cancelled." });
+      process.exit(0);
+    }
     if (e instanceof PlaylistConflictError) {
       await apiFetch(`/api/remote-prep/jobs/${jobId}`, {
         method: "PATCH",

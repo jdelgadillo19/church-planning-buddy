@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GoogleConnectionCard } from "@/components/google-connection-card";
 import { SlideDeckBuilderEditor } from "@/components/slide-deck-builder-editor";
 import { SlideDeckHandoffDiscovery } from "@/components/slide-deck-handoff-discovery";
 import { SlideDeckHostedPanel } from "@/components/slide-deck-hosted-panel";
 import { ClientDownloadLinks } from "@/components/client-download-links";
+import { SlideDeckProgressModal } from "@/components/slide-deck-progress-modal";
 import { SlideDeckUploadTool } from "@/components/slide-deck-upload-tool";
 import { ToolShell } from "@/components/tool-shell";
 import { unresolvedAmbiguousRows } from "@/components/slide-deck-library-match";
@@ -40,6 +41,11 @@ import {
   type SlideDeckDeviceMode,
 } from "@/lib/slide-deck/device-context";
 import type { SlideDeckManifest } from "@/lib/slide-deck/types";
+import {
+  CREATE_PRESENTATION_STAGE_LABELS,
+  CREATE_PRESENTATION_STAGE_PERCENT,
+  type CreatePresentationStage,
+} from "@/lib/remote-prep/progress";
 
 type PpStatus = {
   connected: boolean;
@@ -157,6 +163,16 @@ export default function SlideDeckPage() {
   const [buildInClientBusy, setBuildInClientBusy] = useState(false);
   const [buildInClientMessage, setBuildInClientMessage] = useState<string | null>(null);
   const [buildInClientError, setBuildInClientError] = useState<string | null>(null);
+  const [progressModal, setProgressModal] = useState<{
+    mode: "create" | "remote-prep";
+    title: string;
+    label: string;
+    percent: number;
+    detail?: string | null;
+    jobId?: string;
+  } | null>(null);
+  const createAbortRef = useRef<AbortController | null>(null);
+  const remotePrepPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [missingFiles, setMissingFiles] = useState<MissingFileRef[]>([]);
   const [pendingRigHandoffs, setPendingRigHandoffs] = useState<
     Array<{ id: string; playlist_name: string; services_drive_url: string | null }>
@@ -193,6 +209,33 @@ export default function SlideDeckPage() {
     () => unresolvedAmbiguousRows(commitPlan, librarySelections),
     [commitPlan, librarySelections],
   );
+  const operationLocked = Boolean(progressModal);
+
+  const closeProgressModal = useCallback(() => {
+    if (remotePrepPollRef.current) {
+      clearInterval(remotePrepPollRef.current);
+      remotePrepPollRef.current = null;
+    }
+    createAbortRef.current = null;
+    setProgressModal(null);
+    setBuildInClientBusy(false);
+  }, []);
+
+  const setCreateProgressStage = useCallback((stage: CreatePresentationStage) => {
+    setProgressModal({
+      mode: "create",
+      title: "Create Presentation",
+      label: CREATE_PRESENTATION_STAGE_LABELS[stage],
+      percent: CREATE_PRESENTATION_STAGE_PERCENT[stage],
+    });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (remotePrepPollRef.current) clearInterval(remotePrepPollRef.current);
+      createAbortRef.current?.abort();
+    };
+  }, []);
 
   const refreshPpStatus = useCallback(async () => {
     try {
@@ -366,16 +409,22 @@ export default function SlideDeckPage() {
     setCreateIssues([]);
     resetPreviewState();
     const freshId = crypto.randomUUID();
+    const abort = new AbortController();
+    createAbortRef.current = abort;
+    setCreateProgressStage("prepare");
     try {
+      setCreateProgressStage("resolve_library");
       const res = await fetch("/api/slide-deck/mock-commit", {
         method: "POST",
         headers: { "content-type": "application/json" },
+        signal: abort.signal,
         body: JSON.stringify({
           planId: planId.trim(),
           serviceTypeId: serviceTypeId.trim() || undefined,
           orgId: orgId ?? undefined,
         }),
       });
+      setCreateProgressStage("build_playlist");
       const payload = (await res.json()) as {
         ok: boolean;
         manifest?: SlideDeckManifest;
@@ -397,14 +446,105 @@ export default function SlideDeckPage() {
         {},
       );
       setCreateIssues(readiness.issues);
-      // Keep preview visible so library variant pickers render; block Send/Download via createIssues.
       setError(null);
+      setProgressModal((prev) =>
+        prev
+          ? { ...prev, label: "Presentation ready", percent: 100 }
+          : prev,
+      );
       void refreshPpStatus();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create presentation.");
+      if (abort.signal.aborted) {
+        setError("Create presentation cancelled.");
+      } else {
+        setError(e instanceof Error ? e.message : "Failed to create presentation.");
+      }
     } finally {
       setLoading(false);
+      if (!abort.signal.aborted) {
+        window.setTimeout(() => closeProgressModal(), 400);
+      } else {
+        closeProgressModal();
+      }
     }
+  }
+
+  async function cancelProgressOperation() {
+    if (progressModal?.mode === "create") {
+      createAbortRef.current?.abort();
+      return;
+    }
+    if (progressModal?.mode === "remote-prep" && progressModal.jobId) {
+      try {
+        await fetch(`/api/remote-prep/jobs/${progressModal.jobId}/cancel`, {
+          method: "POST",
+          credentials: "same-origin",
+        });
+      } catch {
+        /* best effort */
+      }
+      setBuildInClientMessage("Cancellation requested…");
+    }
+  }
+
+  function startRemotePrepPolling(jobId: string, playlistName: string | null) {
+    if (remotePrepPollRef.current) clearInterval(remotePrepPollRef.current);
+    setProgressModal({
+      mode: "remote-prep",
+      title: "Build in Grapevine Client",
+      label: "Preparing service plan",
+      percent: 5,
+      detail: playlistName ? `Playlist: ${playlistName}` : null,
+      jobId,
+    });
+
+    remotePrepPollRef.current = setInterval(() => {
+      void (async () => {
+        try {
+          const res = await fetch(`/api/remote-prep/jobs/${jobId}/status`, {
+            credentials: "same-origin",
+          });
+          const payload = (await res.json()) as {
+            ok?: boolean;
+            status?: string;
+            progress?: { label?: string; percent?: number; detail?: string };
+            errorMessage?: string | null;
+            playlistName?: string | null;
+          };
+          if (!payload.ok) return;
+
+          const progress = payload.progress;
+          setProgressModal((prev) =>
+            prev && prev.mode === "remote-prep"
+              ? {
+                  ...prev,
+                  label: progress?.label ?? prev.label,
+                  percent: progress?.percent ?? prev.percent,
+                  detail: progress?.detail ?? payload.playlistName ?? prev.detail,
+                }
+              : prev,
+          );
+
+          if (payload.status === "completed") {
+            closeProgressModal();
+            setBuildInClientMessage(
+              `Remote prep completed${payload.playlistName ? ` — "${payload.playlistName}"` : ""}.`,
+            );
+            setBuildInClientError(null);
+          } else if (payload.status === "failed") {
+            closeProgressModal();
+            setBuildInClientError(payload.errorMessage ?? "Remote prep failed.");
+            setBuildInClientMessage(null);
+          } else if (payload.status === "cancelled") {
+            closeProgressModal();
+            setBuildInClientMessage("Remote prep cancelled.");
+            setBuildInClientError(null);
+          }
+        } catch {
+          /* keep polling */
+        }
+      })();
+    }, 1500);
   }
 
   function loadHandoffIntoBuilder(handoff: SlideDeckHandoffSummary, forDownloadOnly = false) {
@@ -765,22 +905,27 @@ export default function SlideDeckPage() {
         ok?: boolean;
         error?: string;
         deepLink?: string;
+        jobId?: string;
         playlistName?: string;
       };
-      if (!payload.ok || !payload.deepLink) {
+      if (!payload.ok || !payload.deepLink || !payload.jobId) {
         throw new Error(sanitizeErrorMessage(payload.error ?? "Remote prep job failed."));
       }
       setBuildInClientMessage(
         `Opening Grapevine Client for "${payload.playlistName ?? "this service"}"…`,
       );
+      startRemotePrepPolling(payload.jobId, payload.playlistName ?? null);
       window.location.href = payload.deepLink;
     } catch (e) {
       const message = sanitizeErrorMessage(
         e instanceof Error ? e.message : "Could not start remote prep in Grapevine Client.",
       );
       setBuildInClientError(message);
+      closeProgressModal();
     } finally {
-      setBuildInClientBusy(false);
+      if (!remotePrepPollRef.current) {
+        setBuildInClientBusy(false);
+      }
     }
   }
 
@@ -914,6 +1059,14 @@ export default function SlideDeckPage() {
 
   return (
     <ToolShell toolId="slide-deck">
+      <SlideDeckProgressModal
+        open={Boolean(progressModal)}
+        title={progressModal?.title ?? "Working…"}
+        label={progressModal?.label ?? "Please wait…"}
+        percent={progressModal?.percent ?? 0}
+        detail={progressModal?.detail}
+        onCancel={() => void cancelProgressOperation()}
+      />
       {isHosted ? (
         <div className="flex flex-col gap-3">
           <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100">
@@ -1033,6 +1186,7 @@ export default function SlideDeckPage() {
         selectPlan={selectPlan}
         loadOptions={loadOptions}
         loading={loading}
+        operationLocked={operationLocked}
         createIssues={createIssues}
         previewReady={previewReady}
         manifest={manifest}

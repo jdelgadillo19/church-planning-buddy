@@ -5,6 +5,7 @@ import {
   generateRemotePrepClientToken,
   hashRemotePrepClientToken,
 } from "@/lib/remote-prep/auth";
+import type { RemotePrepProgress } from "@/lib/remote-prep/progress";
 
 export type RemotePrepJobStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
 
@@ -23,6 +24,8 @@ export type RemotePrepJobRow = {
   pull_manifest: FilebasePullManifest | null;
   result: Record<string, unknown> | null;
   error_message: string | null;
+  progress: RemotePrepProgress | null;
+  cancel_requested_at: string | null;
   expires_at: string;
   started_at: string | null;
   completed_at: string | null;
@@ -131,6 +134,65 @@ export async function failRemotePrepJob(jobId: string, message: string): Promise
     .update({
       status: "failed",
       error_message: message,
+      completed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", jobId);
+  if (error) throw new Error(error.message);
+}
+
+export async function updateRemotePrepProgress(
+  jobId: string,
+  progress: RemotePrepProgress,
+): Promise<void> {
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("remote_prep_jobs")
+    .update({
+      progress,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", jobId);
+  if (error) throw new Error(error.message);
+}
+
+export async function requestRemotePrepCancel(jobId: string, userId: string): Promise<boolean> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("remote_prep_jobs")
+    .update({
+      cancel_requested_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", jobId)
+    .eq("user_id", userId)
+    .in("status", ["pending", "running"])
+    .select("id")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return Boolean(data);
+}
+
+export async function isRemotePrepCancelRequested(jobId: string): Promise<boolean> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("remote_prep_jobs")
+    .select("cancel_requested_at, status")
+    .eq("id", jobId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return false;
+  if (data.status === "cancelled") return true;
+  return Boolean(data.cancel_requested_at);
+}
+
+export async function markRemotePrepJobCancelled(jobId: string): Promise<void> {
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("remote_prep_jobs")
+    .update({
+      status: "cancelled",
+      error_message: "Remote prep cancelled.",
       completed_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })

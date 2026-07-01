@@ -42,6 +42,7 @@ type Props = {
   selectPlan: Parameters<typeof PcoServicePlanPicker>[0]["onSelectPlan"];
   loadOptions: Parameters<typeof PcoServicePlanPicker>[0]["onLoadOptions"];
   loading: boolean;
+  operationLocked?: boolean;
   createIssues: CreatePresentationIssue[];
   previewReady: boolean;
   manifest: SlideDeckManifest | null;
@@ -96,6 +97,7 @@ export function SlideDeckBuilderEditor({
   selectPlan,
   loadOptions,
   loading,
+  operationLocked = false,
   createIssues,
   previewReady,
   manifest,
@@ -137,6 +139,7 @@ export function SlideDeckBuilderEditor({
   const warningIssues = createIssues.filter((i) => !isBlockingCreateIssue(i));
   const createReady =
     unresolvedRows.length === 0 && blockingIssues.length === 0;
+  const inputsDisabled = operationLocked || loading || plansBusy;
 
   return (
     <section className="flex flex-col gap-6 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
@@ -204,7 +207,7 @@ export function SlideDeckBuilderEditor({
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
-          disabled={loading || plansBusy || !planId.trim()}
+          disabled={inputsDisabled || !planId.trim()}
           onClick={onCreatePresentation}
           className="h-11 rounded-xl bg-zinc-900 px-4 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
         >
@@ -248,7 +251,7 @@ export function SlideDeckBuilderEditor({
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                disabled={applyLoading || !createReady || !canLocalApply}
+                disabled={operationLocked || applyLoading || !createReady || !canLocalApply}
                 onClick={onDownloadPresentation}
                 className="h-11 rounded-xl bg-emerald-700 px-4 text-sm font-medium text-white disabled:opacity-50 dark:bg-emerald-600"
               >
@@ -278,7 +281,7 @@ export function SlideDeckBuilderEditor({
                 <div className="flex flex-col gap-1">
                   <button
                     type="button"
-                    disabled={filebasePullBusy}
+                    disabled={operationLocked || filebasePullBusy}
                     onClick={onPullFilebase}
                     className="h-10 w-fit rounded-xl border border-sky-700 px-3 text-sm font-medium text-sky-900 dark:border-sky-500 dark:text-sky-100"
                   >
@@ -296,7 +299,7 @@ export function SlideDeckBuilderEditor({
                 <div className="flex flex-col gap-1">
                   <button
                     type="button"
-                    disabled={buildInClientBusy || blockingIssues.length > 0}
+                    disabled={operationLocked || buildInClientBusy || blockingIssues.length > 0}
                     onClick={onBuildInClient}
                     className="h-11 w-fit rounded-xl bg-violet-700 px-4 text-sm font-semibold text-white hover:bg-violet-600 disabled:opacity-50 dark:bg-violet-600 dark:hover:bg-violet-500"
                   >
@@ -396,7 +399,7 @@ function ConflictPanel({
         <button
           type="button"
           className="h-9 rounded-lg bg-red-800 px-3 text-sm text-white"
-          disabled={applyLoading}
+          disabled={operationLocked || applyLoading}
           onClick={onOverwrite}
         >
           Overwrite

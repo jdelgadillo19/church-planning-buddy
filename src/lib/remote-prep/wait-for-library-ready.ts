@@ -3,6 +3,7 @@ import {
   remapLibrarySelectionsToLive,
 } from "@/lib/slide-deck/apply-commit";
 import type { MockCommitPlan } from "@/lib/slide-deck/mock-commit";
+import { RemotePrepCancelledError } from "@/lib/remote-prep/progress";
 import { resolveApplyContextFromCloudSnapshot } from "@/lib/slide-deck/resolve-apply-context";
 import { isProPresenterApiError, ppRequest } from "@/lib/propresenter/client";
 import type { ProPresenterConfig } from "@/lib/propresenter/config";
@@ -61,6 +62,8 @@ export async function waitForLiveLibraryReady(input: {
   config: ProPresenterConfig;
   timeoutMs?: number;
   pollIntervalMs?: number;
+  shouldCancel?: () => Promise<boolean>;
+  onPoll?: (detail: string) => Promise<void> | void;
 }): Promise<LiveLibraryReadyResult> {
   const deadline = Date.now() + (input.timeoutMs ?? 180_000);
   const interval = input.pollIntervalMs ?? 3_000;
@@ -72,6 +75,10 @@ export async function waitForLiveLibraryReady(input: {
   ).length;
 
   while (Date.now() < deadline) {
+    if (input.shouldCancel && (await input.shouldCancel())) {
+      throw new RemotePrepCancelledError();
+    }
+
     const liveLibraryIndex = await loadFullLibraryIndex();
     const librarySelections = remapLibrarySelectionsToLive(
       input.librarySelections,
@@ -106,6 +113,9 @@ export async function waitForLiveLibraryReady(input: {
         writePreview,
       };
     }
+
+    const detail = `${lastWriteCount} presentation(s) ready`;
+    await input.onPoll?.(detail);
 
     await sleep(interval);
   }

@@ -372,3 +372,85 @@ body {
   flex-wrap: wrap;
   gap: 0.35rem;
 }
+
+#app.app-locked {
+  pointer-events: none;
+  user-select: none;
+  opacity: 0.55;
+}
+
+.remote-prep-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(2, 6, 23, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.remote-prep-modal.hidden {
+  display: none;
+}
+
+.remote-prep-modal-card {
+  width: min(100%, 22rem);
+  background: var(--panel);
+  border: 1px solid #334155;
+  border-radius: 0.85rem;
+  padding: 1.1rem;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+}
+
+.remote-prep-modal-card h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.remote-prep-modal-label {
+  margin: 0.55rem 0 0;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.remote-prep-modal-detail {
+  margin: 0.25rem 0 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.remote-prep-modal-detail.hidden {
+  display: none;
+}
+
+.remote-prep-progress-track {
+  margin-top: 0.85rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: #0f172a;
+  overflow: hidden;
+}
+
+.remote-prep-progress-bar {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent-dark), var(--accent));
+  transition: width 0.25s ease;
+}
+
+.remote-prep-modal-percent {
+  margin: 0.35rem 0 0;
+  text-align: right;
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.remote-prep-cancel-btn {
+  margin-top: 0.85rem;
+  width: 100%;
+}
