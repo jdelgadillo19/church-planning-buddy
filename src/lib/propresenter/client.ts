@@ -21,6 +21,17 @@ export class ProPresenterApiError extends Error {
   }
 }
 
+export function isProPresenterApiError(
+  e: unknown,
+): e is ProPresenterApiError {
+  return (
+    e instanceof ProPresenterApiError ||
+    (typeof e === "object" &&
+      e !== null &&
+      (e as ProPresenterApiError).name === "ProPresenterApiError")
+  );
+}
+
 export type PpRequestResult<T = PpJson> = {
   ok: true;
   status: number;

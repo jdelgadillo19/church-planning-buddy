@@ -8,19 +8,20 @@ import { loadEnvLocal } from "../../../scripts/_load-env-local";
 
 loadEnvLocal();
 
+import { waitForLiveLibraryReady } from "@/lib/remote-prep/wait-for-library-ready";
 import { remotePrepAuthorization } from "@/lib/remote-prep/auth";
 import { extractFilebaseZipToBundle, summarizeExtract } from "@/lib/remote-prep/extract-to-bundle";
 import { extractStoreZip } from "@/lib/zip/extract-store-zip";
 import { applyCommitPlan } from "@/lib/slide-deck/apply-commit";
-import { resolveApplyContextFromCloudSnapshot } from "@/lib/slide-deck/resolve-apply-context";
 import { PlaylistConflictError } from "@/lib/propresenter/playlist-write";
-import { ppPing } from "@/lib/propresenter/client";
+import { isProPresenterApiError, ppPing } from "@/lib/propresenter/client";
 import { loadProPresenterConfig } from "@/lib/propresenter/config";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
 
 const execFileAsync = promisify(execFile);
+const REMOTE_PREP_WORKER_VERSION = "0.2.21";
 
 function apiBase() {
   return (process.env.GRAPEVINE_PREP_URL?.trim() || "https://grapevineprep.com").replace(/\/$/, "");
@@ -33,9 +34,19 @@ function jobAuth() {
   return { jobId, token, header: remotePrepAuthorization(jobId, token) };
 }
 
+function formatWorkerError(e: unknown): string {
+  if (isProPresenterApiError(e)) {
+    const where = e.path ? ` (${e.path})` : "";
+    const status = e.status ? ` [${e.status}]` : "";
+    return `ProPresenter API${where}${status}: ${e.message}`;
+  }
+  return e instanceof Error ? e.message : String(e);
+}
+
 async function apiFetch(path: string, init?: RequestInit) {
   const { header } = jobAuth();
-  const res = await fetch(`${apiBase()}${path}`, {
+  const url = `${apiBase()}${path}`;
+  const res = await fetch(url, {
     ...init,
     headers: {
       Authorization: header,
@@ -77,6 +88,22 @@ async function openProPresenter() {
   }
 }
 
+/** Quit and reopen ProPresenter so it rescans library files after zip extract. */
+async function restartProPresenterAfterExtract() {
+  if (process.platform === "darwin") {
+    try {
+      await execFileAsync("/usr/bin/osascript", [
+        "-e",
+        'tell application "ProPresenter" to quit',
+      ]);
+      await sleep(4_000);
+    } catch {
+      // ProPresenter may not be running yet.
+    }
+  }
+  await openProPresenter();
+}
+
 function logResult(payload: Record<string, unknown>) {
   console.log(JSON.stringify(payload));
 }
@@ -88,7 +115,7 @@ function connectionStillWarming(message: string) {
 }
 
 async function waitForProPresenterReady(config: ReturnType<typeof loadProPresenterConfig>) {
-  const deadline = Date.now() + 60_000;
+  const deadline = Date.now() + 90_000;
   let lastError = "";
 
   while (Date.now() < deadline) {
@@ -105,12 +132,13 @@ async function waitForProPresenterReady(config: ReturnType<typeof loadProPresent
   }
 
   throw new Error(
-    `ProPresenter did not become reachable after 60 seconds. ${lastError || "Open ProPresenter and confirm Settings > Network > Enable Network is ON."}`,
+    `ProPresenter did not become reachable after 90 seconds. ${lastError || "Open ProPresenter and confirm Settings > Network > Enable Network is ON."}`,
   );
 }
 
 async function main() {
   const { jobId } = jobAuth();
+  console.error(`remote-prep-worker ${REMOTE_PREP_WORKER_VERSION}`);
 
   await apiFetch(`/api/remote-prep/jobs/${jobId}`, {
     method: "PATCH",
@@ -157,7 +185,7 @@ async function main() {
     bundleRoot,
   });
 
-  await openProPresenter();
+  await restartProPresenterAfterExtract();
 
   const config = loadProPresenterConfig();
   if (!config.allowWrites) {
@@ -165,17 +193,20 @@ async function main() {
   }
   await waitForProPresenterReady(config);
 
-  const { commitPlan, templateItems, libraryIndex } = resolveApplyContextFromCloudSnapshot(
-    ctx.job.commitPlan,
-    ctx.applyContext.libraryIndex,
-  );
+  const ready = await waitForLiveLibraryReady({
+    commitPlan: ctx.job.commitPlan,
+    librarySelections: ctx.job.librarySelections,
+    config,
+  });
 
   const applyResult = await applyCommitPlan({
-    commitPlan,
-    templateItems,
-    libraryIndex,
+    commitPlan: ready.commitPlan,
+    templateItems: ready.templateItems,
+    libraryIndex: ready.libraryIndex,
     playlistResolution: "overwrite",
-    librarySelections: ctx.job.librarySelections,
+    librarySelections: ready.librarySelections,
+    prebuiltWriteItems: ready.writePreview.items,
+    prebuiltWarnings: ready.writePreview.warnings,
   });
 
   const result = {
@@ -183,6 +214,7 @@ async function main() {
     extractSummary: summarizeExtract(entries),
     apply: applyResult,
     pullManifest: ctx.job.pullManifest,
+    workerVersion: REMOTE_PREP_WORKER_VERSION,
   };
 
   await apiFetch(`/api/remote-prep/jobs/${jobId}`, {
@@ -198,7 +230,7 @@ async function main() {
 }
 
 main().catch(async (e) => {
-  const message = e instanceof Error ? e.message : String(e);
+  const message = formatWorkerError(e);
   try {
     const { jobId } = jobAuth();
     if (e instanceof PlaylistConflictError) {

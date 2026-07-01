@@ -1157,7 +1157,7 @@ dependencies = [
 
 [[package]]
 name = "grapevine-rig"
-version = "0.2.19"
+version = "0.2.21"
 dependencies = [
  "hostname",
  "keyring",

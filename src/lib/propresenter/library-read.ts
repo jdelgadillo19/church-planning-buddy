@@ -74,6 +74,17 @@ export async function listLibraryItems(libraryId: string, libraryName: string): 
   return out;
 }
 
+/** Load every library ProPresenter exposes (remote prep after filebase extract). */
+export async function loadFullLibraryIndex(): Promise<PpLibraryItemRef[]> {
+  const libraries = await listLibraries();
+  const out: PpLibraryItemRef[] = [];
+  for (const lib of libraries) {
+    const items = await listLibraryItems(lib.id, lib.name);
+    out.push(...items);
+  }
+  return out;
+}
+
 /** Load items from configured song libraries (Default + Songs by default). */
 export async function loadSongLibraryIndex(
   libraryNames = ["Default", "Songs", "Service Order"],

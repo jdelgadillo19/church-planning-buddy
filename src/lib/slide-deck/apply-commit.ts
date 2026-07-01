@@ -14,6 +14,7 @@ import {
 import { matchLibraryItem } from "@/lib/propresenter/library-read";
 import { getPlaylistItems } from "@/lib/propresenter/playlist-read";
 import { loadProPresenterConfig } from "@/lib/propresenter/config";
+import { isProPresenterApiError } from "@/lib/propresenter/client";
 import {
   allowPartialApply,
   comparePlaylistToExpected,
@@ -38,30 +39,77 @@ export type ApplyCommitInput = {
   playlistResolution?: PlaylistResolution;
   /** Playlist preview row position → ProPresenter library item id */
   librarySelections?: Record<string, string>;
+  /** Remote prep: items already verified against live ProPresenter */
+  prebuiltWriteItems?: PpWritePlaylistItem[];
+  prebuiltWarnings?: string[];
 };
+
+export function remapLibrarySelectionsToLive(
+  selections: Record<string, string>,
+  commitPlan: MockCommitPlan,
+  liveIndex: PpLibraryItemRef[],
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [position, selectedId] of Object.entries(selections)) {
+    if (liveIndex.some((item) => item.id === selectedId)) {
+      out[position] = selectedId;
+      continue;
+    }
+    const row = commitPlan.playlistPreview.find((r) => String(r.position) === position);
+    const label = row?.pcoTitle ?? row?.name ?? "";
+    if (!label) {
+      out[position] = selectedId;
+      continue;
+    }
+    const cloudCandidate = row?.libraryMatch?.candidates?.find((c) => c.id === selectedId);
+    const searchName = cloudCandidate?.name ?? label;
+    const match = matchLibraryItem(searchName, liveIndex);
+    if (match.status === "found") {
+      out[position] = match.item.id;
+      continue;
+    }
+    if (match.status === "ambiguous") {
+      const picked =
+        match.candidates?.find((c) => c.name === cloudCandidate?.name) ?? match.candidates?.[0];
+      out[position] = picked?.id ?? selectedId;
+      continue;
+    }
+    out[position] = selectedId;
+  }
+  return out;
+}
 
 export function resolveLibraryItemForRow(
   row: MockCommitPlaylistRow,
   libraryIndex: PpLibraryItemRef[],
   librarySelections?: Record<string, string>,
 ): PpLibraryItemRef | undefined {
+  const label = row.pcoTitle ?? row.name;
   const elementKey = row.elementKey;
   const overrideId = elementKey
     ? librarySelectionForRow(elementKey, row, librarySelections ?? {})
     : librarySelections?.[String(row.position)];
+
   if (overrideId) {
     const fromOverride = libraryIndex.find((item) => item.id === overrideId);
     if (fromOverride) return fromOverride;
-    if (row.libraryMatch?.status === "found" && row.libraryMatch.item?.id === overrideId) {
-      return row.libraryMatch.item;
-    }
-    if (row.libraryMatch?.status === "ambiguous") {
-      return row.libraryMatch.candidates?.find((c: PpLibraryItemRef) => c.id === overrideId);
+
+    const cloudCandidate =
+      row.libraryMatch?.candidates?.find((c) => c.id === overrideId) ??
+      (row.libraryMatch?.item?.id === overrideId ? row.libraryMatch.item : undefined);
+    const searchName = cloudCandidate?.name ?? label;
+    const remapped = matchLibraryItem(searchName, libraryIndex);
+    if (remapped.status === "found") return remapped.item;
+    if (remapped.status === "ambiguous") {
+      const fromAmbiguous = remapped.candidates?.find((c) => c.id === overrideId);
+      if (fromAmbiguous) return fromAmbiguous;
+      return remapped.candidates?.[0];
     }
   }
-  if (row.libraryMatch?.status === "found" && row.libraryMatch.item) {
-    return row.libraryMatch.item;
-  }
+
+  const byName = matchLibraryItem(label, libraryIndex);
+  if (byName.status === "found") return byName.item;
+
   return undefined;
 }
 
@@ -201,7 +249,12 @@ export async function applyCommitPlan(input: ApplyCommitInput): Promise<ApplyCom
     throw new Error("ProPresenter writes disabled. Set PP_ALLOW_WRITES=true in .env.local.");
   }
 
-  const { items, warnings } = buildWriteItemsFromPreview(input);
+  const { items, warnings } = input.prebuiltWriteItems
+    ? {
+        items: input.prebuiltWriteItems,
+        warnings: input.prebuiltWarnings ?? [],
+      }
+    : buildWriteItemsFromPreview(input);
   const expectedNames = expectedNamesFromWriteItems(items);
 
   const created = await resolveTargetPlaylist(
@@ -216,6 +269,13 @@ export async function applyCommitPlan(input: ApplyCommitInput): Promise<ApplyCom
     warnings.push(
       `PUT may have timed out — checking playlist "${created.name}" until it matches written items.`,
     );
+    if (isProPresenterApiError(e)) {
+      const status = e.status ? ` (${e.status})` : "";
+      const path = e.path ? ` ${e.path}` : "";
+      throw new Error(
+        `ProPresenter PUT v1/playlist/${created.id} failed${status}${path}: ${e.message}`,
+      );
+    }
     if (e instanceof Error && !/timeout/i.test(e.message)) throw e;
   }
 
