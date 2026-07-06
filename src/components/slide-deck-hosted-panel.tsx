@@ -187,7 +187,10 @@ export function SlideDeckHostedPanel({
     URL.revokeObjectURL(url);
   }
 
-  const latestBuild = builds[0];
+  const planBuilds = planId.trim()
+    ? builds.filter((b) => b.plan_id === planId.trim())
+    : builds;
+  const latestBuild = planBuilds[0] ?? null;
   const latestTone = latestBuild ? buildStatusTone(latestBuild.status) : "neutral";
 
   return (
@@ -474,8 +477,11 @@ export function SlideDeckHostedPanel({
           </p>
         ) : (
           <p className="text-xs opacity-80">
-            After sending, status updates here. The rig applies when Grapevine Rig is running on the
+            After sending, status updates here. The rig applies when Grapevine Client is running on the
             presentation computer.
+            {planId.trim() && builds.length > 0 && !latestBuild ? (
+              <> No build queued yet for this service week — send from the preview above.</>
+            ) : null}
           </p>
         )}
       </div>

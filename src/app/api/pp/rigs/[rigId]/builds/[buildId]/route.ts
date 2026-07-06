@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import {
+  cancelBuildForRig,
+  claimBuildForRig,
   getBuildById,
   resetBuildForRetry,
   setBuildStatus,
@@ -33,14 +35,20 @@ export async function PATCH(req: Request, context: RouteContext) {
       error?: string;
       implementationPlan?: SlideDeckBuildRow["implementation_plan"];
       resetToClaimed?: boolean;
+      claim?: boolean;
     };
+
+    if (body.claim === true) {
+      const updated = await claimBuildForRig(rig, buildId);
+      return NextResponse.json({ ok: true, build: updated });
+    }
 
     if (body.resetToClaimed) {
       const updated = await resetBuildForRetry(buildId);
       return NextResponse.json({ ok: true, build: updated });
     }
 
-    const allowed = new Set(["applying", "completed", "failed", "claimed"]);
+    const allowed = new Set(["applying", "completed", "failed", "claimed", "cancelled"]);
     if (body.implementationPlan && !body.status) {
       const updated = await updateBuildImplementationPlan(buildId, body.implementationPlan);
       return NextResponse.json({ ok: true, build: updated });
@@ -48,6 +56,11 @@ export async function PATCH(req: Request, context: RouteContext) {
 
     if (!body.status || !allowed.has(body.status)) {
       return NextResponse.json({ ok: false, error: "Invalid status." }, { status: 400 });
+    }
+
+    if (body.status === "cancelled") {
+      const updated = await cancelBuildForRig(buildId, rigId, rig.org_id);
+      return NextResponse.json({ ok: true, build: updated });
     }
 
     const updated = await setBuildStatus(buildId, body.status, {

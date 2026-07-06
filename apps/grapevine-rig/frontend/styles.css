@@ -373,6 +373,31 @@ body {
   gap: 0.35rem;
 }
 
+.build-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+#build-picker-wrap {
+  margin: 0.35rem 0 0.5rem;
+}
+
+#build-picker-wrap span {
+  display: block;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+  margin-bottom: 0.25rem;
+}
+
+#build-picker {
+  width: 100%;
+  font-size: 0.85rem;
+}
+
 #app.app-locked {
   pointer-events: none;
   user-select: none;

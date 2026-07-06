@@ -14,7 +14,7 @@ import {
 import { matchLibraryItem } from "@/lib/propresenter/library-read";
 import { getPlaylistItems } from "@/lib/propresenter/playlist-read";
 import { loadProPresenterConfig } from "@/lib/propresenter/config";
-import { isProPresenterApiError } from "@/lib/propresenter/client";
+import { isProPresenterApiError, isProPresenterConnectionError } from "@/lib/propresenter/client";
 import {
   allowPartialApply,
   comparePlaylistToExpected,
@@ -266,17 +266,24 @@ export async function applyCommitPlan(input: ApplyCommitInput): Promise<ApplyCom
   try {
     await putPlaylistItems(created.id, items, config);
   } catch (e) {
-    warnings.push(
-      `PUT may have timed out — checking playlist "${created.name}" until it matches written items.`,
-    );
-    if (isProPresenterApiError(e)) {
+    const message = e instanceof Error ? e.message : String(e);
+    if (isProPresenterConnectionError(message)) {
+      warnings.push(
+        `PUT may have timed out — checking playlist "${created.name}" until it matches written items.`,
+      );
+    } else if (isProPresenterApiError(e)) {
       const status = e.status ? ` (${e.status})` : "";
       const path = e.path ? ` ${e.path}` : "";
       throw new Error(
         `ProPresenter PUT v1/playlist/${created.id} failed${status}${path}: ${e.message}`,
       );
+    } else if (e instanceof Error && !/timeout/i.test(e.message)) {
+      throw e;
+    } else {
+      warnings.push(
+        `PUT may have timed out — checking playlist "${created.name}" until it matches written items.`,
+      );
     }
-    if (e instanceof Error && !/timeout/i.test(e.message)) throw e;
   }
 
   const { items: written, warnings: pollWarnings } = await waitForPlaylistMatch(

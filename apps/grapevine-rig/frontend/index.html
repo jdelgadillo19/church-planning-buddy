@@ -52,6 +52,10 @@
         <div id="build-card" class="build-card hidden">
           <p id="build-title" class="build-title">Build ready</p>
           <p id="build-summary" class="build-summary"></p>
+          <label id="build-picker-wrap" class="field hidden">
+            <span>Apply queue</span>
+            <select id="build-picker"></select>
+          </label>
           <p id="build-error" class="build-error hidden"></p>
           <div id="conflict-card" class="conflict-card hidden">
             <p id="conflict-message" class="conflict-message"></p>
@@ -62,7 +66,10 @@
             </div>
           </div>
           <div id="impl-review" class="impl-review hidden"></div>
-          <button id="apply-btn" type="button" class="btn primary">Apply Slide Deck</button>
+          <div class="build-actions">
+            <button id="apply-btn" type="button" class="btn primary">Apply Slide Deck</button>
+            <button id="build-dismiss-btn" type="button" class="btn ghost">Dismiss</button>
+          </div>
         </div>
         <p id="no-build" class="muted">
           Presentation rig apply queue is available after this computer is paired as the rig.

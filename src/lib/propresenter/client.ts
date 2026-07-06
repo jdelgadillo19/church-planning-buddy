@@ -54,10 +54,14 @@ function connectionHint(config: ProPresenterConfig, detail?: string): string {
   );
 }
 
-function isConnectionFailure(message: string): boolean {
-  return /ECONNREFUSED|fetch failed|Failed to connect|AbortError|ETIMEDOUT|TCP timeout|TCP closed/i.test(
+export function isProPresenterConnectionError(message: string): boolean {
+  return /ECONNREFUSED|fetch failed|Failed to connect|AbortError|ETIMEDOUT|TCP timeout|TCP closed|Cannot reach ProPresenter/i.test(
     message,
   );
+}
+
+function isConnectionFailure(message: string): boolean {
+  return isProPresenterConnectionError(message);
 }
 
 async function ppHttpRequest<T>(

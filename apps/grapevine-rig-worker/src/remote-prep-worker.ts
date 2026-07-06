@@ -26,7 +26,7 @@ import { promisify } from "node:util";
 import fs from "node:fs/promises";
 
 const execFileAsync = promisify(execFile);
-const REMOTE_PREP_WORKER_VERSION = "0.2.22";
+const REMOTE_PREP_WORKER_VERSION = "0.2.23";
 
 function apiBase() {
   return (process.env.GRAPEVINE_PREP_URL?.trim() || "https://grapevineprep.com").replace(/\/$/, "");

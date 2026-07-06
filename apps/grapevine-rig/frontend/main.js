@@ -21,6 +21,9 @@ const buildCard = $("build-card");
 const buildTitle = $("build-title");
 const buildSummary = $("build-summary");
 const buildError = $("build-error");
+const buildPickerWrap = $("build-picker-wrap");
+const buildPicker = $("build-picker");
+const buildDismissBtn = $("build-dismiss-btn");
 const conflictCard = $("conflict-card");
 const conflictMessage = $("conflict-message");
 const conflictOverwriteBtn = $("conflict-overwrite-btn");
@@ -61,6 +64,8 @@ const remotePrepCancelBtn = $("remote-prep-cancel-btn");
 
 let creds = null;
 let pendingBuild = null;
+let pendingBuilds = [];
+let selectedBuildId = null;
 let pendingHandoff = null;
 let pendingHandoffs = [];
 let lastAutoHandoffId = null;
@@ -247,6 +252,7 @@ function getPpSettingsOrExplain() {
 function setWorking(working) {
   busy = working;
   applyBtn.disabled = working;
+  if (buildDismissBtn) buildDismissBtn.disabled = working;
   scanBtn.disabled = working;
   ppSaveBtn.disabled = working;
   if (remoteOpenBtn) remoteOpenBtn.disabled = working;
@@ -346,14 +352,77 @@ function renderImplementationReview(plan) {
   });
 }
 
+function buildServiceDateLabel(b) {
+  const sd = b.implementation_plan?.serviceDate || b.commit_plan?.serviceDate;
+  if (sd) return sd;
+  const summary = b.change_summary || b.commit_plan?.playlistName || "";
+  const dotted = summary.match(/(\d{4})\.(\d{2})\.(\d{2})/);
+  if (dotted) return `${dotted[1]}-${dotted[2]}-${dotted[3]}`;
+  return summary || b.plan_id?.slice(0, 8) || b.id.slice(0, 8);
+}
+
+function buildStatusSuffix(status) {
+  if (status === "failed") return " — failed";
+  if (status === "pending") return " — queued";
+  if (status === "applying") return " — applying";
+  return "";
+}
+
+function buildOptionLabel(b) {
+  const name = b.change_summary || b.commit_plan?.playlistName || buildServiceDateLabel(b);
+  return `${buildServiceDateLabel(b)} · ${name}${buildStatusSuffix(b.status)}`;
+}
+
+function pickDefaultBuild(builds) {
+  if (!builds.length) return null;
+  return builds[0];
+}
+
+function syncPendingBuildFromSelection() {
+  if (!selectedBuildId) {
+    pendingBuild = pickDefaultBuild(pendingBuilds);
+    selectedBuildId = pendingBuild?.id ?? null;
+    return;
+  }
+  pendingBuild = pendingBuilds.find((b) => b.id === selectedBuildId) ?? pickDefaultBuild(pendingBuilds);
+  selectedBuildId = pendingBuild?.id ?? null;
+}
+
 function renderBuild() {
   if (pendingBuild) {
     buildCard.classList.remove("hidden");
     noBuild.classList.add("hidden");
     const isFailed = pendingBuild.status === "failed";
-    buildTitle.textContent = isFailed ? "Apply failed — retry" : "Build ready";
+    const isApplying = pendingBuild.status === "applying";
+    buildTitle.textContent = isFailed
+      ? "Apply failed — retry or dismiss"
+      : isApplying
+        ? "Apply in progress"
+        : "Build ready";
     buildSummary.textContent =
-      pendingBuild.change_summary || pendingBuild.plan_id || pendingBuild.id;
+      pendingBuild.change_summary || pendingBuild.commit_plan?.playlistName || pendingBuild.plan_id || pendingBuild.id;
+
+    if (buildPickerWrap && buildPicker) {
+      if (pendingBuilds.length > 0) {
+        buildPickerWrap.classList.remove("hidden");
+        buildPicker.innerHTML = "";
+        for (const b of pendingBuilds) {
+          const opt = document.createElement("option");
+          opt.value = b.id;
+          opt.textContent = buildOptionLabel(b);
+          if (b.id === pendingBuild.id) opt.selected = true;
+          buildPicker.appendChild(opt);
+        }
+      } else {
+        buildPickerWrap.classList.add("hidden");
+      }
+    }
+
+    if (buildDismissBtn) {
+      const canDismiss = ["pending", "claimed", "failed"].includes(pendingBuild.status);
+      buildDismissBtn.classList.toggle("hidden", !canDismiss);
+      buildDismissBtn.disabled = busy || isApplying;
+    }
 
     if (isFailed && pendingBuild.error_message) {
       buildError.textContent = pendingBuild.error_message;
@@ -390,6 +459,8 @@ function renderBuild() {
   } else {
     buildCard.classList.add("hidden");
     noBuild.classList.remove("hidden");
+    if (buildPickerWrap) buildPickerWrap.classList.add("hidden");
+    if (buildDismissBtn) buildDismissBtn.classList.add("hidden");
     implReview.classList.add("hidden");
     buildError.classList.add("hidden");
     hideConflictCard();
@@ -511,20 +582,44 @@ async function pollBuilds() {
     const claimed = await apiFetch(
       `/api/pp/rigs/${creds.rigId}/builds/pending?list=1`,
     );
-    const builds = claimed.builds ?? [];
-    const ready =
-      builds.find((b) => b.status === "failed") ??
-      builds.find((b) => ["claimed", "applying"].includes(b.status));
-    if (ready) {
-      pendingBuild = ready;
-    } else {
-      const claim = await apiFetch(`/api/pp/rigs/${creds.rigId}/builds/pending`);
-      pendingBuild = claim.build ?? null;
-    }
+    pendingBuilds = claimed.builds ?? [];
+    syncPendingBuildFromSelection();
     renderBuild();
   } catch (e) {
     setActionStatus(e instanceof Error ? e.message : "Poll failed", "error");
   }
+}
+
+async function dismissBuild() {
+  if (!pendingBuild || busy) return;
+  if (!["pending", "claimed", "failed"].includes(pendingBuild.status)) {
+    setActionStatus("This build cannot be dismissed while it is applying.", "error");
+    return;
+  }
+  setWorking(true);
+  setActionStatus("Removing build from queue…", "busy");
+  try {
+    await apiFetch(`/api/pp/rigs/${creds.rigId}/builds/${pendingBuild.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: "cancelled" }),
+    });
+    selectedBuildId = null;
+    setActionStatus("Build dismissed.", "ok");
+    await pollBuilds();
+  } catch (e) {
+    setActionStatus(e instanceof Error ? e.message : "Dismiss failed", "error");
+  } finally {
+    setWorking(false);
+  }
+}
+
+async function ensureBuildClaimed(build) {
+  if (build.status !== "pending") return build;
+  const data = await apiFetch(`/api/pp/rigs/${creds.rigId}/builds/${build.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ claim: true }),
+  });
+  return data.build ?? build;
 }
 
 function startPolling() {
@@ -725,8 +820,13 @@ async function applyBuild() {
   try {
     if (pendingBuild.status === "failed") {
       await resetBuildForRetry(pendingBuild.id);
+      pendingBuild = { ...pendingBuild, status: "claimed", error_message: null };
       renderBuild();
     }
+
+    pendingBuild = await ensureBuildClaimed(pendingBuild);
+    selectedBuildId = pendingBuild.id;
+    renderBuild();
 
     if (editedImplPlan && pendingBuild.implementation_plan) {
       const original = JSON.stringify(pendingBuild.implementation_plan);
@@ -747,6 +847,7 @@ async function applyBuild() {
       ppSettings,
     });
     setActionStatus(output || "Apply completed.", "ok");
+    selectedBuildId = null;
     pendingBuild = null;
     renderBuild();
     void pollBuilds();
@@ -767,9 +868,11 @@ async function applyBuild() {
     renderBuild();
   } finally {
     setWorking(false);
-    applyBtn.textContent = pendingBuild?.status === "failed" ? "Retry apply" : priorLabel;
+    const status = pendingBuild?.status;
+    applyBtn.textContent = status === "failed" ? "Retry apply" : priorLabel;
+    applyBtn.disabled = false;
     if (pendingBuild) {
-      setBadge(pendingBuild.status === "failed" ? "idle" : "ready", pendingBuild.status === "failed" ? "Failed" : "Build ready");
+      setBadge(status === "failed" ? "idle" : "ready", status === "failed" ? "Failed" : "Build ready");
     } else {
       setBadge("ready", "Paired");
     }
@@ -885,6 +988,8 @@ async function unpair() {
     await invoke("clear_credentials");
     creds = null;
     pendingBuild = null;
+    pendingBuilds = [];
+    selectedBuildId = null;
     if (pollTimer) clearInterval(pollTimer);
     setActionStatus("Unpaired.", "ok");
     showPair();
@@ -899,6 +1004,16 @@ if (remoteOpenBtn) {
   remoteOpenBtn.addEventListener("click", () => openRemotePrepWorkspace());
 }
 applyBtn.addEventListener("click", () => void applyBuild());
+if (buildDismissBtn) {
+  buildDismissBtn.addEventListener("click", () => void dismissBuild());
+}
+if (buildPicker) {
+  buildPicker.addEventListener("change", () => {
+    selectedBuildId = buildPicker.value;
+    syncPendingBuildFromSelection();
+    renderBuild();
+  });
+}
 conflictOverwriteBtn.addEventListener("click", () => void conflictOverwrite());
 conflictViewBtn.addEventListener("click", () => conflictView());
 conflictDismissBtn.addEventListener("click", () => conflictDismiss());

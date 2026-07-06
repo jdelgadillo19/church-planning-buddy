@@ -4,6 +4,7 @@ const LABELS: Record<string, string> = {
   applying: "Applying in ProPresenter",
   completed: "Completed",
   failed: "Failed",
+  cancelled: "Dismissed",
 };
 
 export function formatBuildStatus(status: string): string {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   claimNextBuildForRig,
-  listClaimedBuildsForRig,
+  listQueueBuildsForRig,
 } from "@/lib/pp-platform/builds";
 import { authenticateRigOrBootstrap } from "@/lib/pp-platform/rig-auth";
 
@@ -20,7 +20,7 @@ export async function GET(req: Request, context: RouteContext) {
     const listOnly = url.searchParams.get("list") === "1";
 
     if (listOnly) {
-      const builds = await listClaimedBuildsForRig(rigId);
+      const builds = await listQueueBuildsForRig(rig);
       return NextResponse.json({ ok: true, builds });
     }
 

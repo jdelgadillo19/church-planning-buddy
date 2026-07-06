@@ -170,6 +170,111 @@ export async function listClaimedBuildsForRig(rigId: string): Promise<SlideDeckB
   return (data ?? []) as SlideDeckBuildRow[];
 }
 
+/** Claimed/failed on this rig plus org-wide pending builds the rig may apply. */
+export async function listQueueBuildsForRig(rig: {
+  id: string;
+  org_id: string;
+  rig_kind?: string;
+}): Promise<SlideDeckBuildRow[]> {
+  if (!isPresentationRigKind(rig.rig_kind)) {
+    return [];
+  }
+  const supabase = requireAdmin();
+
+  const [{ data: rigBuilds, error: rigError }, { data: pending, error: pendingError }] =
+    await Promise.all([
+      supabase
+        .from("slide_deck_builds")
+        .select("*")
+        .eq("rig_id", rig.id)
+        .in("status", ["claimed", "applying", "failed"])
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("slide_deck_builds")
+        .select("*")
+        .eq("org_id", rig.org_id)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false }),
+    ]);
+
+  if (rigError) throw new Error(rigError.message);
+  if (pendingError) throw new Error(pendingError.message);
+
+  const pendingForRig = ((pending ?? []) as SlideDeckBuildRow[]).filter(
+    (b) => !b.rig_id || b.rig_id === rig.id,
+  );
+  const merged = new Map<string, SlideDeckBuildRow>();
+  for (const row of [...pendingForRig, ...((rigBuilds ?? []) as SlideDeckBuildRow[])]) {
+    merged.set(row.id, row);
+  }
+  return [...merged.values()].toSorted(
+    (a, b) => Date.parse(b.created_at) - Date.parse(a.created_at),
+  );
+}
+
+export async function claimBuildForRig(
+  rig: { id: string; org_id: string; rig_kind?: string },
+  buildId: string,
+): Promise<SlideDeckBuildRow> {
+  if (!isPresentationRigKind(rig.rig_kind)) {
+    throw new Error("Not a presentation rig.");
+  }
+  const build = await getBuildById(buildId);
+  if (!build || build.org_id !== rig.org_id) {
+    throw new Error("Build not found.");
+  }
+  if (build.status !== "pending") {
+    if (build.rig_id === rig.id && ["claimed", "failed", "applying"].includes(build.status)) {
+      return build;
+    }
+    throw new Error(`Build is not pending (status: ${build.status}).`);
+  }
+  if (build.rig_id && build.rig_id !== rig.id) {
+    throw new Error("Build assigned to another rig.");
+  }
+
+  const supabase = requireAdmin();
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("slide_deck_builds")
+    .update({
+      status: "claimed",
+      rig_id: rig.id,
+      claimed_at: now,
+      updated_at: now,
+    })
+    .eq("id", buildId)
+    .eq("status", "pending")
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message ?? "Failed to claim build.");
+  }
+  return data as SlideDeckBuildRow;
+}
+
+const DISMISSABLE_BUILD_STATUSES = new Set(["pending", "claimed", "failed"]);
+
+/** Rig operator dismisses a queued or failed build without applying. */
+export async function cancelBuildForRig(
+  buildId: string,
+  rigId: string,
+  orgId: string,
+): Promise<SlideDeckBuildRow> {
+  const build = await getBuildById(buildId);
+  if (!build || build.org_id !== orgId) {
+    throw new Error("Build not found.");
+  }
+  if (!DISMISSABLE_BUILD_STATUSES.has(build.status)) {
+    throw new Error(`Cannot dismiss build in status "${build.status}".`);
+  }
+  if (build.rig_id && build.rig_id !== rigId) {
+    throw new Error("Build assigned to another rig.");
+  }
+  return setBuildStatus(buildId, "cancelled", { error_message: null, result: null });
+}
+
 export async function setBuildStatus(
   buildId: string,
   status: SlideDeckBuildRow["status"],
@@ -189,7 +294,7 @@ export async function setBuildStatus(
     patch.completed_at = null;
     patch.result = null;
   }
-  if (status === "completed" || status === "failed") {
+  if (status === "completed" || status === "failed" || status === "cancelled") {
     patch.completed_at = now;
     patch.result = extra?.result ?? null;
     patch.error_message = extra?.error_message ?? null;
